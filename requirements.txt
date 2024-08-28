@@ -2,3 +2,5 @@ numpy
 Pillow
 matplotlib
 streamlit
+chardet
+charset-normalizer
