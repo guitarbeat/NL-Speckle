@@ -40,9 +40,24 @@ def main():
     max_pixels = st.slider("Pixels to process", 1, image.width * image.height, image.width * image.height)
     tabs = st.tabs(["Speckle Contrast Calculation", "Non-Local Means Method", "Speckle Contrast Comparison"])
 
-    std_dev_image, speckle_contrast_image, mean_image = handle_speckle_contrast_tab(tabs[0], image_np, kernel_size, stride, max_pixels, animation_speed, cmap)
+    std_dev_image, speckle_contrast_image, mean_image, image_np = handle_speckle_contrast_tab(tabs[0], image_np, kernel_size, stride, max_pixels, animation_speed, cmap)
     handle_non_local_means_tab(tabs[1])
-    handle_speckle_contrast_comparison_tab(tabs[2], cmap, std_dev_image, speckle_contrast_image, mean_image)
+    handle_speckle_contrast_comparison_tab(tabs[2], cmap, std_dev_image, speckle_contrast_image, mean_image, image_np)
+
+def save_results_section(std_dev_image, speckle_contrast_image, mean_image):
+    with st.expander("Save Results"):
+        if std_dev_image is not None and speckle_contrast_image is not None:
+            get_image_download_link(std_dev_image, "std_dev_filter.png", "Download Std Dev Filter")
+            get_image_download_link(speckle_contrast_image, "speckle_contrast.png", "Download Speckle Contrast Image")
+            get_image_download_link(mean_image, "mean_filter.png", "Download Mean Filter")
+        else:
+            st.error("No results to save. Please generate images by running the analysis.")
+
+def handle_non_local_means_tab(tab):
+    with tab:
+        st.header("Non-Local Means Method")
+        st.write("Coming soon...")
+
 
 def handle_speckle_contrast_tab(tab, image_np, kernel_size, stride, max_pixels, animation_speed, cmap):
     with tab:
@@ -68,26 +83,12 @@ def handle_speckle_contrast_tab(tab, image_np, kernel_size, stride, max_pixels, 
         display_speckle_contrast_process()
 
         # Return the images for use in the comparison tab
-        return std_dev_image, speckle_contrast_image, mean_image
+        return std_dev_image, speckle_contrast_image, mean_image, image_np  # Include the original image
 
-def save_results_section(std_dev_image, speckle_contrast_image, mean_image):
-    with st.expander("Save Results"):
-        if std_dev_image is not None and speckle_contrast_image is not None:
-            get_image_download_link(std_dev_image, "std_dev_filter.png", "Download Std Dev Filter")
-            get_image_download_link(speckle_contrast_image, "speckle_contrast.png", "Download Speckle Contrast Image")
-            get_image_download_link(mean_image, "mean_filter.png", "Download Mean Filter")
-        else:
-            st.error("No results to save. Please generate images by running the analysis.")
-
-def handle_non_local_means_tab(tab):
-    with tab:
-        st.header("Non-Local Means Method")
-        st.write("Coming soon...")
-
-def handle_speckle_contrast_comparison_tab(tab, cmap_name, std_dev_image, speckle_contrast_image, mean_image):
+def handle_speckle_contrast_comparison_tab(tab, cmap_name, std_dev_image, speckle_contrast_image, mean_image, original_image):
     with tab:
         st.header("Speckle Contrast Comparison")
-        available_images = ['Standard Deviation', 'Speckle Contrast', 'Mean Filter']
+        available_images = ['Unprocessed Image', 'Standard Deviation', 'Speckle Contrast', 'Mean Filter']  # Include unprocessed image
         col1, col2 = st.columns(2)
         with col1:
             image_choice_1 = st.selectbox('Select first image to compare:', [''] + available_images, index=0)
@@ -97,13 +98,14 @@ def handle_speckle_contrast_comparison_tab(tab, cmap_name, std_dev_image, speckl
         cmap = plt.get_cmap(cmap_name)
 
         if image_choice_1 and image_choice_2 and image_choice_1 != image_choice_2:
-            img1, img2 = get_images_to_compare(image_choice_1, image_choice_2, std_dev_image, speckle_contrast_image, mean_image)
+            img1, img2 = get_images_to_compare(image_choice_1, image_choice_2, std_dev_image, speckle_contrast_image, mean_image, original_image)
             display_image_comparison(img1, img2, image_choice_1, image_choice_2, cmap)
         else:
             display_image_comparison_error(image_choice_1, image_choice_2)
 
-def get_images_to_compare(image_choice_1, image_choice_2, std_dev_image, speckle_contrast_image, mean_image):
+def get_images_to_compare(image_choice_1, image_choice_2, std_dev_image, speckle_contrast_image, mean_image, original_image):
     images_to_compare = {
+        'Unprocessed Image': original_image,  # Include unprocessed image
         'Standard Deviation': std_dev_image,
         'Speckle Contrast': speckle_contrast_image,
         'Mean Filter': mean_image
@@ -112,3 +114,4 @@ def get_images_to_compare(image_choice_1, image_choice_2, std_dev_image, speckle
 
 if __name__ == "__main__":
     main()
+
