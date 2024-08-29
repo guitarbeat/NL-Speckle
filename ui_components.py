@@ -76,6 +76,6 @@ def apply_colormap_to_images(img1, img2, cmap):
 
 def display_image_comparison(img1, img2, label1, label2, cmap):
     img1_uint8, img2_uint8 = apply_colormap_to_images(img1, img2, cmap)
-    image_comparison(img1=img1_uint8, img2=img2_uint8, label1=label1, label2=label2, make_responsive=True, width=700)
+    image_comparison(img1=img1_uint8, img2=img2_uint8, label1=label1, label2=label2, make_responsive=True)
     st.subheader("Selected Images")
-    st.image([img1_uint8, img2_uint8], caption=[label1, label2], width=350)
+    st.image([img1_uint8, img2_uint8], caption=[label1, label2])
