@@ -1,7 +1,9 @@
 import streamlit as st
 import numpy as np
 from PIL import Image
-from helpers import toggle_animation, handle_speckle_contrast_calculation, create_comparison_tab
+from helpers import toggle_animation, handle_speckle_contrast_calculation
+from streamlit_image_comparison import image_comparison
+import cv2
 
 # Set page configuration
 st.set_page_config(
@@ -117,9 +119,9 @@ def main():
         # Display the speckle contrast formula at the top of tab 1
         formula_placeholder = st.empty()
         with formula_placeholder.container():
-            st.latex(r'\text{{Speckle Contrast}} \ (\text{{at}} \ (0, 0)) = \frac{{\sigma}}{{\mu}} = \frac{{{:.3f}}}{{{:.3f}}} = {:.3f}'.format(0.0, 0.0, 0.0))
-
-
+            st.latex(
+        r'SC_{{({}, {})}} = \frac{{\sigma}}{{\mu}} = \frac{{{:.3f}}}{{{:.3f}}} = {:.3f}'.format(0, 0, 0.0, 0.0, 0.0)
+    )
         # Create two columns for side-by-side layout
         col1, col2 = st.columns(2)
 
@@ -148,10 +150,13 @@ def main():
 
         # Container for the plots and visualizations
         with st.container():
-            handle_speckle_contrast_calculation(
+            # Perform the calculation and get final images
+            std_dev_image, speckle_contrast_image = handle_speckle_contrast_calculation(
                 max_pixels, image_np, kernel_size, stride, 
-                original_image_placeholder, mean_filter_placeholder, std_dev_filter_placeholder, speckle_contrast_placeholder, 
-                zoomed_kernel_placeholder, zoomed_mean_placeholder, zoomed_std_placeholder, zoomed_sc_placeholder, 
+                original_image_placeholder, mean_filter_placeholder, 
+                std_dev_filter_placeholder, speckle_contrast_placeholder, 
+                zoomed_kernel_placeholder, zoomed_mean_placeholder, 
+                zoomed_std_placeholder, zoomed_sc_placeholder, 
                 formula_placeholder, animation_speed, cmap
             )
 
@@ -159,7 +164,26 @@ def main():
         st.header("Non-Local Means Method")
         st.write("Coming soon...")
     with tab3:
-        create_comparison_tab(sc_filter, cmap)
+        st.header("Speckle Contrast Comparison")
+
+        # Ensure images are loaded before conversion
+        if std_dev_image is not None and speckle_contrast_image is not None:
+            # Convert images to uint8 and then to BGR for proper color handling in image comparison
+            std_dev_image_uint8 = (255 * std_dev_image).astype(np.uint8)
+            speckle_contrast_image_uint8 = (255 * speckle_contrast_image).astype(np.uint8)
+            std_dev_image_bgr = cv2.cvtColor(std_dev_image_uint8, cv2.COLOR_GRAY2BGR)
+            speckle_contrast_image_bgr = cv2.cvtColor(speckle_contrast_image_uint8, cv2.COLOR_GRAY2BGR)
+
+            image_comparison(
+                img1=std_dev_image_bgr,
+                img2=speckle_contrast_image_bgr,
+                label1='Standard Deviation',
+                label2='Speckle Contrast',
+                make_responsive=True,
+                width=700,
+            )
+        else:
+            st.write("Please generate images by running the analysis.")
 
 if __name__ == "__main__":
     main()

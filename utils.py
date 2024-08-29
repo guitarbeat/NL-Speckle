@@ -1,5 +1,7 @@
 import numpy as np
 
+# ---------------------------- Library Functions ---------------------------- #
+
 def compute_output_dimensions(image: np.ndarray, kernel_size: int, stride: int) -> tuple:
     """Calculate the output dimensions of the filtered image."""
     output_height = (image.shape[0] - kernel_size) // stride + 1
@@ -43,3 +45,6 @@ def calculate_statistics(image: np.ndarray, kernel_size: int, stride: int, max_p
 
     last_x, last_y = top_left_x, top_left_y
     return mean_filter, std_dev_filter, sc_filter, last_x, last_y, local_mean, local_std, speckle_contrast
+
+# ---------------------------- Additional Functions ---------------------------- #
+# This section is left intentionally blank for future expansions or additional functions.
