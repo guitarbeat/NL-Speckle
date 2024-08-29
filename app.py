@@ -1,23 +1,28 @@
+
+import streamlit as st
+import matplotlib.pyplot as plt
 # Project Structure:
 # .
 # ├── app.py               # Main application file, contains Streamlit app structure and high-level logic.
 # ├── helpers.py           # Helper functions for plotting and displaying results.
 # ├── speckle_lib          # Functions for speckle contrast and non-local means calculations.
-# ├── image_processing.py  # Functions related to image loading and processing.
 # ├── ui_components.py     # Streamlit UI components and layouts.
-# └── config.py            # Configuration variables and constants.
+# └── config.py            # Configuration variables and constants and image loading and processing.
 
-import streamlit as st
-import matplotlib.pyplot as plt
-from ui_components import configure_sidebar, display_original_image_section, display_speckle_contrast_formula, display_speckle_contrast_section, display_image_comparison, display_image_comparison_error
-from image_processing import get_image_download_link
+from config import set_page_config, configure_sidebar,get_image_download_link
+from ui_components import (
+    display_original_image_section,
+    display_speckle_contrast_formula,
+    display_speckle_contrast_section,
+    display_image_comparison,
+    display_image_comparison_error)
 from speckle_lib import handle_speckle_contrast_calculation
-from config import set_page_config
 from helpers import display_speckle_contrast_process
+
 
 set_page_config()
 
-# Introduction and instructions
+st.title("Speckle Contrast Analysis")
 st.markdown("""
 Welcome to the Interactive Speckle Contrast Analysis tool! This application allows you to visualize and analyze speckle contrast in images.
 
@@ -29,7 +34,6 @@ Welcome to the Interactive Speckle Contrast Analysis tool! This application allo
 
 Let's get started!
 """)
-
 
 def main():
     image, kernel_size, stride, cmap, animation_speed, image_np = configure_sidebar()
