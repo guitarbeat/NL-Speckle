@@ -2,8 +2,7 @@
 # .
 # ├── app.py               # Main application file, contains Streamlit app structure and high-level logic.
 # ├── helpers.py           # Helper functions for plotting and displaying results.
-# ├── speckle_contrast_lib/  # Package containing speckle contrast calculation functions.
-# │   ├── calculations.py  # Functions for speckle contrast and non-local means calculations.
+# ├── speckle_lib          # Functions for speckle contrast and non-local means calculations.
 # ├── image_processing.py  # Functions related to image loading and processing.
 # ├── ui_components.py     # Streamlit UI components and layouts.
 # └── config.py            # Configuration variables and constants.
@@ -12,7 +11,7 @@ import streamlit as st
 import matplotlib.pyplot as plt
 from ui_components import configure_sidebar, display_original_image_section, display_speckle_contrast_formula, display_speckle_contrast_section, display_image_comparison, display_image_comparison_error
 from image_processing import get_image_download_link
-from speckle_contrast_lib.calculations import handle_speckle_contrast_calculation
+from speckle_lib import handle_speckle_contrast_calculation
 from config import set_page_config
 from helpers import display_speckle_contrast_process
 
