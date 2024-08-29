@@ -1,7 +1,7 @@
 import streamlit as st
 import numpy as np
 from PIL import Image
-from helpers import toggle_animation, handle_speckle_contrast_calculation
+from helpers import toggle_animation, handle_speckle_contrast_calculation, create_comparison_tab
 
 # Set page configuration
 st.set_page_config(
@@ -11,15 +11,19 @@ st.set_page_config(
 )
 
 st.title("Interactive Speckle Contrast Analysis")
-# Display the speckle contrast formula at the top with default values of 0
-formula_placeholder = st.empty()
-with formula_placeholder.container():
-    st.latex(
-        r'''
-        \text{{Speckle Contrast}} \ (\text{{at}} \ ({}, {})) = \frac{{\sigma}}{{\mu}} = \frac{{{:.3f}}}{{{:.3f}}} = {:.3f}
-        '''.format(0, 0, 0.0, 0.0, 0.0)
-    )
-    st.markdown("---")  # Separator to make it visually distinct
+
+# Introduction and instructions
+st.markdown("""
+Welcome to the Interactive Speckle Contrast Analysis tool! This application allows you to visualize and analyze speckle contrast in images.
+
+**How to use this tool:**
+1. Choose an image source (preloaded or upload your own) in the sidebar.
+2. Adjust the processing parameters and visualization settings.
+3. Explore the speckle contrast analysis results in the tabs below.
+4. Use the animation controls to see the analysis process in action.
+
+Let's get started!
+""")
 
 # Define preloaded images
 PRELOADED_IMAGES = {
@@ -49,19 +53,16 @@ def configure_sidebar() -> tuple:
             image = load_image(image_source, selected_image, uploaded_file)
             st.image(image, caption="Input Image", use_column_width=True)
 
-            max_pixels = st.slider("Pixels to process", 1, image.width * image.height, image.width * image.height)
-
-        with st.expander("Processing Parameters"):
-            kernel_size = st.slider('Kernel Size', 1, 10, 3, help="Size of the sliding window (patch size).")
-            stride = st.slider('Stride', 1, 5, 1, help="Stride of the sliding window.")
-
-        with st.expander("Visualization Settings"):
             cmap = st.selectbox(
                 "Select Color Map",
                 ["viridis", "plasma", "inferno", "magma", "cividis", "gray"],
                 index=0,
                 help="Choose a color map for all visualizations."
             )
+
+        with st.expander("Processing Parameters"):
+            kernel_size = st.slider('Kernel Size', 1, 10, 3, help="Size of the sliding window (patch size).")
+            stride = st.slider('Stride', 1, 5, 1, help="Stride of the sliding window.")
 
         with st.expander("Animation Controls"):
             animation_speed = st.slider("Animation Speed (seconds per frame)", 0.001, 0.5, 0.01, 0.01)
@@ -72,7 +73,7 @@ def configure_sidebar() -> tuple:
             if st.button('Save Results'):
                 st.success("Results saved successfully!")
 
-    return image, max_pixels, kernel_size, stride, cmap, animation_speed, start_button, stop_button
+    return image, kernel_size, stride, cmap, animation_speed, start_button, stop_button
 
 @st.cache_data
 def process_image(image: Image.Image) -> np.ndarray:
@@ -92,7 +93,7 @@ def handle_animation_controls(start_button: bool, stop_button: bool):
 
 def main():
     # Configure sidebar and get user inputs
-    image, max_pixels, kernel_size, stride, cmap, animation_speed, start_button, stop_button = configure_sidebar()
+    image, kernel_size, stride, cmap, animation_speed, start_button, stop_button = configure_sidebar()
 
     # Process image
     image_np = process_image(image)
@@ -103,16 +104,25 @@ def main():
     # Handle animation controls
     handle_animation_controls(start_button, stop_button)
 
-    # Create tabs for different calculation methods
-    tab1, tab2 = st.tabs(["Speckle Contrast Method", "Non-Local Means Method"])
+    # Pixels to process slider (moved out of sidebar)
+    max_pixels = st.slider("Pixels to process", 1, image.width * image.height, image.width * image.height)
 
+  # Create tabs for different calculation methods
+    tab1, tab2, tab3 = st.tabs(["Speckle Contrast Method", "Non-Local Means Method", "Speckle Contrast Comparison"])
+    
     with tab1:
         st.header("Speckle Contrast Calculation")
         st.session_state.animation_mode = 'Standard'
-        
-        # Create four columns for side-by-side layout
+
+        # Display the speckle contrast formula at the top of tab 1
+        formula_placeholder = st.empty()
+        with formula_placeholder.container():
+            st.latex(r'\text{{Speckle Contrast}} \ (\text{{at}} \ (0, 0)) = \frac{{\sigma}}{{\mu}} = \frac{{{:.3f}}}{{{:.3f}}} = {:.3f}'.format(0.0, 0.0, 0.0))
+
+
+        # Create two columns for side-by-side layout
         col1, col2 = st.columns(2)
-        
+
         # Place expanders inside each column
         with col1:
             with st.expander("Original Image with Current Kernel", expanded=True):
@@ -126,7 +136,6 @@ def main():
                     zoomed_mean_placeholder = st.empty()
 
         with col2:
-   
             with st.expander("Speckle Contrast", expanded=True):
                 speckle_contrast_placeholder = st.empty()
                 with st.popover("Zoomed-in Speckle Contrast"):
@@ -136,7 +145,6 @@ def main():
                 std_dev_filter_placeholder = st.empty()
                 with st.popover("Zoomed-in Std Dev"):
                     zoomed_std_placeholder = st.empty()
-
 
         # Container for the plots and visualizations
         with st.container():
@@ -150,6 +158,8 @@ def main():
     with tab2:
         st.header("Non-Local Means Method")
         st.write("Coming soon...")
+    with tab3:
+        create_comparison_tab(sc_filter, cmap)
 
 if __name__ == "__main__":
     main()

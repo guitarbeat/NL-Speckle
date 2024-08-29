@@ -3,6 +3,9 @@ import matplotlib.patches as patches
 import streamlit as st
 import time
 from utils import calculate_statistics
+from streamlit_image_comparison import image_comparison
+from PIL import Image
+import io
 
 def clear_axes(axs):
     """Clear all axes in the provided list."""
@@ -72,13 +75,12 @@ def plot_zoomed_views(zoomed_data, titles, cmap):
 
 
 
-def display_speckle_contrast_formula(formula_placeholder, last_x, last_y, last_std, last_mean, last_sc):
+def display_speckle_contrast_formula(placeholder, x, y, std, mean, sc):
     """Display the speckle contrast formula in a Streamlit placeholder."""
-    formula_placeholder.latex(
-        r'''
-        \text{{Speckle Contrast}} \ (\text{{at}} \ ({}, {})) = \frac{{\sigma}}{{\mu}} = \frac{{{:.3f}}}{{{:.3f}}} = {:.3f}
-        '''.format(last_x, last_y, last_std, last_mean, last_sc)
+    placeholder.latex(
+        r'SC_{{({}, {})}} = \frac{{\sigma}}{{\mu}} = \frac{{{:.3f}}}{{{:.3f}}} = {:.3f}'.format(x, y, std, mean, sc)
     )
+
 
 def handle_speckle_contrast_calculation(max_pixels, image_np, kernel_size, stride, 
                                         original_image_placeholder, mean_filter_placeholder, std_dev_filter_placeholder, speckle_contrast_placeholder, 
@@ -136,3 +138,44 @@ def handle_speckle_contrast_calculation(max_pixels, image_np, kernel_size, strid
             break
 
         time.sleep(animation_speed)
+
+
+def create_comparison_tab(sc_filter, cmap):
+    st.header("Speckle Contrast Comparison")
+    
+    # Create the original speckle contrast image
+    fig, ax = plt.subplots()
+    im = ax.imshow(sc_filter, cmap=cmap)
+    plt.colorbar(im)
+    ax.axis('off')
+    
+    # Save the original image to a byte stream
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png')
+    buf.seek(0)
+    original_image = Image.open(buf)
+    
+    # Create the inverted speckle contrast image
+    fig, ax = plt.subplots()
+    im = ax.imshow(1 - sc_filter, cmap=cmap)
+    plt.colorbar(im)
+    ax.axis('off')
+    
+    # Save the inverted image to a byte stream
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png')
+    buf.seek(0)
+    inverted_image = Image.open(buf)
+    
+    # Use the image_comparison component
+    image_comparison(
+        img1=original_image,
+        img2=inverted_image,
+        label1="Original Speckle Contrast",
+        label2="Inverted Speckle Contrast",
+        width=700,
+        starting_position=50,
+        show_labels=True,
+        make_responsive=True,
+        in_memory=True,
+    )

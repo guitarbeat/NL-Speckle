@@ -4,3 +4,4 @@ matplotlib
 streamlit
 chardet
 charset-normalizer
+streamlit-image-comparison
