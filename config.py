@@ -2,6 +2,7 @@ import streamlit as st
 from ui_components import handle_animation_controls
 from PIL import Image
 import numpy as np
+import io
 
 # media/image50.png
 # Define preloaded images
