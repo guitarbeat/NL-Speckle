@@ -186,15 +186,14 @@ def main():
 
         # Ensure images are loaded before conversion
         if std_dev_image is not None and speckle_contrast_image is not None:
-            # Convert images to uint8 and then to BGR for proper color handling in image comparison
+            # Convert images to uint8 format for display
             std_dev_image_uint8 = (255 * std_dev_image).astype(np.uint8)
             speckle_contrast_image_uint8 = (255 * speckle_contrast_image).astype(np.uint8)
-            std_dev_image_bgr = cv2.cvtColor(std_dev_image_uint8, cv2.COLOR_GRAY2BGR)
-            speckle_contrast_image_bgr = cv2.cvtColor(speckle_contrast_image_uint8, cv2.COLOR_GRAY2BGR)
 
+            # Compare images directly in grayscale (since they're essentially processed in grayscale)
             image_comparison(
-                img1=std_dev_image_bgr,
-                img2=speckle_contrast_image_bgr,
+                img1=std_dev_image_uint8,
+                img2=speckle_contrast_image_uint8,
                 label1='Standard Deviation',
                 label2='Speckle Contrast',
                 make_responsive=True,
@@ -202,6 +201,7 @@ def main():
             )
         else:
             st.write("Please generate images by running the analysis.")
+
 
 if __name__ == "__main__":
     main()
