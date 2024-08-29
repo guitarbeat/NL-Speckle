@@ -5,3 +5,4 @@ streamlit
 chardet
 charset-normalizer
 streamlit-image-comparison
+opencv-python

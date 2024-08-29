@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from PIL import Image
 import streamlit as st
 from utils import calculate_statistics
+import cv2
 
 # ---------------------------- Utility Functions ---------------------------- #
 

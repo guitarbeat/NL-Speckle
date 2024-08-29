@@ -1,5 +1,5 @@
 import numpy as np
-
+import cv2
 # ---------------------------- Library Functions ---------------------------- #
 
 def compute_output_dimensions(image: np.ndarray, kernel_size: int, stride: int) -> tuple:
