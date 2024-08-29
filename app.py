@@ -4,6 +4,7 @@ from PIL import Image
 from helpers import toggle_animation, handle_speckle_contrast_calculation
 from streamlit_image_comparison import image_comparison
 import cv2
+import io
 
 # Set page configuration
 st.set_page_config(
@@ -71,9 +72,6 @@ def configure_sidebar() -> tuple:
             start_button = st.button('Start Animation')
             stop_button = st.button('Stop Animation')
 
-        with st.expander("Save Results"):
-            if st.button('Save Results'):
-                st.success("Results saved successfully!")
 
     return image, kernel_size, stride, cmap, animation_speed, start_button, stop_button
 
@@ -93,6 +91,14 @@ def handle_animation_controls(start_button: bool, stop_button: bool):
     if start_button or stop_button:
         toggle_animation()
 
+def get_image_download_link(image, filename, button_text="Download Image"):
+    """Convert a numpy array to an image and create a download button."""
+    img_buffer = io.BytesIO()
+    Image.fromarray((255 * image).astype(np.uint8)).save(img_buffer, format='PNG')
+    img_buffer.seek(0)
+    return st.download_button(label=button_text, data=img_buffer, file_name=filename, mime="image/png")
+
+
 def main():
     # Configure sidebar and get user inputs
     image, kernel_size, stride, cmap, animation_speed, start_button, stop_button = configure_sidebar()
@@ -109,9 +115,9 @@ def main():
     # Pixels to process slider (moved out of sidebar)
     max_pixels = st.slider("Pixels to process", 1, image.width * image.height, image.width * image.height)
 
-  # Create tabs for different calculation methods
+    # Create tabs for different calculation methods
     tab1, tab2, tab3 = st.tabs(["Speckle Contrast Method", "Non-Local Means Method", "Speckle Contrast Comparison"])
-    
+
     with tab1:
         st.header("Speckle Contrast Calculation")
         st.session_state.animation_mode = 'Standard'
@@ -120,8 +126,9 @@ def main():
         formula_placeholder = st.empty()
         with formula_placeholder.container():
             st.latex(
-        r'SC_{{({}, {})}} = \frac{{\sigma}}{{\mu}} = \frac{{{:.3f}}}{{{:.3f}}} = {:.3f}'.format(0, 0, 0.0, 0.0, 0.0)
-    )
+                r'SC_{{({}, {})}} = \frac{{\sigma}}{{\mu}} = \frac{{{:.3f}}}{{{:.3f}}} = {:.3f}'.format(0, 0, 0.0, 0.0, 0.0)
+            )
+
         # Create two columns for side-by-side layout
         col1, col2 = st.columns(2)
 
@@ -151,7 +158,7 @@ def main():
         # Container for the plots and visualizations
         with st.container():
             # Perform the calculation and get final images
-            std_dev_image, speckle_contrast_image = handle_speckle_contrast_calculation(
+            std_dev_image, speckle_contrast_image, mean_image = handle_speckle_contrast_calculation(
                 max_pixels, image_np, kernel_size, stride, 
                 original_image_placeholder, mean_filter_placeholder, 
                 std_dev_filter_placeholder, speckle_contrast_placeholder, 
@@ -160,9 +167,20 @@ def main():
                 formula_placeholder, animation_speed, cmap
             )
 
+    
+        # Save Results Section with Download Button
+        with st.expander("Save Results"):
+            if std_dev_image is not None and speckle_contrast_image is not None:
+                get_image_download_link(std_dev_image, "std_dev_filter.png", "Download Std Dev Filter")
+                get_image_download_link(speckle_contrast_image, "speckle_contrast.png", "Download Speckle Contrast Image")
+                get_image_download_link(mean_image, "mean_filter.png", "Download Mean Filter")
+            else:
+                st.error("No results to save. Please generate images by running the analysis.")
+
     with tab2:
         st.header("Non-Local Means Method")
         st.write("Coming soon...")
+
     with tab3:
         st.header("Speckle Contrast Comparison")
 

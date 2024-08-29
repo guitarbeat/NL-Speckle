@@ -129,4 +129,4 @@ def handle_speckle_contrast_calculation(
         time.sleep(animation_speed)
 
     # Return the final images for use in other tabs
-    return std_dev_filter, sc_filter
+    return std_dev_filter, sc_filter, mean_filter
