@@ -23,7 +23,6 @@ def set_page_config():
         initial_sidebar_state="expanded",
     )
     st.logo(image)
-
 def configure_sidebar() -> tuple:
     """Configure sidebar options and return user inputs."""
     with st.sidebar:
@@ -58,25 +57,31 @@ def configure_sidebar() -> tuple:
         with st.expander("Image Processing", expanded=True):
             kernel_size = st.slider('Kernel Size', 1, 10, 3, help="Size of the sliding window (patch size).")
             stride = st.slider('Stride', 1, 5, 1, help="Stride of the sliding window.")
-            
-            st.markdown("---")
-            st.markdown("#### 🔍 Non-Local Means Parameters")
-            search_window_size = st.slider(
-                "Search Window Size", 
-                min_value=1, 
-                max_value=21, 
-                value=5, 
-                step=2,
-                help="Size of the window used to search for similar patches in the image."
-            )
-            filter_strength = st.slider(
-                "Filter Strength (h)", 
-                min_value=0.1, 
-                max_value=50.0, 
-                value=10.0, 
-                step=0.1,
-                help="Controls the decay of the similarity function, affecting how strongly similar patches are weighted."
-            )
+            with st.expander("🔍 Non-Local Means Parameters", expanded=False):
+                # Option to use entire image as the search window
+                use_full_image_window = st.checkbox("Use Full Image as Search Window", value=False, help="If checked, the search window will cover the entire image.")
+                
+                # Conditionally display search window size slider based on checkbox state
+                if not use_full_image_window:
+                    search_window_size = st.slider(
+                        "Search Window Size", 
+                        min_value=1, 
+                        max_value=21, 
+                        value=5, 
+                        step=2,
+                        help="Size of the window used to search for similar patches in the image."
+                    )
+                else:
+                    search_window_size = None  # Use None to indicate full image search window
+                
+                filter_strength = st.slider(
+                    "Filter Strength (h)", 
+                    min_value=0.1, 
+                    max_value=50.0, 
+                    value=10.0, 
+                    step=0.1,
+                    help="Controls the decay of the similarity function, affecting how strongly similar patches are weighted."
+                )
 
         st.markdown("### 🎞️ Animation Controls")
         with st.expander("Animation Settings", expanded=True):
@@ -86,6 +91,7 @@ def configure_sidebar() -> tuple:
             handle_animation_controls()
 
     return image, kernel_size, search_window_size, filter_strength, stride, cmap, animation_speed, image_np
+
 
 
 def initialize_session_state():

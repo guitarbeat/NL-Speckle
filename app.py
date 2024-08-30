@@ -37,14 +37,17 @@ Let's get started!
 """)
 
 def main():
+ 
     image, kernel_size, search_window_size, filter_strength, stride, cmap, animation_speed, image_np = configure_sidebar()
+
+
     max_pixels = st.slider("Pixels to process", 1, image.width * image.height, image.width * image.height)
     tabs = st.tabs(["Speckle Contrast Calculation", "Speckle Contrast Comparison"])
 
     std_dev_image, speckle_contrast_image, mean_image, image_np = handle_speckle_contrast_tab(tabs[0], image_np, kernel_size, stride, max_pixels, animation_speed, cmap)
 
-    # we are going to say that kernel_size is the same as patch_size
-    # handle_non_local_means_tab(tabs[1], image, kernel_size, search_window_size, filter_strength, stride, max_pixels, animation_speed, cmap)
+
+# handle_non_local_means_tab(tabs[1], image, kernel_size, search_window_size, filter_strength, stride, max_pixels, animation_speed, cmap)
 
     handle_speckle_contrast_comparison_tab(tabs[1], cmap, std_dev_image, speckle_contrast_image, mean_image, image_np)
 
