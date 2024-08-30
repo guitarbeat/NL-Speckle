@@ -24,11 +24,11 @@ def set_page_config():
     )
     st.logo(image)
 
-
 def configure_sidebar() -> tuple:
     """Configure sidebar options and return user inputs."""
     with st.sidebar:
-        with st.expander("Image Configuration", expanded=True):
+        st.markdown("### 🖼️ Image Configuration")
+        with st.expander("Image Settings", expanded=True):
             image_source = st.radio("Choose Image Source", ["Preloaded Image", "Upload Image"])
             selected_image = st.selectbox(
                 "Select Preloaded Image", 
@@ -48,23 +48,45 @@ def configure_sidebar() -> tuple:
 
             # Select color map
             cmap = st.selectbox(
-                "Select Color Map",
+                "🎨 Select Color Map",
                 ["viridis", "plasma", "inferno", "magma", "cividis", "gray"],
                 index=0,
                 help="Choose a color map for all visualizations."
             )
 
-        with st.expander("Processing Parameters"):
+        st.markdown("### 🛠️ Processing Parameters")
+        with st.expander("Image Processing", expanded=True):
             kernel_size = st.slider('Kernel Size', 1, 10, 3, help="Size of the sliding window (patch size).")
             stride = st.slider('Stride', 1, 5, 1, help="Stride of the sliding window.")
+            
+            st.markdown("---")
+            st.markdown("#### 🔍 Non-Local Means Parameters")
+            search_window_size = st.slider(
+                "Search Window Size", 
+                min_value=1, 
+                max_value=21, 
+                value=5, 
+                step=2,
+                help="Size of the window used to search for similar patches in the image."
+            )
+            filter_strength = st.slider(
+                "Filter Strength (h)", 
+                min_value=0.1, 
+                max_value=50.0, 
+                value=10.0, 
+                step=0.1,
+                help="Controls the decay of the similarity function, affecting how strongly similar patches are weighted."
+            )
 
-        with st.expander("Animation Controls"):
+        st.markdown("### 🎞️ Animation Controls")
+        with st.expander("Animation Settings", expanded=True):
             animation_speed = st.slider("Animation Speed (seconds per frame)", 0.001, 0.5, 0.01, 0.01)
             
             # Handle animation controls
             handle_animation_controls()
 
-    return image, kernel_size, stride, cmap, animation_speed, image_np
+    return image, kernel_size, search_window_size, filter_strength, stride, cmap, animation_speed, image_np
+
 
 def initialize_session_state():
     """Initialize session state variables."""

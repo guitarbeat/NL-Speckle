@@ -19,7 +19,7 @@ from ui_components import (
     display_image_comparison_error)
 from speckle_lib import handle_speckle_contrast_calculation
 from helpers import display_speckle_contrast_process
-
+# from nlm_lib import handle_non_local_means_tab
 
 set_page_config()
 
@@ -37,13 +37,16 @@ Let's get started!
 """)
 
 def main():
-    image, kernel_size, stride, cmap, animation_speed, image_np = configure_sidebar()
+    image, kernel_size, search_window_size, filter_strength, stride, cmap, animation_speed, image_np = configure_sidebar()
     max_pixels = st.slider("Pixels to process", 1, image.width * image.height, image.width * image.height)
-    tabs = st.tabs(["Speckle Contrast Calculation", "Non-Local Means Method", "Speckle Contrast Comparison"])
+    tabs = st.tabs(["Speckle Contrast Calculation", "Speckle Contrast Comparison"])
 
     std_dev_image, speckle_contrast_image, mean_image, image_np = handle_speckle_contrast_tab(tabs[0], image_np, kernel_size, stride, max_pixels, animation_speed, cmap)
-    handle_non_local_means_tab(tabs[1])
-    handle_speckle_contrast_comparison_tab(tabs[2], cmap, std_dev_image, speckle_contrast_image, mean_image, image_np)
+
+    # we are going to say that kernel_size is the same as patch_size
+    # handle_non_local_means_tab(tabs[1], image, kernel_size, search_window_size, filter_strength, stride, max_pixels, animation_speed, cmap)
+
+    handle_speckle_contrast_comparison_tab(tabs[1], cmap, std_dev_image, speckle_contrast_image, mean_image, image_np)
 
 def save_results_section(std_dev_image, speckle_contrast_image, mean_image):
     with st.expander("Save Results"):
@@ -53,12 +56,6 @@ def save_results_section(std_dev_image, speckle_contrast_image, mean_image):
             get_image_download_link(mean_image, "mean_filter.png", "Download Mean Filter")
         else:
             st.error("No results to save. Please generate images by running the analysis.")
-
-def handle_non_local_means_tab(tab):
-    with tab:
-        st.header("Non-Local Means Method")
-        st.write("Coming soon...")
-
 
 def handle_speckle_contrast_tab(tab, image_np, kernel_size, stride, max_pixels, animation_speed, cmap):
     with tab:
