@@ -13,8 +13,6 @@ def handle_animation_controls():
     with col3:
         stop_button = st.button('Stop')
 
-
-
     if start_button:
         st.session_state.is_animating = True
         st.session_state.is_paused = False
@@ -25,32 +23,12 @@ def handle_animation_controls():
         st.session_state.is_paused = False
 
 
-def display_original_image_section():
-    with st.expander("Original Image with Current Kernel", expanded=True):
-        original_image_placeholder = st.empty()
-        with st.expander("Zoomed-in Kernel"):
-            zoomed_kernel_placeholder = st.empty()
-
-    with st.expander("Mean Filter", expanded=False):
-        mean_filter_placeholder = st.empty()
-        with st.expander("Zoomed-in Mean"):
-            zoomed_mean_placeholder = st.empty()
-
-    return original_image_placeholder, mean_filter_placeholder, zoomed_kernel_placeholder, zoomed_mean_placeholder
-
-def display_speckle_contrast_section():
-    with st.expander("Speckle Contrast", expanded=True):
-        speckle_contrast_placeholder = st.empty()
-        with st.expander("Zoomed-in Speckle Contrast"):
-            zoomed_sc_placeholder = st.empty()
-
-    with st.expander("Standard Deviation Filter", expanded=False):
-        std_dev_filter_placeholder = st.empty()
-        with st.expander("Zoomed-in Std Dev"):
-            zoomed_std_placeholder = st.empty()
-
-    return speckle_contrast_placeholder, std_dev_filter_placeholder, zoomed_sc_placeholder, zoomed_std_placeholder
-
+def create_section(title: str, expanded_main: bool, expanded_zoomed: bool):
+    with st.expander(title, expanded=expanded_main):
+        main_placeholder = st.empty()
+        with st.expander(f"Zoomed-in {title.split()[0]}"):
+            zoomed_placeholder = st.empty()
+    return main_placeholder, zoomed_placeholder
 
 
 def display_speckle_contrast_formula(formula_placeholder):
