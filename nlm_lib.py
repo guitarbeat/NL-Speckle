@@ -132,6 +132,15 @@ def process_nlm_with_visualization(image_np, patch_size, search_window_size, fil
     
     return denoised_image, patch_rectangle, search_window_rectangle
 
+
+
+
+
+
+
+
+
+
 # Explanation Section
 def explain_nl_means():
     with st.expander("View Non-Local Means (NL-means) Explanation", expanded=False):
@@ -223,3 +232,126 @@ def explain_nl_means():
         ### Summary:
         NL-means is a powerful denoising technique, especially suitable for images where preserving detail is critical. However, the algorithm's effectiveness depends heavily on parameter tuning and computational resources.
         """)
+
+
+# Attempt 2:
+
+def handle_nlm_calculation(
+    max_pixels, image_np, kernel_size, stride, search_window_size, filter_strength, 
+    original_image_placeholder, weights_image_placeholder, nlm_image_placeholder, 
+    formula_placeholder, animation_speed, cmap
+):
+    """Handle the Non-Local Means calculation and update Streamlit placeholders."""
+
+    for i in range(1, max_pixels + 1) if st.session_state.is_animating else [max_pixels]:
+
+        nlm_image, weights_image, last_x, last_y = calculate_nlm(
+            image_np, kernel_size, stride, search_window_size, filter_strength, i, st.session_state.cache 
+        )
+
+        display_nlm_formula(formula_placeholder, last_x, last_y, kernel_size, search_window_size, filter_strength)
+
+        # # 3. Display original image with current pixel highlighted
+        # fig_original, axs_original = plt.subplots(1, 1, figsize=(5, 5))
+        # original_image_placeholder.pyplot(
+        #     update_plot(fig_original, [axs_original], image_np, [nlm_image], last_x, last_y, kernel_size, cmap)
+        # )
+
+        # 4. Display weights image 
+        weights_image_placeholder.image(weights_image, caption="Weights Image", use_column_width=True)
+
+
+        # 5. Display NLM filtered image
+        nlm_image_placeholder.image(nlm_image, caption="NLM Filtered Image", use_column_width=True)
+
+        if not st.session_state.is_animating:
+            break
+
+        # time.sleep(animation_speed)
+
+    return weights_image, nlm_image
+
+def calculate_nlm(image_np, kernel_size, stride, search_window_size, filter_strength, max_pixels, cache):
+    """Calculate Non-Local Means filtered image and weights image."""
+
+    output_height = (image_np.shape[0] - kernel_size) // stride + 1
+    output_width = (image_np.shape[1] - kernel_size) // stride + 1
+
+    total_pixels = min(max_pixels, output_height * output_width)
+
+    nlm_image = np.zeros_like(image_np)  # Initialize NLM filtered image
+    weights_image = np.zeros_like(image_np)  # Initialize weights image
+
+    cache_key = (image_np.shape, kernel_size, stride, search_window_size, filter_strength)
+    if cache_key not in cache:
+        cache[cache_key] = {}
+
+    for pixel in range(total_pixels):
+        row, col = divmod(pixel, output_width)
+        y, x = row * stride, col * stride  # Top-left corner of the kernel
+
+        if (row, col) in cache[cache_key]:
+            nlm_pixel_value, weights_pixel_value = cache[cache_key][(row, col)]
+        else:
+            nlm_pixel_value, weights_pixel_value = calculate_nlm_pixel(
+                image_np, y, x, kernel_size, search_window_size, filter_strength
+            )
+            cache[cache_key][(row, col)] = (nlm_pixel_value, weights_pixel_value)
+
+        # Update NLM and weights images 
+        nlm_image[y:y + kernel_size, x:x + kernel_size] = nlm_pixel_value
+
+        # Calculate the slice of weights_image corresponding to the search window
+        weights_start_y = max(0, y - search_window_size // 2)
+        weights_end_y = min(weights_image.shape[0], y + search_window_size // 2 + kernel_size)
+        weights_start_x = max(0, x - search_window_size // 2)
+        weights_end_x = min(weights_image.shape[1], x + search_window_size // 2 + kernel_size)
+
+        weights_image[weights_start_y:weights_end_y, weights_start_x:weights_end_x] = weights_pixel_value
+
+    last_x, last_y = x, y
+    return nlm_image, weights_image, last_x, last_y
+
+def calculate_nlm_pixel(image, y, x, kernel_size, search_window_size, filter_strength):
+    """Calculate NLM filtered value and weights for a single pixel."""
+
+    # 1. Extract neighborhood around the current pixel
+    neighborhood_p = image[y:y + kernel_size, x:x + kernel_size]
+
+    # 2. Define search window
+    search_window_start_y = max(0, y - search_window_size // 2)
+    search_window_end_y = min(image.shape[0] - kernel_size, y + search_window_size // 2)
+    search_window_start_x = max(0, x - search_window_size // 2)
+    search_window_end_x = min(image.shape[1] - kernel_size, x + search_window_size // 2)
+
+    # 3. Calculate weights for pixels in the search window
+    weights = []
+    for i in range(search_window_start_y, search_window_end_y):
+        for j in range(search_window_start_x, search_window_end_x):
+            neighborhood_q = image[i:i + kernel_size, j:j + kernel_size]
+            distance = np.sum((neighborhood_p - neighborhood_q)**2)  # Euclidean distance
+            weight = np.exp(-distance / (filter_strength**2))
+            weights.append(weight)
+
+    # 4. Calculate weighted average (NLM filtered value)
+    image_slice = image[search_window_start_y:search_window_end_y, 
+                        search_window_start_x:search_window_end_x]
+
+    weights_reshaped = np.array(weights).reshape(image_slice.shape)  
+
+    nlm_pixel_value = np.sum(weights_reshaped * image_slice) / np.sum(weights) 
+
+    # 5. Normalize weights to create weights image (for visualization)
+    weights_pixel_value = np.array(weights).reshape(image_slice.shape) 
+    weights_pixel_value = weights_pixel_value / np.max(weights_pixel_value) 
+    weights_pixel_value = pad_weights(weights_pixel_value, kernel_size) # Call the padding function
+
+    return nlm_pixel_value, weights_pixel_value
+
+def pad_weights(weights, kernel_size):
+    """Pad the weights array to match the kernel size."""
+    pad_y = (kernel_size - weights.shape[0]) // 2
+    pad_x = (kernel_size - weights.shape[1]) // 2
+    padded_weights = np.pad(weights, ((pad_y, pad_y), (pad_x, pad_x)), 'constant')
+    return padded_weights
+
