@@ -1,6 +1,7 @@
 
 import streamlit as st
 import matplotlib.pyplot as plt
+import streamlit_nested_layout
 # Project Structure:
 # .
 # ├── app.py               # Main application file, contains Streamlit app structure and high-level logic.
