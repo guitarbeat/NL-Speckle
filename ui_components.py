@@ -1,6 +1,7 @@
 import streamlit as st
 from streamlit_image_comparison import image_comparison
 import numpy as np
+import matplotlib.pyplot as plt
 
 
 def handle_animation_controls():
@@ -59,3 +60,63 @@ def display_image_comparison(img1, img2, label1, label2, cmap):
     image_comparison(img1=img1_uint8, img2=img2_uint8, label1=label1, label2=label2, make_responsive=True)
     st.subheader("Selected Images")
     st.image([img1_uint8, img2_uint8], caption=[label1, label2])
+
+
+
+def display_data_and_zoomed_view(data, last_x, last_y, stride, title, data_placeholder, zoomed_placeholder, cmap="viridis", zoom_size=1):
+    """
+    Display data and its zoomed-in view.
+    
+    Parameters:
+    - data: 2D numpy array of the data to display
+    - last_x, last_y: Coordinates of the last processed point
+    - stride: Step size between processed points
+    - title: Title for the plot
+    - data_placeholder: Streamlit placeholder for the full data plot
+    - zoomed_placeholder: Streamlit placeholder for the zoomed view
+    - cmap: Colormap to use (default: "viridis")
+    - zoom_size: Size of the zoomed area (default: 1)
+    """
+    fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+    ax.imshow(data, cmap=cmap)
+    ax.set_title(title)
+    ax.axis("off")
+    data_placeholder.pyplot(fig)
+    
+    zoomed_data = data[last_y // stride : last_y // stride + zoom_size, 
+                       last_x // stride : last_x // stride + zoom_size]
+    zoomed_placeholder.pyplot(
+        plot_zoomed_views(
+            [zoomed_data],
+            ["Zoomed-In " + title],
+            cmap
+        )
+    )
+
+
+def plot_zoomed_views(zoomed_data, titles, cmap="viridis", fontsize=10, text_color="red"):
+    """
+    Plot zoomed-in views with values annotated.
+    
+    Parameters:
+    - zoomed_data: list of 2D numpy arrays to display
+    - titles: list of titles for each zoomed view
+    - cmap: colormap to use (default: "viridis")
+    - fontsize: font size for annotations (default: 10)
+    - text_color: color of the annotations (default: "red")
+    """
+    zoom_fig, zoom_axs = plt.subplots(1, len(zoomed_data), figsize=(5 * len(zoomed_data), 5))
+    zoom_axs = zoom_axs if isinstance(zoom_axs, np.ndarray) else [zoom_axs]
+    
+    for ax, data, title in zip(zoom_axs, zoomed_data, titles):
+        im = ax.imshow(data, cmap=cmap)
+        ax.set_title(title, fontsize=12)
+        ax.axis("off")
+        plt.colorbar(im, ax=ax)
+        for i, row in enumerate(data):
+            for j, val in enumerate(row):
+                ax.text(j, i, f"{val:.3f}", ha="center", va="center", color=text_color, fontsize=fontsize)
+    
+    zoom_fig.tight_layout(pad=2)
+    return zoom_fig
+
