@@ -18,8 +18,8 @@ from ui_components import (
     display_speckle_contrast_formula,
     display_image_comparison,
     display_image_comparison_error)
-from speckle_lib import handle_speckle_contrast_calculation
-from helpers import display_speckle_contrast_process
+from speckle_lib import handle_speckle_contrast_calculation, display_speckle_contrast_process
+# from helpers import
 # from nlm_lib import handle_non_local_means_tab
 
 set_page_config()
@@ -138,32 +138,50 @@ def handle_non_local_means_tab(tab, image_np, kernel_size, stride, search_window
         # Return the images for use in the comparison tab
         return 
 
-def display_nlm_formula(formula_placeholder, p_x, p_y, window_size, search_size, filter_strength):
+def display_nlm_formula(formula_placeholder, x, y, window_size, search_size, filter_strength):
     """Display the formula for Non-Local Means denoising for a specific pixel."""
+    
     with formula_placeholder.container():
-        st.latex(r'''
-        u(p_{%d,%d}) = \frac{1}{C(p_{%d,%d})} \sum_{q \in S} v(q) \cdot f(p_{%d,%d}, q)
-        ''' % (p_x, p_y, p_x, p_y, p_x, p_y))
+        st.markdown("### Non-Local Means (NLM) Denoising Formula")
+        
+        st.markdown(f"""
+        Let's define our variables first:
+        - $(x_{{{x}}}, y_{{{y}}})$: Coordinates of the target pixel we're denoising
+        - $I(i,j)$: Original image value at pixel $(i,j)$
+        - $\Omega$: Search window of size {search_size}x{search_size} centered at $(x_{{{x}}}, y_{{{y}}})$
+        - $N(x,y)$: Neighborhood of size {window_size}x{window_size} around pixel $(x,y)$
+        - $h$: Filtering parameter (controls smoothing strength), set to {filter_strength:.2f}
+        """)
+
+        st.markdown("Now, let's break down the NLM formula:")
 
         st.latex(r'''
-        f(p_{%d,%d}, q) = \exp\left(-\frac{\|N(p_{%d,%d}) - N(q)\|^2_2}{(%f)^2}\right)
-        ''' % (p_x, p_y, p_x, p_y, filter_strength))
+        \text{NLM}(x_{%d}, y_{%d}) = \frac{1}{W(x_{%d}, y_{%d})} \sum_{(i,j) \in \Omega} I(i,j) \cdot w((x_{%d}, y_{%d}), (i,j))
+        ''' % (x, y, x, y, x, y))
+        st.markdown("This is the main NLM formula. It calculates the denoised value as a weighted average of pixels in the search window.")
 
         st.latex(r'''
-        C(p_{%d,%d}) = \sum_{q \in S} f(p_{%d,%d}, q)
-        ''' % (p_x, p_y, p_x, p_y))
+        W(x_{%d}, y_{%d}) = \sum_{(i,j) \in \Omega} w((x_{%d}, y_{%d}), (i,j))
+        ''' % (x, y, x, y))
+        st.markdown("$W(x,y)$ is a normalization factor, ensuring weights sum to 1.")
+
+        st.latex(r'''
+        w((x_{%d}, y_{%d}), (i,j)) = \exp\left(-\frac{|P(i,j) - P(x_{%d}, y_{%d})|^2}{h^2}\right)
+        ''' % (x, y, x, y))
+        st.markdown("This calculates the weight based on similarity between neighborhoods. More similar neighborhoods get higher weights.")
+
+        st.latex(r'''
+        P(x_{%d}, y_{%d}) = \frac{1}{|N(x_{%d}, y_{%d})|} \sum_{(k,l) \in N(x_{%d}, y_{%d})} I(k,l)
+        ''' % (x, y, x, y, x, y))
+        st.markdown("$P(x,y)$ is the average value of the neighborhood around pixel $(x,y)$. This is used in weight calculation.")
 
         st.markdown(f"""
-        Where:
-        - $u(p_{{{p_x},{p_y}}})$ is the filtered value at pixel $({p_x}, {p_y})$
-        - $v(q)$ is the original value of a pixel $q$ in the search window
-        - $f(p_{{{p_x},{p_y}}}, q)$ is the weight function based on similarity between neighborhoods
-        - $S$ is the search window of size {search_size}x{search_size} centered at $({p_x}, {p_y})$
-        - $N(p)$ is the neighborhood of size {window_size}x{window_size} around pixel $p$
-        - **$h$ (filtering parameter) = {filter_strength:.2f}**: Controls the decay of the exponential function. 
-          A larger $h$ makes the weights less sensitive to differences between neighborhoods.
-        - $C(p_{{{p_x},{p_y}}})$ is the normalizing factor
+        Additional notes:
+        - The search window $\Omega$ determines which pixels are considered for denoising.
+        - The neighborhood size affects how similarity is calculated between different parts of the image.
+        - The filtering parameter $h$ controls the strength of denoising. Higher values lead to more smoothing.
         """)
+
 
 
 

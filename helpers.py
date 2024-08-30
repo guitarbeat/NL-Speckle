@@ -1,6 +1,6 @@
-import matplotlib.patches as patches
+
 import matplotlib.pyplot as plt
-import streamlit as st
+import matplotlib.patches as patches
 
 # ---------------------------- Utility Functions ---------------------------- #
 
@@ -18,47 +18,86 @@ def configure_axes(ax, title, image=None, cmap="viridis", show_colorbar=False, v
     if show_colorbar:
         plt.colorbar(ax=ax, fraction=0.046, pad=0.04)
 
-def add_kernel_rectangle(ax, last_x, last_y, kernel_size):
-    """Add a rectangle to the axes to visualize the kernel area."""
-    ax.add_patch(patches.Rectangle(
-        (last_x - 0.5, last_y - 0.5),
-        kernel_size, kernel_size,
-        linewidth=2, edgecolor="r",
-        facecolor="none"
-    ))
 
+#------------------- Utility Functions -------------------#
+def clip_indices(index, min_val, max_val):
+    """Clip indices to ensure they stay within valid ranges."""
+    return max(min(index, max_val - 1), min_val)
 
-def display_speckle_contrast_process():
-    with st.expander("View Speckle Contrast Calculation Process", expanded=False):
-        st.markdown("### Speckle Contrast Calculation Process")
-        st.markdown("""
-        1. **Sliding Window (Kernel) Approach**: Analyze the image using a sliding window.
-        2. **Moving the Kernel**: The stride parameter determines the step size.
-        3. **Local Statistics Calculation**: For each kernel position, calculate local statistics.
-        4. **Understanding the Function**:
-            - `local_window`: The current image section under the kernel.
-            - `local_mean`: The average pixel intensity.
-            - `local_std`: The standard deviation of pixel intensities.
-            - `speckle_contrast`: Calculated as the ratio of standard deviation to mean.
-        5. **Building the Speckle Contrast Image**: Generate images for mean, standard deviation, and speckle contrast.
-        6. **Visualization**: Display the images in the expandable sections above.
-        """)
-        st.code('''
-    def calculate_local_statistics(local_window: np.ndarray) -> tuple:
-        local_mean = np.mean(local_window)
-        local_std = np.std(local_window)
-        speckle_contrast = local_std / local_mean if local_mean != 0 else 0
-        return local_mean, local_std, speckle_contrast
-        ''', language="python")
-        st.markdown("### How It's Used in the Main Calculation")
-        st.code('''
-    def calculate_statistics(image: np.ndarray, kernel_size: int, stride: int, max_pixels: int, cache: dict) -> tuple:
-        for pixel in range(total_pixels):
-            row, col = divmod(pixel, output_width)
-            top_left_y, top_left_x = row * stride, col * stride
-            local_window = image[top_left_y:top_left_y + kernel_size, top_left_x:top_left_x + kernel_size]
-            local_mean, local_std, speckle_contrast = calculate_local_statistics(local_window)
-        ''', language="python")
-        st.markdown("""
-        This snippet shows the main calculation loop, extracting the local window, passing it to `calculate_local_statistics`, and storing the results in the output images.
-        """)
+def create_search_window(x, y, search_window, image_shape):
+    """
+    Calculate the bounds of the search window.
+    
+    Parameters:
+    - x, y: Coordinates of the current pixel
+    - search_window: Size of the search window or 'full' for entire image
+    - image_shape: Shape of the image
+    
+    Returns:
+    - Tuple of (search_x_start, search_y_start, search_x_end, search_y_end)
+    """
+    if search_window == "full":
+        return 0, 0, image_shape[1], image_shape[0]
+    
+    half_size = search_window // 2
+    x_start = clip_indices(x - half_size, 0, image_shape[1])
+    x_end = clip_indices(x + half_size + 1, 0, image_shape[1])
+    y_start = clip_indices(y - half_size, 0, image_shape[0])
+    y_end = clip_indices(y + half_size + 1, 0, image_shape[0])
+    
+    return x_start, y_start, x_end, y_end
+
+def add_rectangle(ax, x_start, y_start, width, height, **kwargs):
+    """
+    Add a rectangle patch to the provided axes.
+    
+    Parameters:
+    - ax: Matplotlib axes object
+    - x_start, y_start: Top-left coordinates of the rectangle
+    - width, height: Dimensions of the rectangle
+    - **kwargs: Additional keyword arguments for the rectangle properties
+    """
+    rect = patches.Rectangle((x_start, y_start), width, height, **kwargs)
+    ax.add_patch(rect)
+
+def update_plot(fig, axs, main_image, overlays, last_x, last_y, kernel_size, titles, cmap="viridis", search_window=None):
+    """
+    Update and redraw the plot with the main image and overlays.
+    
+    Parameters:
+    - fig: Matplotlib figure object
+    - axs: List of Matplotlib axes objects
+    - main_image: 2D numpy array representing the main image
+    - overlays: List of 2D numpy arrays for additional overlays
+    - last_x, last_y: Coordinates of the last processed pixel
+    - kernel_size: Size of the kernel
+    - titles: List of titles for each subplot
+    - cmap: Colormap for the main image and overlays (default: 'viridis')
+    - search_window: Size of the search window, 'full' for entire image, or None (default: None)
+    
+    Returns:
+    - fig: Updated Matplotlib figure object
+    """
+    clear_axes(axs)
+
+    # Configure the first axis with the main image and add the kernel rectangle
+    configure_axes(axs[0], "Original Image with Current Kernel", main_image, cmap=cmap, vmin=0, vmax=1)
+    add_rectangle(axs[0], last_x, last_y, kernel_size, kernel_size, edgecolor="r", linewidth=2, facecolor="none")
+
+    # Optionally add the search window rectangle
+    if search_window is not None:
+        if isinstance(search_window, int) or search_window == "full":
+            search_x_start, search_y_start, search_x_end, search_y_end = create_search_window(
+                last_x, last_y, search_window, main_image.shape
+            )
+            add_rectangle(axs[0], search_x_start, search_y_start, 
+                          search_x_end - search_x_start, search_y_end - search_y_start, 
+                          edgecolor="g", linewidth=2, facecolor="none")
+
+    # Configure the remaining axes with overlays
+    for ax, overlay, title in zip(axs[1:], overlays, titles[1:]):
+        configure_axes(ax, title, overlay, cmap=cmap)
+    
+    fig.tight_layout(pad=2)
+    return fig
+

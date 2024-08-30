@@ -1,8 +1,9 @@
 import numpy as np
 import time
 import matplotlib.pyplot as plt
-from helpers import clear_axes, configure_axes, add_kernel_rectangle
 import streamlit as st
+from helpers import update_plot
+from ui_components import plot_zoomed_views, display_data_and_zoomed_view
 
 # ---------------------------- Library Functions ---------------------------- #
 
@@ -47,7 +48,6 @@ def calculate_speckle(image: np.ndarray, kernel_size: int, stride: int, max_pixe
     last_x, last_y = top_left_x, top_left_y
     return mean_filter, std_dev_filter, sc_filter, last_x, last_y, local_mean, local_std, speckle_contrast
 
-
 def display_speckle_contrast_formula(placeholder, x, y, std, mean, sc):
     """Display the formula for speckle contrast."""
     placeholder.latex(
@@ -60,7 +60,7 @@ def handle_speckle_contrast_calculation(
     std_dev_filter_placeholder, speckle_contrast_placeholder, 
     zoomed_kernel_placeholder, zoomed_mean_placeholder, 
     zoomed_std_placeholder, zoomed_sc_placeholder, 
-    formula_placeholder, animation_speed, cmap
+    formula_placeholder, animation_speed, cmap,search_window=None  # New argument for optional search window
 ):
     """Handle the speckle contrast calculation and update Streamlit placeholders."""
     for i in range(1, max_pixels + 1) if st.session_state.is_animating else [max_pixels]:
@@ -73,9 +73,14 @@ def handle_speckle_contrast_calculation(
         display_speckle_contrast_formula(formula_placeholder, last_x, last_y, last_std, last_mean, last_sc)
         
 
+        # Plot the original image with the kernel and (optionally) the search window
         fig_original, axs_original = plt.subplots(1, 1, figsize=(5, 5))
         original_image_placeholder.pyplot(
-            update_plot(fig_original, [axs_original], image_np, [mean_filter], last_x, last_y, kernel_size, ["Original Image", "Mean Filter"], cmap)
+            update_plot(
+                fig_original, [axs_original], image_np, [mean_filter], 
+                last_x, last_y, kernel_size, ["Original Image", "Mean Filter"], 
+                cmap, search_window=search_window
+            )
         )
 
         zoomed_kernel_placeholder.pyplot(
@@ -103,104 +108,37 @@ def handle_speckle_contrast_calculation(
     # Return the final images for use in other tabs
     return std_dev_filter, sc_filter, mean_filter
 
-# ---------------------------- Plotting Functions ---------------------------- #
-
-def display_data_and_zoomed_view(data, last_x, last_y, stride, title, data_placeholder, zoomed_placeholder, cmap="viridis", zoom_size=1):
-    """
-    Display data and its zoomed-in view.
-    
-    Parameters:
-    - data: 2D numpy array of the data to display
-    - last_x, last_y: Coordinates of the last processed point
-    - stride: Step size between processed points
-    - title: Title for the plot
-    - data_placeholder: Streamlit placeholder for the full data plot
-    - zoomed_placeholder: Streamlit placeholder for the zoomed view
-    - cmap: Colormap to use (default: "viridis")
-    - zoom_size: Size of the zoomed area (default: 1)
-    """
-    fig, ax = plt.subplots(1, 1, figsize=(5, 5))
-    ax.imshow(data, cmap=cmap)
-    ax.set_title(title)
-    ax.axis("off")
-    data_placeholder.pyplot(fig)
-    
-    zoomed_data = data[last_y // stride : last_y // stride + zoom_size, 
-                       last_x // stride : last_x // stride + zoom_size]
-    zoomed_placeholder.pyplot(
-        plot_zoomed_views(
-            [zoomed_data],
-            ["Zoomed-In " + title],
-            cmap
-        )
-    )
-
-def update_plot(fig, axs, main_image, overlays, last_x, last_y, kernel_size, titles, cmap="viridis"):
-    """
-    Update a plot with multiple subplots.
-    
-    Parameters:
-    - fig: matplotlib figure object
-    - axs: list of matplotlib axes objects
-    - main_image: 2D numpy array of the main image
-    - overlays: list of 2D numpy arrays for additional overlays
-    - last_x, last_y: Coordinates of the last processed point
-    - kernel_size: Size of the processing kernel
-    - titles: list of titles for each subplot
-    - cmaps: list of colormaps for each subplot (optional)
-    """
-
-    
-    clear_axes(axs)
-    
-    configure_axes(axs[0], "Original Image with Current Kernel", main_image, cmap=cmap, vmin=0, vmax=1)
-    add_kernel_rectangle(axs[0], last_x, last_y, kernel_size)
-    
-    for ax, filter_data, title in zip(axs[1:], overlays, titles[1:]):
-        configure_axes(ax, title, filter_data, cmap=cmap)
-
-    fig.tight_layout(pad=2)
-    return fig
-
-
-
-def plot_zoomed_views(zoomed_data, titles, cmap="viridis", fontsize=10, text_color="red"):
-    """
-    Plot zoomed-in views with values annotated.
-    
-    Parameters:
-    - zoomed_data: list of 2D numpy arrays to display
-    - titles: list of titles for each zoomed view
-    - cmap: colormap to use (default: "viridis")
-    - fontsize: font size for annotations (default: 10)
-    - text_color: color of the annotations (default: "red")
-    """
-    zoom_fig, zoom_axs = plt.subplots(1, len(zoomed_data), figsize=(5 * len(zoomed_data), 5))
-    zoom_axs = zoom_axs if isinstance(zoom_axs, np.ndarray) else [zoom_axs]
-    
-    for ax, data, title in zip(zoom_axs, zoomed_data, titles):
-        im = ax.imshow(data, cmap=cmap)
-        ax.set_title(title, fontsize=12)
-        ax.axis("off")
-        plt.colorbar(im, ax=ax)
-        for i, row in enumerate(data):
-            for j, val in enumerate(row):
-                ax.text(j, i, f"{val:.3f}", ha="center", va="center", color=text_color, fontsize=fontsize)
-    
-    zoom_fig.tight_layout(pad=2)
-    return zoom_fig
-
-def add_kernel_rectangle(ax, x, y, size, color='red', linewidth=2):
-    """
-    Add a rectangle to represent the kernel on the plot.
-    
-    Parameters:
-    - ax: matplotlib axis object
-    - x, y: Coordinates of the top-left corner of the rectangle
-    - size: Size of the rectangle
-    - color: Color of the rectangle (default: 'red')
-    - linewidth: Width of the rectangle's border (default: 2)
-    """
-    from matplotlib.patches import Rectangle
-    rect = Rectangle((x, y), size, size, fill=False, edgecolor=color, linewidth=linewidth)
-    ax.add_patch(rect)
+def display_speckle_contrast_process():
+    with st.expander("View Speckle Contrast Calculation Process", expanded=False):
+        st.markdown("### Speckle Contrast Calculation Process")
+        st.markdown("""
+        1. **Sliding Window (Kernel) Approach**: Analyze the image using a sliding window.
+        2. **Moving the Kernel**: The stride parameter determines the step size.
+        3. **Local Statistics Calculation**: For each kernel position, calculate local statistics.
+        4. **Understanding the Function**:
+            - `local_window`: The current image section under the kernel.
+            - `local_mean`: The average pixel intensity.
+            - `local_std`: The standard deviation of pixel intensities.
+            - `speckle_contrast`: Calculated as the ratio of standard deviation to mean.
+        5. **Building the Speckle Contrast Image**: Generate images for mean, standard deviation, and speckle contrast.
+        6. **Visualization**: Display the images in the expandable sections above.
+        """)
+        st.code('''
+    def calculate_local_statistics(local_window: np.ndarray) -> tuple:
+        local_mean = np.mean(local_window)
+        local_std = np.std(local_window)
+        speckle_contrast = local_std / local_mean if local_mean != 0 else 0
+        return local_mean, local_std, speckle_contrast
+        ''', language="python")
+        st.markdown("### How It's Used in the Main Calculation")
+        st.code('''
+    def calculate_statistics(image: np.ndarray, kernel_size: int, stride: int, max_pixels: int, cache: dict) -> tuple:
+        for pixel in range(total_pixels):
+            row, col = divmod(pixel, output_width)
+            top_left_y, top_left_x = row * stride, col * stride
+            local_window = image[top_left_y:top_left_y + kernel_size, top_left_x:top_left_x + kernel_size]
+            local_mean, local_std, speckle_contrast = calculate_local_statistics(local_window)
+        ''', language="python")
+        st.markdown("""
+        This snippet shows the main calculation loop, extracting the local window, passing it to `calculate_local_statistics`, and storing the results in the output images.
+        """)
