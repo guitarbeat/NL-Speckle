@@ -16,8 +16,7 @@ from config import set_page_config, configure_sidebar,get_image_download_link
 from ui_components import (
     create_section,
     display_speckle_contrast_formula,
-    display_image_comparison,
-    display_image_comparison_error)
+    display_image_comparison)
 from speckle_lib import handle_speckle_contrast_calculation, display_speckle_contrast_process
 # from helpers import
 # from nlm_lib import handle_non_local_means_tab
@@ -108,7 +107,10 @@ def handle_speckle_contrast_comparison_tab(tab, cmap_name, std_dev_image, speckl
             img1, img2 = get_images_to_compare(image_choice_1, image_choice_2, std_dev_image, speckle_contrast_image, mean_image, original_image)
             display_image_comparison(img1, img2, image_choice_1, image_choice_2, cmap)
         else:
-            display_image_comparison_error(image_choice_1, image_choice_2)
+            if image_choice_1 == image_choice_2 and image_choice_1:
+                st.error("Please select two different images for comparison.")
+            else:
+                st.info("Select two images to compare.")
 
 def get_images_to_compare(image_choice_1, image_choice_2, std_dev_image, speckle_contrast_image, mean_image, original_image):
     images_to_compare = {

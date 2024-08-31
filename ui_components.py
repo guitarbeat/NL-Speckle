@@ -23,24 +23,12 @@ def handle_animation_controls():
         st.session_state.is_animating = False
         st.session_state.is_paused = False
 
-
 def create_section(title: str, expanded_main: bool, expanded_zoomed: bool):
     with st.expander(title, expanded=expanded_main):
         main_placeholder = st.empty()
         with st.expander(f"Zoomed-in {title.split()[0]}"):
             zoomed_placeholder = st.empty()
     return main_placeholder, zoomed_placeholder
-
-
-def display_speckle_contrast_formula(formula_placeholder):
-    with formula_placeholder.container():
-        st.latex(r'SC_{{({}, {})}} = \frac{{\sigma}}{{\mu}} = \frac{{{:.3f}}}{{{:.3f}}} = {:.3f}'.format(0, 0, 0.0, 0.0, 0.0))
-
-def display_image_comparison_error(image_choice_1, image_choice_2):
-    if image_choice_1 == image_choice_2 and image_choice_1:
-        st.error("Please select two different images for comparison.")
-    else:
-        st.info("Select two images to compare.")
 
 def apply_colormap_to_images(img1, img2, cmap):
     img1_normalized = (img1 - np.min(img1)) / (np.max(img1) - np.min(img1))
@@ -54,21 +42,21 @@ def apply_colormap_to_images(img1, img2, cmap):
     
     return img1_uint8, img2_uint8
 
-
+#----------------------------- Comparison Plotting Stuff ------------------------------ #
 def display_image_comparison(img1, img2, label1, label2, cmap):
     img1_uint8, img2_uint8 = apply_colormap_to_images(img1, img2, cmap)
     image_comparison(img1=img1_uint8, img2=img2_uint8, label1=label1, label2=label2, make_responsive=True)
     st.subheader("Selected Images")
     st.image([img1_uint8, img2_uint8], caption=[label1, label2])
 
-
-
-def display_data_and_zoomed_view(data, last_x, last_y, stride, title, data_placeholder, zoomed_placeholder, cmap="viridis", zoom_size=1):
+#----------------------------- Speckle Tab Plotting Stuff ----------------------------- #
+def display_data_and_zoomed_view(data, full_data, last_x, last_y, stride, title, data_placeholder, zoomed_placeholder, cmap="viridis", zoom_size=1, fontsize=10, text_color="red"):
     """
-    Display data and its zoomed-in view.
+    Display data and its zoomed-in view using Streamlit placeholders, with color scaling based on full data.
     
     Parameters:
     - data: 2D numpy array of the data to display
+    - full_data: 2D numpy array of the full image data for color scaling
     - last_x, last_y: Coordinates of the last processed point
     - stride: Step size between processed points
     - title: Title for the plot
@@ -76,47 +64,62 @@ def display_data_and_zoomed_view(data, last_x, last_y, stride, title, data_place
     - zoomed_placeholder: Streamlit placeholder for the zoomed view
     - cmap: Colormap to use (default: "viridis")
     - zoom_size: Size of the zoomed area (default: 1)
+    - fontsize: Font size for annotations (default: 10)
+    - text_color: Color of the annotations (default: "red")
     """
-    fig, ax = plt.subplots(1, 1, figsize=(5, 5))
-    ax.imshow(data, cmap=cmap)
-    ax.set_title(title)
-    ax.axis("off")
-    data_placeholder.pyplot(fig)
+    # Display full data
+    fig_full, ax_full = plt.subplots(figsize=(5, 5))
+    vmin, vmax = np.min(full_data), np.max(full_data)
+    ax_full.imshow(data, cmap=cmap, vmin=vmin, vmax=vmax)
+    ax_full.set_title(title)
+    ax_full.axis("off")
+    data_placeholder.pyplot(fig_full)
     
+    # Display zoomed data
     zoomed_data = data[last_y // stride : last_y // stride + zoom_size, 
                        last_x // stride : last_x // stride + zoom_size]
-    zoomed_placeholder.pyplot(
-        plot_zoomed_views(
-            [zoomed_data],
-            ["Zoomed-In " + title],
-            cmap
-        )
-    )
+    
+    fig_zoom, ax_zoom = plt.subplots(figsize=(5, 5))
+    ax_zoom.imshow(zoomed_data, cmap=cmap, vmin=vmin, vmax=vmax)
+    ax_zoom.set_title(f"Zoomed-In {title}", fontsize=12)
+    ax_zoom.axis("off")
+    
+    for i, row in enumerate(zoomed_data):
+        for j, val in enumerate(row):
+            ax_zoom.text(j, i, f"{val:.2f}", ha="center", va="center", color=text_color, fontsize=fontsize)
+    
+    fig_zoom.tight_layout(pad=2)
+    zoomed_placeholder.pyplot(fig_zoom)
 
-
-def plot_zoomed_views(zoomed_data, titles, cmap="viridis", fontsize=10, text_color="red"):
+def display_kernel_view(kernel_data, full_image_data, title, placeholder, cmap="viridis", fontsize=10, text_color="red"):
     """
-    Plot zoomed-in views with values annotated.
+    Display the kernel view with pixel values annotated, using the color scale of the full image.
     
     Parameters:
-    - zoomed_data: list of 2D numpy arrays to display
-    - titles: list of titles for each zoomed view
-    - cmap: colormap to use (default: "viridis")
-    - fontsize: font size for annotations (default: 10)
-    - text_color: color of the annotations (default: "red")
+    - kernel_data: 2D numpy array of the kernel data
+    - full_image_data: 2D numpy array of the full image data
+    - title: Title for the plot
+    - placeholder: Streamlit placeholder for the kernel view
+    - cmap: Colormap to use (default: "viridis")
+    - fontsize: Font size for annotations (default: 10)
+    - text_color: Color of the annotations (default: "red")
     """
-    zoom_fig, zoom_axs = plt.subplots(1, len(zoomed_data), figsize=(5 * len(zoomed_data), 5))
-    zoom_axs = zoom_axs if isinstance(zoom_axs, np.ndarray) else [zoom_axs]
+    fig, ax = plt.subplots(figsize=(5, 5))
     
-    for ax, data, title in zip(zoom_axs, zoomed_data, titles):
-        im = ax.imshow(data, cmap=cmap)
-        ax.set_title(title, fontsize=12)
-        ax.axis("off")
-        plt.colorbar(im, ax=ax)
-        for i, row in enumerate(data):
-            for j, val in enumerate(row):
-                ax.text(j, i, f"{val:.3f}", ha="center", va="center", color=text_color, fontsize=fontsize)
+    vmin, vmax = np.min(full_image_data), np.max(full_image_data)
+    im = ax.imshow(kernel_data, cmap=cmap, vmin=vmin, vmax=vmax)
     
-    zoom_fig.tight_layout(pad=2)
-    return zoom_fig
+    ax.set_title(title, fontsize=12)
+    ax.axis("off")
+    
+    for i, row in enumerate(kernel_data):
+        for j, val in enumerate(row):
+            val_str = f"{val:.2f}"  # Adjust precision as needed
+            ax.text(j, i, val_str, ha="center", va="center", color=text_color, fontsize=fontsize)
+    
+    fig.tight_layout(pad=2)
+    placeholder.pyplot(fig)
 
+def display_speckle_contrast_formula(formula_placeholder):
+    with formula_placeholder.container():
+        st.latex(r'SC_{{({}, {})}} = \frac{{\sigma}}{{\mu}} = \frac{{{:.3f}}}{{{:.3f}}} = {:.3f}'.format(0, 0, 0.0, 0.0, 0.0))
