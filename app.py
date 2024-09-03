@@ -1,7 +1,6 @@
 
 import streamlit as st
-import streamlit_nested_layout
-import numpy as np
+import streamlit_nested_layout  # noqa: F401
 
 # Project Structure:
 # .

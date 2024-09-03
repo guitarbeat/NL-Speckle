@@ -1,6 +1,6 @@
 import numpy as np
 import streamlit as st
-
+import time 
 
 def handle_non_local_means_tab(tab, image_np, kernel_size, stride, search_window_size, filter_strength, max_pixels, animation_speed, cmap):
     with tab:
@@ -76,9 +76,6 @@ def display_nlm_section():
 def handle_nlm_calculation(max_pixels, image_np, kernel_size, stride, search_window_size, filter_strength,
                            original_image_placeholder, weights_image_placeholder, nlm_image_placeholder,
                            formula_placeholder, animation_speed, cmap):
-    # Resize image if necessary
-    if image_np.size > max_pixels:
-        image_np = resize_image(image_np, max_pixels)
 
     # Display original image
     display_image(original_image_placeholder, image_np, "Original Image", cmap)

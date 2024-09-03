@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.collections import LineCollection
 
 #------------------- Utility Functions -------------------#
 
@@ -44,16 +45,30 @@ def configure_axes(ax, title, image, cmap="viridis", vmin=None, vmax=None):
     ax.axis('off')
 
 def add_rectangle(ax, x, y, width, height, **kwargs):
-    """Add a rectangle to the given axis."""
-    rect = plt.Rectangle((x, y), width, height, **kwargs)
+    """Add a rectangle to the given axis, encompassing the pixels exactly, with grid lines."""
+    rect = plt.Rectangle((x - 0.5, y - 0.5), width, height, **kwargs)
     ax.add_patch(rect)
+    
+    # Create vertical lines
+    vlines = [[(x - 0.5 + i, y - 0.5), (x - 0.5 + i, y + height - 0.5)] for i in range(1, width)]
+    
+    # Create horizontal lines
+    hlines = [[(x - 0.5, y - 0.5 + i), (x + width - 0.5, y - 0.5 + i)] for i in range(1, height)]
+    
+    # Combine all lines
+    lines = vlines + hlines
+    
+    # Create line collection
+    lc = LineCollection(lines, colors='gray', linestyles=':', linewidths=0.5)
+    
+    # Add line collection to the axis
+    ax.add_collection(lc)
 
 def annotate_image(ax, data, text_color="red", fontsize=10):
     """Annotate image with pixel values."""
     for i, row in enumerate(data):
         for j, val in enumerate(row):
             ax.text(j, i, f"{val:.2f}", ha="center", va="center", color=text_color, fontsize=fontsize)
-
 
 
 def create_figure(data, title, cmap, vmin=None, vmax=None, figsize=(5, 5)):
@@ -99,7 +114,7 @@ def update_plot(main_image, overlays, last_x, last_y, kernel_size, titles, cmap=
 
 def display_data_and_zoomed_view(data, full_data, last_x, last_y, stride, title, data_placeholder, zoomed_placeholder, cmap="viridis", zoom_size=1, fontsize=10, text_color="red"):
     """Display data and its zoomed-in view using Streamlit placeholders."""
-    vmin, vmax = np.min(full_data), np.max(full_data)
+    np.min(full_data), np.max(full_data)
     
     # Display full data
     fig_full, _ = create_figure(data, title, cmap)
