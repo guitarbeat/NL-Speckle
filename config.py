@@ -37,16 +37,11 @@ ANIMATION_SPEED_RANGE = (0.001, 0.5, 0.01)  # min, max, step
 # Session State Keys
 SESSION_STATE_KEYS = [
     "is_animating",
-    "is_paused",
     "cache",
     "animation_mode"
 ]
 
-# Function to initialize session state
-def initialize_session_state():
-    for key in SESSION_STATE_KEYS:
-        if key not in st.session_state:
-            st.session_state[key] = False if key.startswith("is_") else {} if key == "cache" else "Standard"
+
 
 # Function to set page config
 def set_page_config():

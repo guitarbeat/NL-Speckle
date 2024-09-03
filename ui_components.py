@@ -5,8 +5,7 @@ import matplotlib.pyplot as plt
 import io
 from PIL import Image
 import numpy as np
-from config import (initialize_session_state, 
-                    PRELOADED_IMAGES, COLOR_MAPS, 
+from config import (PRELOADED_IMAGES, COLOR_MAPS, 
                     DEFAULT_KERNEL_SIZE, 
                     DEFAULT_STRIDE, 
                     DEFAULT_SEARCH_WINDOW_SIZE, 
@@ -16,7 +15,8 @@ from config import (initialize_session_state,
                     STRIDE_RANGE, 
                     SEARCH_WINDOW_SIZE_RANGE, 
                     FILTER_STRENGTH_RANGE, 
-                    ANIMATION_SPEED_RANGE)
+                    ANIMATION_SPEED_RANGE,
+                    SESSION_STATE_KEYS)
 
 #-----------------------------Stuff ------------------------------ #
 
@@ -91,24 +91,33 @@ def configure_sidebar() -> tuple:
 
     return image, kernel_size, search_window_size, filter_strength, stride, cmap, animation_speed, image_np
 
-def handle_animation_controls():
-    """Handle the start/pause/stop animation buttons."""
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        start_button = st.button('Start')
-    with col2:
-        pause_button = st.button('Pause')
-    with col3:
-        stop_button = st.button('Stop')
+# Function to initialize session state
+def initialize_session_state():
+    for key in SESSION_STATE_KEYS:
+        if key not in st.session_state:
+            if key.startswith("is_"):
+                st.session_state[key] = False
+            elif key == "cache":
+                st.session_state[key] = {}
+            else:
+                st.session_state[key] = "Standard"
 
-    if start_button:
+def handle_animation_controls():
+    """Handle the start and stop animation buttons."""
+    col1, col2 = st.columns(2)
+    
+    if col1.button('Start'):
         st.session_state.is_animating = True
         st.session_state.is_paused = False
-    if pause_button:
-        st.session_state.is_paused = not st.session_state.is_paused
-    if stop_button:
+    
+    if col2.button('Stop'):
         st.session_state.is_animating = False
         st.session_state.is_paused = False
+
+    # Display current animation state
+    animation_state = "Running" if st.session_state.is_animating else "Stopped"
+    st.write(f"Animation State: {animation_state}")
+
 
 #------------------- Image Processing -------------------#
 

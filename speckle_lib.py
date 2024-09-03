@@ -5,7 +5,6 @@ from helpers import update_plot, display_data_and_zoomed_view, display_kernel_vi
 from ui_components import create_section, save_results_section
 
 # ---------------------------- Core Calculations ---------------------------- #
-import numpy as np
 
 def calculate_local_statistics(local_window: np.ndarray) -> tuple:
     """Calculate the mean, standard deviation, and speckle contrast for a local window."""
