@@ -40,9 +40,9 @@ def main():
     tabs = st.tabs(["Speckle Contrast Calculation", "Non-Local Means Denoising", "Speckle Contrast Comparison"])
 
     # Tab 1
-    std_dev_image, speckle_contrast_image, mean_image, image_np = handle_speckle_contrast_tab(tabs[0], image_np, kernel_size, stride, max_pixels, animation_speed, cmap)
-
-    # Tab 2
+    std_dev_image, speckle_contrast_image, mean_image, image_np = handle_speckle_contrast_tab(
+        tabs[0], image_np, kernel_size, stride, max_pixels, animation_speed, cmap
+    )
     handle_non_local_means_tab(tabs[1], image_np, kernel_size, stride, search_window_size, filter_strength, max_pixels, animation_speed, cmap)
 
     # Tab 3
