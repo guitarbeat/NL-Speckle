@@ -1,8 +1,7 @@
 import streamlit as st
 from streamlit_image_comparison import image_comparison
-from helpers import apply_colormap_to_images
 import matplotlib.pyplot as plt
-import io
+from matplotlib.colors import Colormap
 from PIL import Image
 import numpy as np
 from config import (PRELOADED_IMAGES, COLOR_MAPS, 
@@ -21,13 +20,6 @@ from typing import Tuple
 
 #-----------------------------Stuff ------------------------------ #
 
-def create_section(title: str, expanded_main: bool = False, expanded_zoomed: bool = False):
-    """Create a Streamlit section with main and zoomed views."""
-    with st.expander(title, expanded=expanded_main):
-        main_placeholder = st.empty()
-        with st.expander(f"Zoomed-in {title.split()[0]}", expanded=expanded_zoomed):
-            zoomed_placeholder = st.empty()
-    return main_placeholder, zoomed_placeholder
 
 def configure_sidebar() -> Tuple[Image.Image, int, int, float, int, str, float, np.ndarray]:
     """Configure sidebar options and return user inputs."""
@@ -137,56 +129,46 @@ def process_image(image: Image.Image) -> np.ndarray:
     """Convert the image to a numpy array and normalize pixel values."""
     return np.array(image) / 255.0
 
-def save_results_section(std_dev_image, speckle_contrast_image, mean_image):
-    def create_image_download_button(image, filename, button_text):
-        """Convert a numpy array to an image and create a download button."""
-        img_buffer = io.BytesIO()
-        Image.fromarray((255 * image).astype(np.uint8)).save(img_buffer, format='PNG')
-        img_buffer.seek(0)
-        st.download_button(label=button_text, data=img_buffer, file_name=filename, mime="image/png")
-
-    with st.expander("Save Results"):
-        if std_dev_image is not None and speckle_contrast_image is not None:
-            create_image_download_button(std_dev_image, "std_dev_filter.png", "Download Std Dev Filter")
-            create_image_download_button(speckle_contrast_image, "speckle_contrast.png", "Download Speckle Contrast Image")
-            create_image_download_button(mean_image, "mean_filter.png", "Download Mean Filter")
-        else:
-            st.error("No results to save. Please generate images by running the analysis.")
-
-
 #----------------------------- Comparison Plotting Stuff ------------------------------ #
-def display_image_comparison(img1, img2, label1, label2, cmap):
-    img1_uint8, img2_uint8 = apply_colormap_to_images(img1, img2, cmap)
+
+
+def display_image_comparison(img1: np.ndarray, img2: np.ndarray, label1: str, label2: str, cmap: Colormap):
+    def normalize_and_apply_cmap(img):
+        normalized = (img - np.min(img)) / (np.max(img) - np.min(img))
+        return (cmap(normalized)[:, :, :3] * 255).astype(np.uint8)
+
+    img1_uint8, img2_uint8 = map(normalize_and_apply_cmap, [img1, img2])
+
     image_comparison(img1=img1_uint8, img2=img2_uint8, label1=label1, label2=label2, make_responsive=True)
     st.subheader("Selected Images")
     st.image([img1_uint8, img2_uint8], caption=[label1, label2])
 
-def get_images_to_compare(image_choice_1, image_choice_2, std_dev_image, speckle_contrast_image, mean_image, original_image):
-    images_to_compare = {
-        'Unprocessed Image': original_image,  # Include unprocessed image
-        'Standard Deviation': std_dev_image,
-        'Speckle Contrast': speckle_contrast_image,
-        'Mean Filter': mean_image
-    }
-    return images_to_compare[image_choice_1], images_to_compare[image_choice_2]
+def get_images_to_compare(image_choice_1, image_choice_2, images):
+    return images[image_choice_1], images[image_choice_2]
 
 def handle_comparison_tab(tab, cmap_name, std_dev_image, speckle_contrast_image, mean_image, original_image):
     with tab:
         st.header("Speckle Contrast Comparison")
-        available_images = ['Unprocessed Image', 'Standard Deviation', 'Speckle Contrast', 'Mean Filter']  # Include unprocessed image
+        
+        images = {
+            'Unprocessed Image': original_image,
+            'Standard Deviation': std_dev_image,
+            'Speckle Contrast': speckle_contrast_image,
+            'Mean Filter': mean_image
+        }
+        
+        available_images = list(images.keys())
         col1, col2 = st.columns(2)
-        with col1:
-            image_choice_1 = st.selectbox('Select first image to compare:', [''] + available_images, index=0)
-        with col2:
-            image_choice_2 = st.selectbox('Select second image to compare:', [''] + available_images, index=0)
-        # Convert cmap_name to the actual colormap function
+        image_choice_1 = col1.selectbox('Select first image to compare:', [''] + available_images, index=0)
+        image_choice_2 = col2.selectbox('Select second image to compare:', [''] + available_images, index=0)
+        
         cmap = plt.get_cmap(cmap_name)
 
-        if image_choice_1 and image_choice_2 and image_choice_1 != image_choice_2:
-            img1, img2 = get_images_to_compare(image_choice_1, image_choice_2, std_dev_image, speckle_contrast_image, mean_image, original_image)
-            display_image_comparison(img1, img2, image_choice_1, image_choice_2, cmap)
-        else:
-            if image_choice_1 == image_choice_2 and image_choice_1:
-                st.error("Please select two different images for comparison.")
+        if image_choice_1 and image_choice_2:
+            if image_choice_1 != image_choice_2:
+                img1, img2 = get_images_to_compare(image_choice_1, image_choice_2, images)
+                display_image_comparison(img1, img2, image_choice_1, image_choice_2, cmap)
             else:
-                st.info("Select two images to compare.")
+                st.error("Please select two different images for comparison.")
+        else:
+            st.info("Select two images to compare.")

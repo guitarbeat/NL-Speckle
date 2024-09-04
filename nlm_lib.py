@@ -1,7 +1,7 @@
 
 import streamlit as st
 
-from helpers import update_plot  # Make sure to import this
+from helpers import create_plot  # Make sure to import this
 
 def handle_non_local_means_tab(tab, image_np, kernel_size, stride, search_window_size, filter_strength, max_pixels, animation_speed, cmap):
     with tab:
@@ -31,7 +31,7 @@ def update_nlm_original_image(image_np, kernel_size, search_window_size, cmap, p
     # For demonstration, we'll use the center of the image
     center_y, center_x = image_np.shape[0] // 2, image_np.shape[1] // 2
     
-    fig_original = update_plot(
+    fig_original = create_plot(
         image_np, [], center_x, center_y, kernel_size,
         ["Original Image with Current Kernel and Search Window"], cmap=cmap, 
         search_window=search_window_size, figsize=(5, 5)

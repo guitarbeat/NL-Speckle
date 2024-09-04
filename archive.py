@@ -1,4 +1,5 @@
 import streamlit as st
+
 def display_speckle_contrast_process():
     """Display information about the speckle contrast calculation process."""
     with st.expander("View Speckle Contrast Calculation Process", expanded=False):
