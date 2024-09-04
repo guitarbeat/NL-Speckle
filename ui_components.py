@@ -17,6 +17,7 @@ from config import (PRELOADED_IMAGES, COLOR_MAPS,
                     FILTER_STRENGTH_RANGE, 
                     ANIMATION_SPEED_RANGE,
                     SESSION_STATE_KEYS)
+from typing import Tuple
 
 #-----------------------------Stuff ------------------------------ #
 
@@ -28,7 +29,7 @@ def create_section(title: str, expanded_main: bool = False, expanded_zoomed: boo
             zoomed_placeholder = st.empty()
     return main_placeholder, zoomed_placeholder
 
-def configure_sidebar() -> tuple:
+def configure_sidebar() -> Tuple[Image.Image, int, int, float, int, str, float, np.ndarray]:
     """Configure sidebar options and return user inputs."""
     with st.sidebar:
         st.markdown("### 🖼️ Image Configuration")

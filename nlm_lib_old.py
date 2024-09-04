@@ -134,6 +134,72 @@ def process_nlm_with_visualization(image_np, patch_size, search_window_size, fil
 
 
 
+#---------------------------------------------------------------------------------------------------#
+
+
+def display_weights_image_section():
+    st.subheader("Weights Image")
+    weights_image_placeholder = st.empty()
+    return weights_image_placeholder
+
+def display_nlm_section():
+    st.subheader("Non-Local Means Result")
+    nlm_image_placeholder = st.empty()
+    return nlm_image_placeholder
+
+def handle_nlm_calculation(max_pixels, image_np, kernel_size, stride, search_window_size, filter_strength,
+                           original_image_placeholder, weights_image_placeholder, nlm_image_placeholder,
+                           formula_placeholder, animation_speed, cmap):
+
+    # Display original image
+    display_image(original_image_placeholder, image_np, "Original Image", cmap)
+
+    # Initialize progress bar
+    progress_bar = st.progress(0)
+
+    # Initialize output images
+    weights_image = np.zeros_like(image_np, dtype=np.float32)
+    nlm_image = np.zeros_like(image_np, dtype=np.float32)
+
+    # Perform NLM calculation
+    total_pixels = image_np.shape[0] * image_np.shape[1]
+    for i in range(0, image_np.shape[0] - kernel_size + 1, stride):
+        for j in range(0, image_np.shape[1] - kernel_size + 1, stride):
+            # Calculate weights and NLM value for the current pixel
+            weights, nlm_value = calculate_nlm(image_np, i, j, kernel_size, search_window_size, filter_strength)
+            
+            # Update weights and NLM images
+            weights_image[i:i+kernel_size, j:j+kernel_size] += weights
+            nlm_image[i:i+kernel_size, j:j+kernel_size] += nlm_value
+            
+            # Update progress
+            progress = (i * image_np.shape[1] + j) / total_pixels
+            progress_bar.progress(progress)
+            
+            # Update displays
+            if (i * image_np.shape[1] + j) % animation_speed == 0:
+                display_image(weights_image_placeholder, weights_image, "Weights Image", cmap)
+                display_image(nlm_image_placeholder, nlm_image, "NLM Image", cmap)
+                display_nlm_formula(formula_placeholder, i, j, kernel_size, search_window_size, filter_strength)
+                time.sleep(0.1)
+
+    # Normalize and finalize images
+    weights_image /= np.max(weights_image)
+    nlm_image /= np.max(nlm_image)
+
+    # Display final images
+    display_image(weights_image_placeholder, weights_image, "Final Weights Image", cmap)
+    display_image(nlm_image_placeholder, nlm_image, "Final NLM Image", cmap)
+
+    return weights_image, nlm_image
+
+def calculate_nlm(image, i, j, kernel_size, search_window_size, filter_strength):
+    # Implement the NLM calculation for a single pixel
+    # This is a placeholder and needs to be implemented
+    return np.random.rand(kernel_size, kernel_size), np.random.rand(kernel_size, kernel_size)
+
+def display_image(placeholder, image, title, cmap):
+    placeholder.image(image, caption=title, use_column_width=True, clamp=True, channels="GRAY", output_format="PNG")
 
 
 
