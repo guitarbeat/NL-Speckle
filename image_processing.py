@@ -401,13 +401,15 @@ def handle_image_analysis(
     cmap: str,
     technique: str = "speckle",
     search_window_size: Optional[int] = None,
-    filter_strength: float = 0.1
+    filter_strength: float = 0.1,
+    placeholders: Optional[Dict[str, Any]] = None,
+    create_save: bool = True
 ) -> Tuple[np.ndarray, ...]:
     
- 
     with tab:
-        placeholders = create_placeholders(technique)
-        placeholders = create_sections(placeholders, technique)
+        if placeholders is None:
+            placeholders = create_placeholders(technique)
+            placeholders = create_sections(placeholders, technique)
 
         if technique == "speckle":
             results = calculate_speckle(image_np, kernel_size, stride, max_pixels)
@@ -422,7 +424,8 @@ def handle_image_analysis(
         # Update visualizations with the results, passing search_window_size for both techniques
         process_and_visualize_image(image_np, kernel_size, last_x, last_y, results, cmap, technique, placeholders, stride, search_window_size)
 
-        create_save_section(results, technique)
+        if create_save:
+            create_save_section(results, technique)
 
     return results
 
@@ -472,10 +475,6 @@ def create_plot(plot_image: np.ndarray, plot_x: int, plot_y: int, plot_kernel_si
         for i in range(plot_image.shape[0]):
             for j in range(plot_image.shape[1]):
                 ax.text(j, i, f"{plot_image[i, j]:.2f}", ha="center", va="center", color="red", fontsize=8)
-
-    if "Weight Map" in titles[0]:
-        from matplotlib.ticker import FuncFormatter
-        cbar = plt.colorbar(im, ax=ax, pad=0.005, format=FuncFormatter(lambda y, _: f"{100*y:.0f}%"))
 
     fig.tight_layout(pad=2)
     return fig
