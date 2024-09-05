@@ -205,8 +205,8 @@ def display_filter(filter_name: str, filter_data: np.ndarray, last_x: int, last_
 
        # Only add colorbar for Weight Map
         if filter_name == "Weight Map":
-            cbar = plt.colorbar(im, ax=ax_full)
-            cbar.set_label("Weight Value")
+            cbar = plt.colorbar(im, ax=ax_full, pad=0.01, format='%.0f%%')
+            cbar.ax.tick_params(labelsize=6)
         
         placeholders[key].pyplot(fig_full)
         plt.close(fig_full)  # Close the figure after plotting
@@ -221,7 +221,8 @@ def display_filter(filter_name: str, filter_data: np.ndarray, last_x: int, last_
 
         # Only add colorbar for Weight Map in zoomed view
         if filter_name == "Weight Map":
-            plt.colorbar(im_zoom, ax=ax_zoom, label="Weight Value")
+            cbar = plt.colorbar(im_zoom, ax=ax_zoom, pad=0.01, format='%.0f%%')
+            cbar.ax.tick_params(labelsize=6)
         
         for i, row in enumerate(zoomed_data):
             for j, val in enumerate(row):
@@ -231,7 +232,6 @@ def display_filter(filter_name: str, filter_data: np.ndarray, last_x: int, last_
         zoomed_key = f'zoomed_{key}'
         if zoomed_key in placeholders and placeholders[zoomed_key] is not None:
             placeholders[zoomed_key].pyplot(fig_zoom)
-        plt.close(fig_zoom)  # Close the zoomed figure after plotting
     else:
         print(f"Placeholder for {filter_name} not found or is None. Skipping visualization.")
 
@@ -267,7 +267,7 @@ def display_speckle_contrast_formula(formula_placeholder: Any, x: int, y: int, s
         st.latex(f'SC_{{{x}, {y}}} = \\frac{{\\sigma}}{{\\mu}} = \\frac{{{std:.3f}}}{{{mean:.3f}}} = {sc:.3f}')
 
 # Display the formula for Non-Local Means denoising in simpler terms
-def display_nlm_formula(formula_placeholder, x, y, window_size, search_size, filter_strength):
+def display_nlm_formula(formula_placeholder, x, y, kernel_size, search_size, filter_strength):
     """Display the formula for Non-Local Means denoising for a specific pixel."""
     
     with formula_placeholder.container():
@@ -278,7 +278,7 @@ def display_nlm_formula(formula_placeholder, x, y, window_size, search_size, fil
             - **Target Pixel**: Coordinates $(x_{{{x}}}, y_{{{y}}})$ are the pixel we want to clean up. It's the pixel we're focusing on.
             - **$I(i,j)$**: This is the original image value (or intensity) at any pixel $(i,j)$, where $(i,j)$ represents pixel coordinates in the image.
             - **Search Window ($\Omega$)**: {get_search_window_description(search_size)}. This is the area we search around the target pixel to find similar pixels.
-            - **Neighborhood ($N(x,y)$)**: A small area ({window_size}x{window_size}) around each pixel $(x,y)$. Think of this as a little box of pixels around each pixel, used to calculate its average color.
+            - **Neighborhood ($N(x,y)$)**: A small area ({kernel_size}x{kernel_size}) around each pixel $(x,y)$. Think of this as a little box of pixels around each pixel, used to calculate its average color.
             - **Smoothing Strength ($h$)**: This is a parameter that controls how much smoothing is done. A higher value means stronger smoothing.
             """)
 
@@ -329,7 +329,7 @@ def display_nlm_formula(formula_placeholder, x, y, window_size, search_size, fil
             This formula says that the more similar two neighborhoods are, the higher the weight given to that pixel. Similar neighborhoods have a smaller difference, so they get a bigger weight.
             """)
 
-            # Explain the neighborhood average formula
+            # Explain the neighborhood average formula 
             st.latex(rf'''
             P(x_{{{x}}}, y_{{{y}}}) = \frac{{1}}{{|N(x_{{{x}}}, y_{{{y}}})|}} \sum_{{(k,l) \in N(x_{{{x}}}, y_{{{y}}})}} I(k,l)
             ''')
@@ -339,7 +339,7 @@ def display_nlm_formula(formula_placeholder, x, y, window_size, search_size, fil
             - **$P(x_{{{x}}}, y_{{{y}}})$**: This is the average color (or intensity) of the neighborhood around the pixel $(x_{{{x}}}, y_{{{y}}})$.
             - **$\sum_{{(k,l) \in N(x_{{{x}}}, y_{{{y}}})}}$**: This means we are adding up the values of all pixels $(k,l)$ in the neighborhood $N(x_{{{x}}}, y_{{{y}}})$.
             - **$I(k,l)$**: This is the intensity (or color value) of pixel $(k,l)$.
-            - **$|N(x_{{{x}}}, y_{{{y}}})|$**: This is the number of pixels in the neighborhood (for example, if the neighborhood is 3x3, there are 9 pixels).
+            - **$|N(x_{{{x}}}, y_{{{y}}})|$**: This is the number of pixels in the neighborhood/kernel (for example, if the neighborhood is 3x3, there are 9 pixels).
 
             This formula calculates the average intensity of the pixels in the neighborhood around the target pixel. It's used to compare how similar different areas of the image are.
             """)
@@ -406,8 +406,6 @@ def handle_image_analysis(
     
  
     with tab:
-        st.header(f"{technique.capitalize()} Analysis", divider="rainbow")
-
         placeholders = create_placeholders(technique)
         placeholders = create_sections(placeholders, technique)
 
@@ -430,55 +428,68 @@ def handle_image_analysis(
 
 
 
+def create_plot(plot_image: np.ndarray, plot_x: int, plot_y: int, plot_kernel_size: int, 
+                titles: List[str], plot_cmap: str = "viridis", 
+                plot_search_window: Optional[Union[str, int]] = None, 
+                zoom: bool = False) -> plt.Figure:
+
+    # Adjust figure size for Weight Map to accommodate colorbar
+ 
+    fig, ax = plt.subplots(1, 1)
+    im = ax.imshow(plot_image, cmap=plot_cmap, vmin=np.min(plot_image), vmax=np.max(plot_image))
+    ax.set_title(titles[0])
+    ax.axis('off')
+    
+    if not zoom:
+
+        # Mark the center of the kernel with a colored square pixel
+        ax.add_patch(plt.Rectangle((plot_x - 0.5, plot_y - 0.5), 1, 1, 
+                                   edgecolor="r", linewidth=0.5, facecolor="r", alpha=0.2))
+        
+        # only show kernel overly for the original image
+        if titles[0] == "Original Image with Current Kernel":
+            # Add kernel overlay
+            kx, ky = int(plot_x - plot_kernel_size // 2), int(plot_y - plot_kernel_size // 2)
+            ax.add_patch(plt.Rectangle((kx - 0.5, ky - 0.5), plot_kernel_size, plot_kernel_size, 
+                                    edgecolor="r", linewidth=1, facecolor="none"))
+            lines = ([[(kx + i - 0.5, ky - 0.5), (kx + i - 0.5, ky + plot_kernel_size - 0.5)] for i in range(1, plot_kernel_size)] +
+                    [[(kx - 0.5, ky + i - 0.5), (kx + plot_kernel_size - 0.5, ky + i - 0.5)] for i in range(1, plot_kernel_size)])
+            ax.add_collection(LineCollection(lines, colors='red', linestyles=':', linewidths=0.5))
+            
+        # Add search window if specified (only for original image in NLM)
+        if plot_search_window == "full":
+            rect = plt.Rectangle((-0.5, -0.5), plot_image.shape[1], plot_image.shape[0], 
+                                 edgecolor="blue", linewidth=2, facecolor="none")
+            ax.add_patch(rect)
+        elif isinstance(plot_search_window, int):
+            half_window = plot_search_window // 2
+            rect = plt.Rectangle((plot_x - half_window - 0.5, plot_y - half_window - 0.5), 
+                                 plot_search_window - 1, plot_search_window - 1,
+                                 edgecolor="blue", linewidth=1, facecolor="none")
+            ax.add_patch(rect)
+    else:
+        # Add value annotations for zoomed view
+        for i in range(plot_image.shape[0]):
+            for j in range(plot_image.shape[1]):
+                ax.text(j, i, f"{plot_image[i, j]:.2f}", ha="center", va="center", color="red", fontsize=8)
+
+    if "Weight Map" in titles[0]:
+        from matplotlib.ticker import FuncFormatter
+        cbar = plt.colorbar(im, ax=ax, pad=0.005, format=FuncFormatter(lambda y, _: f"{100*y:.0f}%"))
+
+    fig.tight_layout(pad=2)
+    return fig
+
 def process_and_visualize_image(image: np.ndarray, kernel_size: int, x: int, y: int, 
                                 results: Tuple[np.ndarray, ...], cmap: str, technique: str, 
                                 placeholders: Dict[str, Any], stride: int, 
                                 search_window_size: Optional[int] = None):
     
  
-    def create_plot(plot_image: np.ndarray, plot_x: int, plot_y: int, plot_kernel_size: int, 
-                    titles: List[str], plot_cmap: str = "viridis", 
-                    plot_search_window: Optional[Union[str, int]] = None, 
-                    figsize: Tuple[int, int] = (15, 5)) -> plt.Figure:
-    
-        fig, ax = plt.subplots(1, 1, figsize=figsize)
-        ax.imshow(plot_image, cmap=plot_cmap, vmin=np.min(plot_image), vmax=np.max(plot_image))
-        ax.set_title(titles[0])
-        ax.axis('off')
-        
-        # Add kernel overlay
-        kx, ky = int(plot_x - plot_kernel_size // 2), int(plot_y - plot_kernel_size // 2)
-        ax.add_patch(plt.Rectangle((kx - 0.5, ky - 0.5), plot_kernel_size, plot_kernel_size, 
-                                   edgecolor="r", linewidth=1, facecolor="none"))
-        # Mark the center of the kernel with a colored square pixel
-        ax.add_patch(plt.Rectangle((plot_x - 0.5, plot_y - 0.5), 1, 1, 
-                                   edgecolor="r", linewidth=0.5, facecolor="r", alpha=0.2))
-        
-        lines = ([[(kx + i - 0.5, ky - 0.5), (kx + i - 0.5, ky + plot_kernel_size - 0.5)] for i in range(1, plot_kernel_size)] +
-                 [[(kx - 0.5, ky + i - 0.5), (kx + plot_kernel_size - 0.5, ky + i - 0.5)] for i in range(1, plot_kernel_size)])
-        ax.add_collection(LineCollection(lines, colors='red', linestyles=':', linewidths=0.5))
-        
-        # Add search window if specified (only for original image in NLM)
-        if plot_search_window == "full":
-            rect = plt.Rectangle((-0.5, -0.5), plot_image.shape[1], plot_image.shape[0], 
-                                 edgecolor="blue", linewidth=2, facecolor="none")
-            ax.add_patch(rect)
-
-
-        elif isinstance(plot_search_window, int):
-            # Adjust the search window size to be centered on the current pixel
-            half_window = plot_search_window // 2
-            rect = plt.Rectangle((plot_x - half_window - 0.5, plot_y - half_window - 0.5), 
-                                 plot_search_window - 1, plot_search_window - 1,
-                                 edgecolor="blue", linewidth=1, facecolor="none")
-            ax.add_patch(rect)
-            
-        fig.tight_layout(pad=2)
-        return fig
 
     # Display original image
     fig_original = create_plot(image, x, y, kernel_size, ["Original Image with Current Kernel"], cmap, 
-                               search_window_size if technique == "nlm" else None, (5, 5))
+                               search_window_size if technique == "nlm" else None)
     
     if 'original_image' in placeholders and placeholders['original_image'] is not None:
         placeholders['original_image'].pyplot(fig_original)
@@ -518,9 +529,26 @@ def process_and_visualize_image(image: np.ndarray, kernel_size: int, x: int, y: 
     else:
         filter_options = {}
 
+
     # Display filter results
     for filter_name, filter_data in filter_options.items():
-        fig_filter = create_plot(filter_data, int(x), int(y), int(stride), [filter_name], cmap)
         key = filter_name.lower().replace(" ", "_")
+        
         if key in placeholders and placeholders[key] is not None:
-            placeholders[key].pyplot(fig_filter)
+            # Full image view
+            fig_full = create_plot(filter_data, x, y, kernel_size, [filter_name], cmap)
+            placeholders[key].pyplot(fig_full)
+            
+            # Zoomed view
+            zoom_size = 5
+            zoomed_data = filter_data[max(0, y - zoom_size // 2):min(filter_data.shape[0], y + zoom_size // 2 + 1),
+                                      max(0, x - zoom_size // 2):min(filter_data.shape[1], x + zoom_size // 2 + 1)]
+            fig_zoom = create_plot(zoomed_data, zoom_size // 2, zoom_size // 2, zoom_size, 
+                                   [f"Zoomed-In {filter_name}"], cmap, zoom=True)
+            
+            zoomed_key = f'zoomed_{key}'
+            if zoomed_key in placeholders and placeholders[zoomed_key] is not None:
+                placeholders[zoomed_key].pyplot(fig_zoom)
+        else:
+            print(f"Placeholder for {filter_name} not found or is None. Skipping visualization.")
+

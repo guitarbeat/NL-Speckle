@@ -2,6 +2,7 @@ import streamlit as st
 from typing import Dict, List
 from PIL import Image
 import numpy as np
+import time
 
 # Ensure streamlit_nested_layout is imported
 import streamlit_nested_layout  # noqa: F401
@@ -36,7 +37,7 @@ COLOR_MAPS: List[str] = [
 # Default values
 DEFAULT_STRIDE = 1
 DEFAULT_SEARCH_WINDOW_SIZE = "full"
-DEFAULT_FILTER_STRENGTH = 10.0
+DEFAULT_FILTER_STRENGTH = .10
 DEFAULT_KERNEL_SIZE = 7
 
 # Slider Ranges
@@ -104,7 +105,9 @@ def configure_image_processing():
 
     return image, kernel_size, stride, search_window_size, filter_strength, cmap, st.session_state.image_np
 
-
+# Ensure session state is initialized
+if 'max_pixels' not in st.session_state:
+    st.session_state.max_pixels = 1
 
 def main():
     """Set the Streamlit page configuration."""
@@ -115,19 +118,38 @@ def main():
     image, kernel_size, stride, search_window_size, filter_strength, cmap, image_np = configure_image_processing()
 
     # Calculate max processable pixels
+    # Calculate max processable pixels
     max_processable_pixels = (image.width - kernel_size + 1) * (image.height - kernel_size + 1)
-    max_pixels = st.slider("Pixels to process", 1, max_processable_pixels, max_processable_pixels)
+    
+    # Add a checkbox to toggle the animation
+    animate = st.checkbox("Animate pixel processing", value=False)
+    
+    # Placeholder for the slider
+    slider_placeholder = st.empty()
+    
+    if animate:
+        current_value = st.session_state.max_pixels
+        # Loop to animate the slider
+        while current_value <= max_processable_pixels:
+            # Update the slider and session state value
+            st.session_state.max_pixels = current_value
+            slider_placeholder.slider("Pixels to process", 1, max_processable_pixels, st.session_state.max_pixels)
+            current_value += 1
+            time.sleep(0.1)
+    else:
+        # Regular slider when animation is off
+        st.session_state.max_pixels = slider_placeholder.slider("Pixels to process", 1, max_processable_pixels, st.session_state.max_pixels)
 
     # Create tabs
     tabs = st.tabs(TABS)
 
     # Process images
     std_dev_image, speckle_contrast_image, mean_image = handle_image_analysis(
-        tabs[0], image_np, kernel_size, stride, max_pixels, cmap, "speckle", 
+        tabs[0], image_np, kernel_size, stride, st.session_state.max_pixels, cmap, "speckle", 
         search_window_size, filter_strength)[:3]
 
     denoised_image = handle_image_analysis(
-        tabs[1], image_np, kernel_size, stride, max_pixels, cmap, "nlm", 
+        tabs[1], image_np, kernel_size, stride, st.session_state.max_pixels, cmap, "nlm", 
         search_window_size, filter_strength)[0]
 
     # Handle comparison tab
