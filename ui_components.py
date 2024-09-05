@@ -5,18 +5,13 @@ from matplotlib.colors import Colormap
 from PIL import Image
 import numpy as np
 from config import (PRELOADED_IMAGES, COLOR_MAPS, 
-                    DEFAULT_KERNEL_SIZE, 
-                    DEFAULT_STRIDE, 
-                    DEFAULT_SEARCH_WINDOW_SIZE, 
-                    DEFAULT_FILTER_STRENGTH, 
-                    DEFAULT_ANIMATION_SPEED, 
-                    KERNEL_SIZE_RANGE, 
-                    STRIDE_RANGE, 
-                    SEARCH_WINDOW_SIZE_RANGE, 
-                    FILTER_STRENGTH_RANGE, 
-                    ANIMATION_SPEED_RANGE,
+                    KERNEL_SIZE_RANGE, STRIDE_RANGE,
+                    FILTER_STRENGTH_RANGE, ANIMATION_SPEED_RANGE,
+                    DEFAULT_KERNEL_SIZE, DEFAULT_STRIDE,
+                    DEFAULT_SEARCH_WINDOW_STEP, DEFAULT_FILTER_STRENGTH,
+                    DEFAULT_ANIMATION_SPEED, get_search_window_size_range,
                     SESSION_STATE_KEYS)
-from typing import Tuple
+from typing import Tuple, Dict
 
 #-----------------------------Stuff ------------------------------ #
 
@@ -55,18 +50,19 @@ def configure_sidebar() -> Tuple[Image.Image, int, int, float, int, str, float, 
         with st.expander("Image Processing", expanded=True):
             kernel_size = st.slider('Kernel Size', *KERNEL_SIZE_RANGE, DEFAULT_KERNEL_SIZE, help="Size of the sliding window (patch size).")
             stride = st.slider('Stride', *STRIDE_RANGE, DEFAULT_STRIDE, help="Stride of the sliding window.")
-            with st.expander("🔍 Non-Local Means Parameters", expanded=False):
+            with st.expander("🔍 Non-Local Means Parameters", expanded=True):
                 use_full_image_window = st.checkbox("Use Full Image as Search Window", value=False, help="If checked, the search window will cover the entire image.")
                 
                 if not use_full_image_window:
+                    image_size = (image.width, image.height)
                     search_window_size = st.slider(
                         "Search Window Size", 
-                        *SEARCH_WINDOW_SIZE_RANGE,
-                        DEFAULT_SEARCH_WINDOW_SIZE,
+                        *get_search_window_size_range(kernel_size, image_size),
+                        DEFAULT_SEARCH_WINDOW_STEP,
                         help="Size of the window used to search for similar patches in the image."
                     )
                 else:
-                    search_window_size = None  # Use None to indicate full image search window
+                    search_window_size = "full"
                 
                 filter_strength = st.slider(
                     "Filter Strength (h)", 
@@ -147,16 +143,9 @@ def display_image_comparison(img1: np.ndarray, img2: np.ndarray, label1: str, la
 def get_images_to_compare(image_choice_1, image_choice_2, images):
     return images[image_choice_1], images[image_choice_2]
 
-def handle_comparison_tab(tab, cmap_name, std_dev_image, speckle_contrast_image, mean_image, original_image):
+def handle_comparison_tab(tab, cmap_name: str, images: Dict[str, np.ndarray]):
     with tab:
-        st.header("Speckle Contrast Comparison")
-        
-        images = {
-            'Unprocessed Image': original_image,
-            'Standard Deviation': std_dev_image,
-            'Speckle Contrast': speckle_contrast_image,
-            'Mean Filter': mean_image
-        }
+        st.header("Image Comparison")
         
         available_images = list(images.keys())
         col1, col2 = st.columns(2)
@@ -167,7 +156,7 @@ def handle_comparison_tab(tab, cmap_name, std_dev_image, speckle_contrast_image,
 
         if image_choice_1 and image_choice_2:
             if image_choice_1 != image_choice_2:
-                img1, img2 = get_images_to_compare(image_choice_1, image_choice_2, images)
+                img1, img2 = images[image_choice_1], images[image_choice_2]
                 display_image_comparison(img1, img2, image_choice_1, image_choice_2, cmap)
             else:
                 st.error("Please select two different images for comparison.")

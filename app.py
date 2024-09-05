@@ -32,7 +32,8 @@ Let's get started!
 def main():
     image, kernel_size, search_window_size, filter_strength, stride, cmap, animation_speed, image_np = configure_sidebar()
 
-    max_pixels = st.slider("Pixels to process", 1, image.width * image.height, image.width * image.height)
+    max_processable_pixels = (image.width - kernel_size + 1) * (image.height - kernel_size + 1)
+    max_pixels = st.slider("Pixels to process", 1, max_processable_pixels, max_processable_pixels)
 
     tabs = st.tabs(["Speckle Contrast Calculation", "Non-Local Means Denoising", "Speckle Contrast Comparison"])
 
@@ -50,7 +51,17 @@ def main():
     denoised_image = nlm_results[0] if nlm_results else None
 
     # Tab 3: Comparison
-    handle_comparison_tab(tabs[2], cmap, std_dev_image, speckle_contrast_image, mean_image, image_np, denoised_image)
+    handle_comparison_tab(
+        tab=tabs[2],
+        cmap_name=cmap,
+        images={
+            'Unprocessed Image': image_np,
+            'Standard Deviation': std_dev_image,
+            'Speckle Contrast': speckle_contrast_image,
+            'Mean Filter': mean_image,
+            'Denoised Image': denoised_image
+        }
+    )
 
 if __name__ == "__main__":
     main()
