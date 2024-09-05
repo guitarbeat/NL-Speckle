@@ -324,56 +324,97 @@ def display_speckle_contrast_formula(formula_placeholder: st.empty, x: int, y: i
         st.latex(f'SC_{{{x}, {y}}} = \\frac{{\\sigma}}{{\\mu}} = \\frac{{{std:.3f}}}{{{mean:.3f}}} = {sc:.3f}')
 
 
-# Display the formula for Non-Local Means denoising for a specific pixel.
+# Display the formula for Non-Local Means denoising in simpler terms
 def display_nlm_formula(formula_placeholder, x, y, window_size, search_size, filter_strength):
     """Display the formula for Non-Local Means denoising for a specific pixel."""
     
     with formula_placeholder.container():
         with st.expander("Non-Local Means (NLM) Denoising Formula", expanded=False):
+            # Simple explanation of the variables
             st.markdown(f"""
-            Let's define our variables first:
-            - $(x_{{{x}}}, y_{{{y}}})$: Coordinates of the target pixel we're denoising
-            - $I(i,j)$: Original image value at pixel $(i,j)$
-            - $\Omega$: {get_search_window_description(search_size)}
-            - $N(x,y)$: Neighborhood of size {window_size}x{window_size} around pixel $(x,y)$
-            - $h$: Filtering parameter (controls smoothing strength), set to {filter_strength:.2f}
+            ### Key Variables:
+            - **Target Pixel**: Coordinates $(x_{{{x}}}, y_{{{y}}})$ are the pixel we want to clean up. It's the pixel we're focusing on.
+            - **$I(i,j)$**: This is the original image value (or intensity) at any pixel $(i,j)$, where $(i,j)$ represents pixel coordinates in the image.
+            - **Search Window ($\Omega$)**: {get_search_window_description(search_size)}. This is the area we search around the target pixel to find similar pixels.
+            - **Neighborhood ($N(x,y)$)**: A small area ({window_size}x{window_size}) around each pixel $(x,y)$. Think of this as a little box of pixels around each pixel, used to calculate its average color.
+            - **Smoothing Strength ($h$)**: This is a parameter that controls how much smoothing is done. A higher value means stronger smoothing.
             """)
 
-            st.markdown("Now, let's break down the NLM formula:")
+            st.markdown("### NLM Formula Breakdown:")
 
+            # Explain the main NLM formula
             st.latex(r'''
             \text{NLM}(x_{%d}, y_{%d}) = \frac{1}{W(x_{%d}, y_{%d})} \sum_{(i,j) \in \Omega} I(i,j) \cdot w((x_{%d}, y_{%d}), (i,j))
             ''' % (x, y, x, y, x, y))
-            st.markdown("This is the main NLM formula. It calculates the denoised value as a weighted average of pixels in the search window.")
+            st.markdown("""
+            **What does this formula mean?**
+            
+            - **NLM**: This is the denoised value for the pixel at $(x_{%d}, y_{%d})$ (the target pixel).
+            - **$W(x_{%d}, y_{%d})$**: This is a normalization factor that ensures all the weights (explained next) add up to 1.
+            - **$\sum_{(i,j) \in \Omega}$**: This symbol means we are adding up values for all pixels $(i,j)$ inside the search window $\Omega$.
+            - **$I(i,j)$**: This is the original image value (intensity) at pixel $(i,j)$.
+            - **$w((x_{%d}, y_{%d}), (i,j))$**: This is the weight we assign to pixel $(i,j)$, which depends on how similar its neighborhood is to the target pixel's neighborhood.
+            
+            In simple terms, this formula calculates the new value for the target pixel by averaging the values of all pixels in the search window. Pixels that are more similar to the target pixel's neighborhood are given more importance (higher weight).
+            """ % (x, y, x, y, x, y))
 
+            # Explain the normalization factor formula
             st.latex(r'''
             W(x_{%d}, y_{%d}) = \sum_{(i,j) \in \Omega} w((x_{%d}, y_{%d}), (i,j))
             ''' % (x, y, x, y))
-            st.markdown("$W(x,y)$ is a normalization factor, ensuring weights sum to 1.")
+            st.markdown("""
+            **What does this formula mean?**
+            
+            - **$W(x_{%d}, y_{%d})$**: This is the sum of all the weights for the pixels in the search window $\Omega$. 
+            - **$\sum_{(i,j) \in \Omega}$**: This symbol means we add up the weights for all pixels $(i,j)$ in the search window.
+            - **$w((x_{%d}, y_{%d}), (i,j))$**: These are the weights that tell us how much each pixel contributes to the final value of the target pixel.
+            
+            This ensures that the contributions (or weights) of all pixels in the search window add up to 1, so the final value is correctly balanced.
+            """ % (x, y, x, y))
 
+            # Explain the weight calculation formula
             st.latex(r'''
             w((x_{%d}, y_{%d}), (i,j)) = \exp\left(-\frac{|P(i,j) - P(x_{%d}, y_{%d})|^2}{h^2}\right)
             ''' % (x, y, x, y))
-            st.markdown("This calculates the weight based on similarity between neighborhoods. More similar neighborhoods get higher weights.")
+            st.markdown("""
+            **What does this formula mean?**
+            
+            - **$w((x_{%d}, y_{%d}), (i,j))$**: This is the weight given to the pixel $(i,j)$ when deciding the value of the target pixel.
+            - **$\exp()$**: This stands for "exponential function," and it's used here to ensure the weight decreases quickly as the difference between neighborhoods increases.
+            - **$|P(i,j) - P(x_{%d}, y_{%d})|^2$**: This is the squared difference between the average color (or intensity) of the neighborhood around pixel $(i,j)$ and the neighborhood around the target pixel $(x_{%d}, y_{%d})$.
+            - **$h$**: This is the smoothing strength. A smaller $h$ makes the formula more sensitive to differences, while a larger $h$ makes it less sensitive.
 
+            This formula says that the more similar two neighborhoods are, the higher the weight given to that pixel. Similar neighborhoods have a smaller difference, so they get a bigger weight.
+            """ % (x, y, x, y, x, y))
+
+            # Explain the neighborhood average formula
             st.latex(r'''
             P(x_{%d}, y_{%d}) = \frac{1}{|N(x_{%d}, y_{%d})|} \sum_{(k,l) \in N(x_{%d}, y_{%d})} I(k,l)
             ''' % (x, y, x, y, x, y))
-            st.markdown("$P(x,y)$ is the average value of the neighborhood around pixel $(x,y)$. This is used in weight calculation.")
+            st.markdown("""
+            **What does this formula mean?**
+            
+            - **$P(x_{%d}, y_{%d})$**: This is the average color (or intensity) of the neighborhood around the pixel $(x_{%d}, y_{%d})$.
+            - **$\sum_{(k,l) \in N(x_{%d}, y_{%d})}$**: This means we are adding up the values of all pixels $(k,l)$ in the neighborhood $N(x_{%d}, y_{%d})$.
+            - **$I(k,l)$**: This is the intensity (or color value) of pixel $(k,l)$.
+            - **$|N(x_{%d}, y_{%d})|$**: This is the number of pixels in the neighborhood (for example, if the neighborhood is 3x3, there are 9 pixels).
+
+            This formula calculates the average intensity of the pixels in the neighborhood around the target pixel. It's used to compare how similar different areas of the image are.
+            """ % (x, y, x, y, x, y, x, y, x, y))
 
             st.markdown("""
-            Additional notes:
-            - The search window $\Omega$ determines which pixels are considered for denoising.
-            - The neighborhood size affects how similarity is calculated between different parts of the image.
-            - The filtering parameter $h$ controls the strength of denoising. Higher values lead to more smoothing.
+            ### Additional Notes:
+            - The **search window** ($\Omega$) is the area where we look for similar pixels to help denoise the target pixel.
+            - The **neighborhood size** affects how we measure the similarity between pixels.
+            - The **smoothing strength ($h$)** controls how much noise is removed. Larger $h$ means more aggressive denoising.
             """)
 
-# Helper function to get a description of the search window
+# Helper function to describe the search window in simpler terms
 def get_search_window_description(search_size):
-    if search_size is None:
-        return "Search window covering the entire image"
+    if search_size == "full":
+        return "We search the entire image for similar pixels."
     else:
-        return f"Search window of size {search_size}x{search_size} centered at $(x, y)$"
+        return f"A search window of size {search_size}x{search_size} centered around the target pixel."
 
 # ---------------------------- Main Entry Point ---------------------------- #
 

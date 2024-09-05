@@ -21,9 +21,9 @@ PRELOADED_IMAGES: Dict[str, str] = {
 COLOR_MAPS: List[str] = ["viridis", "plasma", "inferno", "magma", "cividis", "gray","pink"]
 
 # Default Values
-DEFAULT_KERNEL_SIZE = 5
+DEFAULT_KERNEL_SIZE = 3
 DEFAULT_STRIDE = 1
-DEFAULT_SEARCH_WINDOW_STEP = 1
+DEFAULT_SEARCH_WINDOW_STEP = "full"
 DEFAULT_FILTER_STRENGTH = 10.0
 DEFAULT_ANIMATION_SPEED = 0.001
 
