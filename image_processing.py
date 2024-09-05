@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 
 # ---------------------------- Core Calculations ---------------------------- #
 
-@st.cache_data
+@st.cache_resource
 def calculate_speckle(image: np.ndarray, kernel_size: int, stride: int, max_pixels: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray, int, int, float, float, float]:
     pad_size = kernel_size // 2
     output_height = (image.shape[0] - kernel_size + 1)
@@ -38,7 +38,7 @@ def calculate_speckle(image: np.ndarray, kernel_size: int, stride: int, max_pixe
     last_x, last_y = col + pad_size, row + pad_size  # Center of the last processed kernel
     return mean_filter, std_dev_filter, sc_filter, last_x, last_y, local_mean, local_std, speckle_contrast
 
-@st.cache_data
+@st.cache_resource
 def calculate_nlm(image: np.ndarray, kernel_size: int, search_size: Optional[int], filter_strength: float, stride: int, max_pixels: int) -> Tuple[np.ndarray, np.ndarray, int, int, float]:
     pad_size = kernel_size // 2
     
@@ -188,7 +188,7 @@ def create_sections(placeholders: Dict[str, st.empty], technique: str):
         placeholders['formula'] = st.empty()
 
 # ---------------------------- Analysis Loop and Visualization ---------------------------- #
-
+@st.cache_data(ttl=60)  # Cache for 60 seconds
 def run_analysis_loop(image_np: np.ndarray, kernel_size: int, stride: int, max_pixels: int, animation_speed: float, cmap: str, technique: str, placeholders: Dict[str, st.empty], search_window_size: Optional[int] = None, filter_strength: float = 0.1) -> Tuple[np.ndarray, ...]:
     
     for i in range(1, max_pixels + 1) if st.session_state.is_animating else [max_pixels]:
@@ -213,6 +213,7 @@ def run_analysis_loop(image_np: np.ndarray, kernel_size: int, stride: int, max_p
     
     return results
 
+@st.cache_resource
 def update_visualizations(image_np: np.ndarray, kernel_size: int, last_x: int, last_y: int, results: Tuple[np.ndarray, ...], cmap: str, technique: str, placeholders: Dict[str, st.empty], stride: int, search_window_size: Optional[int] = None):
     fig_original = create_plot(
         image_np, [], last_x, last_y, kernel_size,
@@ -250,6 +251,7 @@ def update_visualizations(image_np: np.ndarray, kernel_size: int, last_x: int, l
     for filter_name, filter_data in filter_options.items():
         display_filter(filter_name, filter_data, last_x, last_y, cmap, placeholders, stride)
 
+@st.cache_resource
 def display_filter(filter_name: str, filter_data: np.ndarray, last_x: int, last_y: int, cmap: str, placeholders: Dict[str, st.empty], stride: int):
     key = filter_name.lower().replace(" ", "_")
     

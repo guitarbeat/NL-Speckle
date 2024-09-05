@@ -14,19 +14,29 @@ from config import (PRELOADED_IMAGES, COLOR_MAPS,
 from typing import Tuple, Dict
 
 
-# Function to get dynamic search window size range
+@st.cache_data
 def get_search_window_size_range(kernel_size: int, image_size: Tuple[int, int]) -> Tuple[int, int, int]:
-    """
-    Calculate the range for the search window size slider based on kernel size and image dimensions.
-    
-    :param kernel_size: Size of the kernel
-    :param image_size: Tuple containing (width, height) of the image
-    :return: Tuple of (min, max, step) for the search window size slider
-    """
     min_size = kernel_size + 2
     max_size = min(max(image_size) // 2, 35)
-    step = 2  # Using a step of 2 to ensure odd numbers
+    step = 2
     return int(min_size), int(max_size), int(step)
+
+@st.cache_data
+def load_image(image_source: str, selected_image: str, uploaded_file) -> Image.Image:
+    if image_source == "Preloaded Image":
+        return Image.open(PRELOADED_IMAGES[selected_image]).convert('L')
+    elif uploaded_file:
+        return Image.open(uploaded_file).convert('L')
+    else:
+        st.warning('Please upload an image or select a preloaded image.')
+        st.stop()
+
+@st.cache_data
+def process_image(image: Image.Image) -> np.ndarray:
+    """Convert the image to a numpy array and normalize pixel values."""
+    return np.array(image) / 255.0
+
+
 
 # Main configuration function
 def configure_sidebar() -> Tuple[Image.Image, int, int, float, int, str, float, np.ndarray]:
@@ -56,23 +66,9 @@ def configure_image_settings():
 
     return image, image_np
 
+
 def select_color_map():
     return st.selectbox("🎨 Select Color Map", COLOR_MAPS, index=0, help="Choose a color map for all visualizations.")
-
-def load_image(image_source: str, selected_image: str, uploaded_file) -> Image.Image:
-    """Load the image based on the user's selection."""
-    if image_source == "Preloaded Image":
-        return Image.open(PRELOADED_IMAGES[selected_image]).convert('L')
-    elif uploaded_file:
-        return Image.open(uploaded_file).convert('L')
-    else:
-        st.warning('Please upload an image or select a preloaded image.')
-        st.stop()
-
-@st.cache_data
-def process_image(image: Image.Image) -> np.ndarray:
-    """Convert the image to a numpy array and normalize pixel values."""
-    return np.array(image) / 255.0
 
 # Processing parameter configuration
 def configure_processing_parameters(image):
