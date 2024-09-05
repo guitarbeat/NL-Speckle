@@ -1,5 +1,5 @@
 import streamlit as st
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 # Page Configuration
 PAGE_CONFIG = {
@@ -18,12 +18,15 @@ PRELOADED_IMAGES: Dict[str, str] = {
 }
 
 # Color Maps
-COLOR_MAPS: List[str] = ["viridis", "plasma", "inferno", "magma", "cividis", "gray","pink"]
+COLOR_MAPS: List[str] = [
+    "viridis", "plasma", "inferno", "magma", 
+    "cividis", "gray", "pink"
+]
 
 # Default Values
 DEFAULT_KERNEL_SIZE = 3
 DEFAULT_STRIDE = 1
-DEFAULT_SEARCH_WINDOW_STEP = "full"
+DEFAULT_SEARCH_WINDOW_SIZE = "full"
 DEFAULT_FILTER_STRENGTH = 10.0
 DEFAULT_ANIMATION_SPEED = 0.001
 
@@ -31,20 +34,7 @@ DEFAULT_ANIMATION_SPEED = 0.001
 KERNEL_SIZE_RANGE = (1, 11)
 STRIDE_RANGE = (1, 5)
 FILTER_STRENGTH_RANGE = (0.1, 50.0, 0.1)  # min, max, step
-ANIMATION_SPEED_RANGE = (0.0001, 0.005, 0.0001) # min, max, step
-
-# Function to get dynamic search window size range
-def get_search_window_size_range(kernel_size: int, image_size: Tuple[int, int]) -> Tuple[int, int, int]:
-    """
-    Calculate the range for the search window size slider based on kernel size and image dimensions.
-    
-    :param kernel_size: Size of the kernel
-    :param image_size: Tuple containing (width, height) of the image
-    :return: Tuple of (min, max, default) for the search window size slider
-    """
-    min_size = kernel_size + 2
-    max_size = min(max(image_size) // 2, 35)  
-    return min_size, max_size, DEFAULT_SEARCH_WINDOW_STEP
+ANIMATION_SPEED_RANGE = (0.0001, 0.005, 0.0001)  # min, max, step
 
 # Session State Keys
 SESSION_STATE_KEYS = [
@@ -53,9 +43,7 @@ SESSION_STATE_KEYS = [
     "animation_mode"
 ]
 
-
-
-# Function to set page config
 def set_page_config():
+    """Set the Streamlit page configuration."""
     st.set_page_config(**PAGE_CONFIG)
     st.logo(LOGO_PATH)
