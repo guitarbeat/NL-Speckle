@@ -157,9 +157,9 @@ def main():
             # Process images for each iteration
             speckle_results = handle_image_analysis(tabs[0], **params, technique="speckle", placeholders=speckle_placeholders)
             nlm_results = handle_image_analysis(tabs[1], **params, technique="nlm", placeholders=nlm_placeholders)
-        
+    
             
-            time.sleep(0.01)  # Adjust this value to control animation speed
+            # time.sleep(0.01)  # Not needed because it takes time to process the images
     else:
         st.session_state.max_pixels = pixels_slider.slider("Pixels to process", 1, max_processable_pixels, st.session_state.max_pixels)
         params["max_pixels"] = st.session_state.max_pixels
