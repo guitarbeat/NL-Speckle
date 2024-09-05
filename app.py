@@ -8,7 +8,7 @@ import time
 import streamlit_nested_layout  # noqa: F401
 
 # Import custom modules
-from image_processing import handle_image_analysis, handle_image_comparison
+from image_processing import handle_image_analysis, handle_image_comparison, create_placeholders, create_sections
 
 # Constants
 TABS = ["Speckle Contrast Calculation", "Non-Local Means Denoising", "Speckle Contrast Comparison"]
@@ -115,13 +115,6 @@ def configure_image_processing():
     }
 
 
-def animate_slider(placeholder, max_value):
-    current_value = st.session_state.max_pixels
-    while current_value <= max_value:
-        st.session_state.max_pixels = current_value
-        placeholder.slider("Pixels to process", 1, max_value, current_value)
-        current_value += 1
-        time.sleep(0.5)
 
 
 # Ensure session state is initialized
@@ -138,39 +131,55 @@ def main():
     kernel_size = params["kernel_size"]
 
     max_processable_pixels = (image.width - kernel_size + 1) * (image.height - kernel_size + 1)
-    # Use st.empty for the slider to update it dynamically
     pixels_slider = st.empty()
     
     animate = st.checkbox("Animate pixel processing", value=False)
+    tabs = st.tabs(TABS)
+
+    # Create placeholders for both techniques
+ 
     
+
+    # Create sections for both techniques
+    with tabs[0]:
+        speckle_placeholders = create_placeholders("speckle")
+        speckle_placeholders = create_sections(speckle_placeholders, "speckle")
+    with tabs[1]:
+        nlm_placeholders = create_placeholders("nlm")
+        nlm_placeholders = create_sections(nlm_placeholders, "nlm")
+
     if animate:
         for i in range(st.session_state.max_pixels, max_processable_pixels + 1):
             st.session_state.max_pixels = i
             pixels_slider.slider("Pixels to process", 1, max_processable_pixels, i)
-            time.sleep(1)
+            params["max_pixels"] = st.session_state.max_pixels
+            
+            # Process images for each iteration
+            speckle_results = handle_image_analysis(tabs[0], **params, technique="speckle", placeholders=speckle_placeholders)
+            nlm_results = handle_image_analysis(tabs[1], **params, technique="nlm", placeholders=nlm_placeholders)
+        
+            
+            time.sleep(0.01)  # Adjust this value to control animation speed
     else:
         st.session_state.max_pixels = pixels_slider.slider("Pixels to process", 1, max_processable_pixels, st.session_state.max_pixels)
-
-    params["max_pixels"] = st.session_state.max_pixels
-
-    tabs = st.tabs(TABS)
-    
-    # Use handle_image_analysis for image processing
-    speckle_results = handle_image_analysis(tabs[0], **params, technique="speckle")
-    nlm_results = handle_image_analysis(tabs[1], **params, technique="nlm")
-
- 
-    handle_image_comparison(
-        tab=tabs[2],
-        cmap_name=params['cmap'],
-        images={
-            'Unprocessed Image': image_np,
-            'Standard Deviation': speckle_results[0],
-            'Speckle Contrast': speckle_results[1],
-            'Mean Filter': speckle_results[2],
-            'Denoised Image': nlm_results[0]
-        }
-    )
+        params["max_pixels"] = st.session_state.max_pixels
+        
+        # Process images for the current slider value
+        speckle_results = handle_image_analysis(tabs[0], **params, technique="speckle", placeholders=speckle_placeholders)
+        nlm_results = handle_image_analysis(tabs[1], **params, technique="nlm", placeholders=nlm_placeholders)
+        
+        # Update comparison tab
+        handle_image_comparison(
+            tab=tabs[2],
+            cmap_name=params['cmap'],
+            images={
+                'Unprocessed Image': image_np,
+                'Standard Deviation': speckle_results[1],
+                'Speckle Contrast': speckle_results[2],
+                'Mean Filter': speckle_results[0],
+                'Denoised Image': nlm_results[0]
+            }
+        )
 
 if __name__ == "__main__":
     main()
