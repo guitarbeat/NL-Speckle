@@ -68,25 +68,26 @@ def configure_image_processing():
         image = load_image(image_source, selected_image, uploaded_file)
         st.image(image, "Input Image", use_column_width=True)
 
-        # Processing parameters
-        kernel_size = st.slider('Kernel Size', *KERNEL_SIZE_RANGE)
+      # Use st.form to group inputs and reduce reruns
+        with st.form("processing_params"):
+            kernel_size = st.slider('Kernel Size', *KERNEL_SIZE_RANGE)
+            stride = st.slider('Stride', *STRIDE_RANGE, DEFAULT_STRIDE)
 
-        stride = st.slider('Stride', *STRIDE_RANGE, DEFAULT_STRIDE)
-
-        # NLM Parameters
-        with st.expander("🔍 NLM Parameters", expanded=True):
+            # NLM Parameters
             use_full_image = st.checkbox("Use Full Image for Search", value=True)
-            if use_full_image:
-                search_window_size = "full"
-            else:
-                min_size = kernel_size + 2
-                max_size = min(max(image.width, image.height) // 2, 35)
-                search_window_size = st.slider("Search Window Size", min_size, max_size, min_size, step=2)
-        
+            search_window_size = "full" if use_full_image else st.slider(
+                "Search Window Size",
+                kernel_size + 2,
+                min(max(image.width, image.height) // 2, 35),
+                kernel_size + 2,
+                step=2
+            )
             filter_strength = st.slider("Filter Strength (h)", *FILTER_STRENGTH_RANGE, DEFAULT_FILTER_STRENGTH)
-
-        # Color map and animation settings
-        cmap = st.selectbox("🎨 Color Map", COLOR_MAPS, index=0)
+            cmap = st.selectbox("🎨 Color Map", COLOR_MAPS, index=0)
+            
+            submit_button = st.form_submit_button("Apply Settings")
+            if submit_button:
+                st.rerun()
 
         # Convert image to numpy array and normalize
         st.session_state.original_image_np = np.array(image) / 255.0
@@ -103,65 +104,71 @@ def configure_image_processing():
 
         st.image(st.session_state.image_np, caption="Manipulated Image", use_column_width=True)
 
-    return image, kernel_size, stride, search_window_size, filter_strength, cmap, st.session_state.image_np
+    return {
+        "image": image,
+        "image_np": st.session_state.image_np,
+        "kernel_size": kernel_size,
+        "stride": stride,
+        "search_window_size": search_window_size,
+        "filter_strength": filter_strength,
+        "cmap": cmap
+    }
+
+
+def animate_slider(placeholder, max_value):
+    current_value = st.session_state.max_pixels
+    while current_value <= max_value:
+        st.session_state.max_pixels = current_value
+        placeholder.slider("Pixels to process", 1, max_value, current_value)
+        current_value += 1
+        time.sleep(0.5)
+
 
 # Ensure session state is initialized
 if 'max_pixels' not in st.session_state:
     st.session_state.max_pixels = 1
 
 def main():
-    """Set the Streamlit page configuration."""
     st.set_page_config(**PAGE_CONFIG)
     st.logo(LOGO_PATH)
 
-    # Configure sidebar and get parameters
-    image, kernel_size, stride, search_window_size, filter_strength, cmap, image_np = configure_image_processing()
+    params = configure_image_processing()
+    image = params.pop("image")  # Remove 'image' from params
+    image_np = params["image_np"]
+    kernel_size = params["kernel_size"]
 
-    # Calculate max processable pixels
-    # Calculate max processable pixels
     max_processable_pixels = (image.width - kernel_size + 1) * (image.height - kernel_size + 1)
+    # Use st.empty for the slider to update it dynamically
+    pixels_slider = st.empty()
     
-    # Add a checkbox to toggle the animation
     animate = st.checkbox("Animate pixel processing", value=False)
     
-    # Placeholder for the slider
-    slider_placeholder = st.empty()
-    
     if animate:
-        current_value = st.session_state.max_pixels
-        # Loop to animate the slider
-        while current_value <= max_processable_pixels:
-            # Update the slider and session state value
-            st.session_state.max_pixels = current_value
-            slider_placeholder.slider("Pixels to process", 1, max_processable_pixels, st.session_state.max_pixels)
-            current_value += 1
-            time.sleep(0.001)
+        for i in range(st.session_state.max_pixels, max_processable_pixels + 1):
+            st.session_state.max_pixels = i
+            pixels_slider.slider("Pixels to process", 1, max_processable_pixels, i)
+            time.sleep(1)
     else:
-        # Regular slider when animation is off
-        st.session_state.max_pixels = slider_placeholder.slider("Pixels to process", 1, max_processable_pixels, st.session_state.max_pixels)
+        st.session_state.max_pixels = pixels_slider.slider("Pixels to process", 1, max_processable_pixels, st.session_state.max_pixels)
 
-    # Create tabs
+    params["max_pixels"] = st.session_state.max_pixels
+
     tabs = st.tabs(TABS)
+    
+    # Use handle_image_analysis for image processing
+    speckle_results = handle_image_analysis(tabs[0], **params, technique="speckle")
+    nlm_results = handle_image_analysis(tabs[1], **params, technique="nlm")
 
-    # Process images
-    std_dev_image, speckle_contrast_image, mean_image = handle_image_analysis(
-        tabs[0], image_np, kernel_size, stride, st.session_state.max_pixels, cmap, "speckle", 
-        search_window_size, filter_strength)[:3]
-
-    denoised_image = handle_image_analysis(
-        tabs[1], image_np, kernel_size, stride, st.session_state.max_pixels, cmap, "nlm", 
-        search_window_size, filter_strength)[0]
-
-    # Handle comparison tab
+ 
     handle_image_comparison(
         tab=tabs[2],
-        cmap_name=cmap,
+        cmap_name=params['cmap'],
         images={
             'Unprocessed Image': image_np,
-            'Standard Deviation': std_dev_image,
-            'Speckle Contrast': speckle_contrast_image,
-            'Mean Filter': mean_image,
-            'Denoised Image': denoised_image
+            'Standard Deviation': speckle_results[0],
+            'Speckle Contrast': speckle_results[1],
+            'Mean Filter': speckle_results[2],
+            'Denoised Image': nlm_results[0]
         }
     )
 
