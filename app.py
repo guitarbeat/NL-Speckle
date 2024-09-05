@@ -1,4 +1,3 @@
-
 import streamlit as st
 import streamlit_nested_layout  # noqa: F401
 
@@ -6,14 +5,14 @@ import streamlit_nested_layout  # noqa: F401
 # .
 # ├── app.py               # Main application file, contains Streamlit app structure and high-level logic.
 # ├── helpers.py           # Helper functions for plotting and displaying results.
-# ├── speckle_lib          # Functions for speckle contrast and non-local means calculations.
+# ├── image_processing_lib # Functions for speckle contrast and non-local means calculations.
 # ├── ui_components.py     # Streamlit UI components and layouts.
 # └── config.py            # Configuration variables and constants and image loading and processing.
 
 from config import set_page_config
 from ui_components import handle_comparison_tab, configure_sidebar
-from speckle_lib import handle_image_analysis
-from nlm_lib import handle_non_local_means_tab
+from image_processing_lib import handle_image_analysis
+
 
 set_page_config()
 
@@ -31,25 +30,27 @@ Let's get started!
 """)
 
 def main():
- 
     image, kernel_size, search_window_size, filter_strength, stride, cmap, animation_speed, image_np = configure_sidebar()
-
 
     max_pixels = st.slider("Pixels to process", 1, image.width * image.height, image.width * image.height)
 
     tabs = st.tabs(["Speckle Contrast Calculation", "Non-Local Means Denoising", "Speckle Contrast Comparison"])
 
-    # Tab 1
-    results = handle_image_analysis(
+    # Tab 1: Speckle Contrast Calculation
+    speckle_results = handle_image_analysis(
         tabs[0], image_np, kernel_size, stride, max_pixels, animation_speed, cmap, "speckle"
     )
-    std_dev_image, speckle_contrast_image, mean_image = results[:3]
+    std_dev_image, speckle_contrast_image, mean_image = speckle_results[:3]
 
-    handle_non_local_means_tab(tabs[1], image_np, kernel_size, stride, search_window_size, filter_strength, max_pixels, animation_speed, cmap)
+    # Tab 2: Non-Local Means Denoising
+    nlm_results = handle_image_analysis(
+        tabs[1], image_np, kernel_size, stride, max_pixels, animation_speed, cmap, "nlm",
+        search_window_size=search_window_size, filter_strength=filter_strength
+    )
+    denoised_image = nlm_results[0] if nlm_results else None
 
-    # Tab 3
-    handle_comparison_tab(tabs[2], cmap, std_dev_image, speckle_contrast_image, mean_image, image_np)
-
+    # Tab 3: Comparison
+    handle_comparison_tab(tabs[2], cmap, std_dev_image, speckle_contrast_image, mean_image, image_np, denoised_image)
 
 if __name__ == "__main__":
     main()

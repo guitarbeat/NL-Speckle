@@ -81,6 +81,7 @@ def configure_sidebar() -> Tuple[Image.Image, int, int, float, int, str, float, 
             
             # Handle animation controls
             handle_animation_controls()
+            
 
     return image, kernel_size, search_window_size, filter_strength, stride, cmap, animation_speed, image_np
 
