@@ -13,6 +13,13 @@ from config import (PRELOADED_IMAGES, COLOR_MAPS,
                     SESSION_STATE_KEYS)
 from typing import Tuple, Dict
 
+
+
+def add_gaussian_noise(image: np.ndarray, mean: float = 0, std: float = 0.1) -> np.ndarray:
+    noise = np.random.normal(mean, std, image.shape)
+    noisy_image = image + noise
+    return np.clip(noisy_image, 0, 1)  # Ensure values are between 0 and 1
+
 #-----------------------------Stuff ------------------------------ #
 
 
@@ -79,7 +86,28 @@ def configure_sidebar() -> Tuple[Image.Image, int, int, float, int, str, float, 
             handle_animation_controls()
             
 
-    return image, kernel_size, search_window_size, filter_strength, stride, cmap, animation_speed, image_np
+        st.markdown("### 🎭 Image Manipulation")
+        with st.expander("Noise Addition", expanded=True):
+            # Store the original image in session state if it's not already there
+            if 'original_image_np' not in st.session_state:
+                st.session_state.original_image_np = image_np.copy()
+
+            col1, col2 = st.columns(2)
+            if col1.button("Add Gaussian Noise"):
+                noise_mean = st.slider("Noise Mean", 0.0, 1.0, 0.0, 0.01)
+                noise_std = st.slider("Noise Standard Deviation", 0.0, 1.0, 0.1, 0.01)
+                image_np = add_gaussian_noise(st.session_state.original_image_np, noise_mean, noise_std)
+                st.session_state.image_np = image_np  # Store the noisy image in session state
+                st.success("Gaussian noise added to the image!")
+
+            if col2.button("Remove Noise"):
+                if 'original_image_np' in st.session_state:
+                    st.session_state.image_np = st.session_state.original_image_np.copy()
+                    st.success("Noise removed. Original image restored!")
+                else:
+                    st.warning("No original image found to restore.")
+
+    return image, kernel_size, search_window_size, filter_strength, stride, cmap, animation_speed, st.session_state.get('image_np', image_np)
 
 # Function to initialize session state
 def initialize_session_state():
