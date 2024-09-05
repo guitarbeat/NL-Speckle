@@ -135,7 +135,7 @@ def main():
             st.session_state.max_pixels = current_value
             slider_placeholder.slider("Pixels to process", 1, max_processable_pixels, st.session_state.max_pixels)
             current_value += 1
-            time.sleep(0.1)
+            time.sleep(0.001)
     else:
         # Regular slider when animation is off
         st.session_state.max_pixels = slider_placeholder.slider("Pixels to process", 1, max_processable_pixels, st.session_state.max_pixels)
