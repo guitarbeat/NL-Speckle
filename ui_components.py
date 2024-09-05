@@ -107,6 +107,9 @@ def configure_sidebar() -> Tuple[Image.Image, int, int, float, int, str, float, 
                 else:
                     st.warning("No original image found to restore.")
 
+        # Store the processed image in session state
+        st.session_state.current_image_np = image_np
+
     return image, kernel_size, search_window_size, filter_strength, stride, cmap, animation_speed, st.session_state.get('image_np', image_np)
 
 # Function to initialize session state
