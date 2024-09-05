@@ -32,7 +32,7 @@ KERNEL_SIZE_RANGE = (1, 10)
 STRIDE_RANGE = (1, 5)
 SEARCH_WINDOW_SIZE_RANGE = (1, 21, 2)  # min, max, step
 FILTER_STRENGTH_RANGE = (0.1, 50.0, 0.1)  # min, max, step
-ANIMATION_SPEED_RANGE = (0.001, 0.5, 0.01)  # min, max, step
+ANIMATION_SPEED_RANGE = (0.0001, 0.005, 0.0001) # min, max, step
 
 # Session State Keys
 SESSION_STATE_KEYS = [
