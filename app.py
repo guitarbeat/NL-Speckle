@@ -1,33 +1,112 @@
 import streamlit as st
 import streamlit_nested_layout  # noqa: F401
+from typing import Dict, List
+from image_processing import handle_image_analysis, handle_image_comparison
+import streamlit as st
+from PIL import Image
+import numpy as np
 
-from config import set_page_config
-from ui_components import handle_comparison_tab, configure_sidebar
-from image_processing import handle_image_analysis
 
 # Constants
 TABS = ["Speckle Contrast Calculation", "Non-Local Means Denoising", "Speckle Contrast Comparison"]
+PAGE_CONFIG = {
+    "page_title": "Speckle Contrast Visualization",
+    "layout": "wide",
+    "page_icon": "favicon.png",
+    "initial_sidebar_state": "expanded",
+}
+
+# Image Configuration
+LOGO_PATH = "media/logo.png"
+PRELOADED_IMAGES: Dict[str, str] = {
+    "image50.png": "media/image50.png",
+    "spatial.tif": "media/spatial.tif",
+    "logo.jpg": "media/logo.jpg",
+}
+
+# Color Maps
+COLOR_MAPS: List[str] = [
+    "viridis", "plasma", "inferno", "magma", 
+    "cividis", "gray", "pink"
+]
+
+# Default Values
+DEFAULT_KERNEL_SIZE = 3
+DEFAULT_STRIDE = 1
+DEFAULT_SEARCH_WINDOW_SIZE = "full"
+DEFAULT_FILTER_STRENGTH = 10.0
+
+# Slider Ranges
+KERNEL_SIZE_RANGE = (1, 11)
+STRIDE_RANGE = (1, 5)
+FILTER_STRENGTH_RANGE = (0.1, 50.0, 0.1)  # min, max, step
 
 
+# Caching loaded image data
+@st.cache_data
+def load_image(image_source: str, selected_image: str = None, uploaded_file=None) -> Image.Image:
+    if image_source == "Preloaded Image":
+        return Image.open(PRELOADED_IMAGES[selected_image]).convert('L')
+    elif uploaded_file:
+        return Image.open(uploaded_file).convert('L')
+    st.warning('Please upload or select an image.')
+    st.stop()
 
-def process_speckle_contrast(tab, image_np, kernel_size, stride, max_pixels, animation_speed, cmap):
-    results = handle_image_analysis(
-        tab, image_np, kernel_size, stride, max_pixels, animation_speed, cmap, "speckle"
-    )
-    return results[:3]  # std_dev_image, speckle_contrast_image, mean_image
+# NLM Parameters and Image Processing
+def configure_image_processing():
+    with st.sidebar:
+        # Image source
+        image_source = st.radio("Choose Image Source", ["Preloaded Image", "Upload Image"])
+        selected_image = st.selectbox("Select Image", list(PRELOADED_IMAGES)) if image_source == "Preloaded Image" else None
+        uploaded_file = st.file_uploader("Upload Image") if image_source == "Upload Image" else None
+        image = load_image(image_source, selected_image, uploaded_file)
+        st.image(image, "Input Image", use_column_width=True)
 
-def process_nlm_denoising(tab, image_np, kernel_size, stride, max_pixels, animation_speed, cmap, search_window_size, filter_strength):
-    results = handle_image_analysis(
-        tab, image_np, kernel_size, stride, max_pixels, animation_speed, cmap, "nlm",
-        search_window_size=search_window_size, filter_strength=filter_strength
-    )
-    return results[0] if results else None  # denoised_image
+        # Processing parameters
+        kernel_size = st.slider('Kernel Size', *KERNEL_SIZE_RANGE, DEFAULT_KERNEL_SIZE)
+        stride = st.slider('Stride', *STRIDE_RANGE, DEFAULT_STRIDE)
+
+        # NLM Parameters
+        with st.expander("🔍 NLM Parameters", expanded=True):
+            use_full_image = st.checkbox("Use Full Image for Search", value=True)
+            if use_full_image:
+                search_window_size = "full"
+            else:
+                min_size = kernel_size + 2
+                max_size = min(max(image.width, image.height) // 2, 35)
+                search_window_size = st.slider("Search Window Size", min_size, max_size, min_size, step=2)
+        
+            filter_strength = st.slider("Filter Strength (h)", *FILTER_STRENGTH_RANGE, DEFAULT_FILTER_STRENGTH)
+
+        # Color map and animation settings
+        cmap = st.selectbox("🎨 Color Map", COLOR_MAPS, index=0)
+
+        # Convert image to numpy array and normalize
+        st.session_state.original_image_np = np.array(image) / 255.0
+
+        # Gaussian noise handling
+        if st.checkbox("Toggle Gaussian Noise"):
+            noise_mean = st.slider("Noise Mean", 0.0, 1.0, 0.0, 0.01)
+            noise_std = st.slider("Noise Std", 0.0, 1.0, 0.1, 0.01)
+            noise = np.random.normal(noise_mean, noise_std, st.session_state.original_image_np.shape)
+            st.session_state.image_np = np.clip(st.session_state.original_image_np + noise, 0, 1)
+            st.success("Noise added!")
+        else:
+            st.session_state.image_np = st.session_state.original_image_np.copy()
+
+        st.image(st.session_state.image_np, caption="Manipulated Image", use_column_width=True)
+
+    return image, kernel_size, stride, search_window_size, filter_strength, cmap, st.session_state.image_np
+
+
 
 def main():
-    set_page_config()
+    """Set the Streamlit page configuration."""
+    st.set_page_config(**PAGE_CONFIG)
+    st.logo(LOGO_PATH)
 
     # Configure sidebar and get parameters
-    image, kernel_size, search_window_size, filter_strength, stride, cmap, animation_speed, image_np = configure_sidebar()
+    image, kernel_size, stride, search_window_size, filter_strength, cmap, image_np = configure_image_processing()
 
     # Calculate max processable pixels
     max_processable_pixels = (image.width - kernel_size + 1) * (image.height - kernel_size + 1)
@@ -37,17 +116,16 @@ def main():
     tabs = st.tabs(TABS)
 
     # Process images
-    std_dev_image, speckle_contrast_image, mean_image = process_speckle_contrast(
-        tabs[0], image_np, kernel_size, stride, max_pixels, animation_speed, cmap
-    )
-    
-    denoised_image = process_nlm_denoising(
-        tabs[1], image_np, kernel_size, stride, max_pixels, animation_speed, cmap,
-        search_window_size, filter_strength
-    )
+    std_dev_image, speckle_contrast_image, mean_image = handle_image_analysis(
+        tabs[0], image_np, kernel_size, stride, max_pixels, cmap, "speckle", 
+        search_window_size, filter_strength)[:3]
+
+    denoised_image = handle_image_analysis(
+        tabs[1], image_np, kernel_size, stride, max_pixels, cmap, "nlm", 
+        search_window_size, filter_strength)[0]
 
     # Handle comparison tab
-    handle_comparison_tab(
+    handle_image_comparison(
         tab=tabs[2],
         cmap_name=cmap,
         images={
