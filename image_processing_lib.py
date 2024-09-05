@@ -2,7 +2,7 @@ import numpy as np
 import time
 import streamlit as st
 from helpers import create_plot, display_kernel_view
-from typing import Tuple, Dict
+from typing import Tuple, Dict, Optional
 import io
 from PIL import Image
 import matplotlib.pyplot as plt
@@ -11,70 +11,99 @@ import matplotlib.pyplot as plt
 
 @st.cache_data
 def calculate_speckle(image: np.ndarray, kernel_size: int, stride: int, max_pixels: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray, int, int, float, float, float]:
-    output_height = (image.shape[0] - kernel_size) // stride + 1
-    output_width = (image.shape[1] - kernel_size) // stride + 1
+    pad_size = kernel_size // 2
+    output_height = (image.shape[0] - kernel_size + 1)
+    output_width = (image.shape[1] - kernel_size + 1)
     total_pixels = min(max_pixels, output_height * output_width)
 
-    mean_filter = np.zeros((output_height, output_width))
-    std_dev_filter = np.zeros((output_height, output_width))
-    sc_filter = np.zeros((output_height, output_width))
+    mean_filter = np.zeros((image.shape[0], image.shape[1]))
+    std_dev_filter = np.zeros((image.shape[0], image.shape[1]))
+    sc_filter = np.zeros((image.shape[0], image.shape[1]))
 
     for pixel in range(total_pixels):
         row, col = divmod(pixel, output_width)
-        top_left_y, top_left_x = row * stride, col * stride
+        center_y, center_x = row + pad_size, col + pad_size
 
-        local_window = image[top_left_y:top_left_y + kernel_size, top_left_x:top_left_x + kernel_size]
+        local_window = image[row:row+kernel_size, col:col+kernel_size]
         
         # Calculate local statistics
         local_mean = np.mean(local_window)
         local_std = np.std(local_window)
         speckle_contrast = local_std / local_mean if local_mean != 0 else 0
 
-        mean_filter[row, col] = local_mean
-        std_dev_filter[row, col] = local_std
-        sc_filter[row, col] = speckle_contrast
+        mean_filter[center_y, center_x] = local_mean
+        std_dev_filter[center_y, center_x] = local_std
+        sc_filter[center_y, center_x] = speckle_contrast
 
-    last_x, last_y = top_left_x, top_left_y
+    last_x, last_y = col + pad_size, row + pad_size  # Center of the last processed kernel
     return mean_filter, std_dev_filter, sc_filter, last_x, last_y, local_mean, local_std, speckle_contrast
 
 @st.cache_data
-def calculate_nlm(image: np.ndarray, kernel_size: int, search_size: int, filter_strength: float, stride: int, max_pixels: int) -> Tuple[np.ndarray, np.ndarray, int, int, float]:
-    output_height = (image.shape[0] - kernel_size) // stride + 1
-    output_width = (image.shape[1] - kernel_size) // stride + 1
+def calculate_nlm(image: np.ndarray, kernel_size: int, search_size: Optional[int], filter_strength: float, stride: int, max_pixels: int) -> Tuple[np.ndarray, np.ndarray, int, int, float]:
+    pad_size = kernel_size // 2
+    
+    # Handle the "full image" search window case
+    if search_size is None or search_size == "full":
+        search_size = max(image.shape)
+    
+    search_pad = search_size // 2
+    output_height = (image.shape[0] - kernel_size + 1)
+    output_width = (image.shape[1] - kernel_size + 1)
     total_pixels = min(max_pixels, output_height * output_width)
 
     denoised_image = np.zeros_like(image, dtype=float)
-    weight_map = np.zeros_like(image, dtype=float)
+    weight_sum_map = np.zeros_like(image, dtype=float)
 
-    pad_size = search_size // 2
-    padded_image = np.pad(image, pad_size, mode='reflect')
+    padded_image = np.pad(image, search_pad, mode='reflect')
 
     for pixel in range(total_pixels):
         row, col = divmod(pixel, output_width)
-        center_y, center_x = row * stride + kernel_size // 2, col * stride + kernel_size // 2
+        center_y, center_x = row + search_pad, col + search_pad
 
-        search_area = padded_image[center_y:center_y+search_size, center_x:center_x+search_size]
-        weights = calculate_weights(search_area, kernel_size, filter_strength)
+        search_area = padded_image[center_y-search_pad:center_y+search_pad+1, center_x-search_pad:center_x+search_pad+1]
+        _, denoised_value, weight_sum = calculate_nlm_pixel(search_area, kernel_size, filter_strength)
 
-        denoised_image[center_y, center_x] = np.sum(search_area * weights) / np.sum(weights)
-        weight_map[center_y, center_x] = np.max(weights)
+        denoised_image[row+pad_size, col+pad_size] = denoised_value / weight_sum if weight_sum > 0 else search_area[search_pad, search_pad]
+        weight_sum_map[row+pad_size, col+pad_size] = weight_sum
 
-    last_x, last_y = center_x, center_y
-    last_weight = weight_map[last_y, last_x]
-    return denoised_image, weight_map, last_x, last_y, last_weight
+    last_x, last_y = col + pad_size, row + pad_size  # Center of the last processed kernel
+    last_weight_sum = weight_sum_map[last_y, last_x]
 
-def calculate_weights(search_area: np.ndarray, kernel_size: int, filter_strength: float) -> np.ndarray:
+    # Normalize the weight sum map
+    max_weight = np.max(weight_sum_map)
+    normalized_weight_map = weight_sum_map / max_weight if max_weight > 0 else weight_sum_map
+
+    return denoised_image, normalized_weight_map, last_x, last_y, last_weight_sum
+
+def calculate_nlm_pixel(search_area: np.ndarray, kernel_size: int, filter_strength: float) -> Tuple[np.ndarray, float, float]:
     center = search_area.shape[0] // 2
     center_patch = search_area[center:center+kernel_size, center:center+kernel_size]
 
     weights = np.zeros_like(search_area)
+    denoised_value = 0.0
+    weight_sum = 0.0
+
     for i in range(search_area.shape[0] - kernel_size + 1):
         for j in range(search_area.shape[1] - kernel_size + 1):
             patch = search_area[i:i+kernel_size, j:j+kernel_size]
-            distance = np.sum((center_patch - patch) ** 2)
-            weights[i+kernel_size//2, j+kernel_size//2] = np.exp(-distance / (filter_strength ** 2))
+            
+            # Calculate patch difference
+            patch_diff = center_patch - patch
+            
+            # Calculate Euclidean distance
+            distance = np.sum(patch_diff ** 2)
+            
+            # Calculate weight using the NLM formula
+            weight = np.exp(-distance / (filter_strength ** 2))
+            
+            # Update weight map
+            weights[i+kernel_size//2, j+kernel_size//2] = weight
+            
+            # Update denoised value and weight sum
+            denoised_value += search_area[i+kernel_size//2, j+kernel_size//2] * weight
+            weight_sum += weight
 
-    return weights
+    return weights, denoised_value, weight_sum
 
 # ---------------------------- Placeholder and Section Creation ---------------------------- #
 
@@ -93,12 +122,14 @@ def create_placeholders(technique: str) -> Dict[str, st.empty]:
             'speckle_contrast': None,
             'zoomed_speckle_contrast': None
         })
-    elif technique == "nlm":
+    if technique == "nlm":
         placeholders.update({
             'denoised_image': None,
             'zoomed_denoised_image': None,
             'weight_map': None,
             'zoomed_weight_map': None,
+            'difference_map': None,
+            'zoomed_difference_map': None,
         })
     return placeholders
 
@@ -127,11 +158,11 @@ def create_sections(placeholders: Dict[str, st.empty], technique: str):
                 key = filter_name.lower().replace(" ", "_")
                 placeholders[key], placeholders[f'zoomed_{key}'] = create_section(filter_name, expanded_main=True, expanded_zoomed=False)
     
-    elif technique == "nlm":
+    if technique == "nlm":
         filter_options = st.multiselect(
             "Select views to display",
-            ["Original Image", "Denoised Image", "Weight Map"],
-            default=["Original Image", "Denoised Image", "Weight Map"]
+            ["Original Image", "Denoised Image", "Weight Map", "Difference Map"],
+            default=["Original Image", "Weight Map", "Denoised Image", "Difference Map"]
         )
         
         columns = st.columns(len(filter_options))
@@ -144,13 +175,21 @@ def create_sections(placeholders: Dict[str, st.empty], technique: str):
                     placeholders['denoised_image'], placeholders['zoomed_denoised_image'] = create_section("Denoised Image", expanded_main=True, expanded_zoomed=False)
                 elif filter_name == "Weight Map":
                     placeholders['weight_map'], placeholders['zoomed_weight_map'] = create_section("Weight Map", expanded_main=True, expanded_zoomed=False)
+                    # st.expander("Weight Map Explanation", expanded=False)(
+                    #     "The weight map shows the contribution of each pixel in the search window to the denoised value of the "
+                    #     "current pixel. Brighter areas indicate higher weights, meaning those pixels had a stronger influence on "
+                    #     "the denoising process. This map gives insight into which parts of the image the algorithm considers similar "
+                    #     "to the current patch being processed. High weights typically correspond to areas with similar structures or patterns."
+                    # )
+                elif filter_name == "Difference Map":
+                    placeholders['difference_map'], placeholders['zoomed_difference_map'] = create_section("Difference Map", expanded_main=True, expanded_zoomed=False)
         
         # Add a section for the NLM formula
         placeholders['formula'] = st.empty()
 
 # ---------------------------- Analysis Loop and Visualization ---------------------------- #
 
-def run_analysis_loop(image_np: np.ndarray, kernel_size: int, stride: int, max_pixels: int, animation_speed: float, cmap: str, technique: str, placeholders: Dict[str, st.empty]) -> Tuple[np.ndarray, ...]:
+def run_analysis_loop(image_np: np.ndarray, kernel_size: int, stride: int, max_pixels: int, animation_speed: float, cmap: str, technique: str, placeholders: Dict[str, st.empty], search_window_size: Optional[int] = None, filter_strength: float = 0.1) -> Tuple[np.ndarray, ...]:
     
     for i in range(1, max_pixels + 1) if st.session_state.is_animating else [max_pixels]:
         st.session_state.max_pixels = max_pixels
@@ -159,11 +198,14 @@ def run_analysis_loop(image_np: np.ndarray, kernel_size: int, stride: int, max_p
             results = calculate_speckle(image_np, kernel_size, stride, i)
             mean_filter, std_dev_filter, sc_filter, last_x, last_y, last_mean, last_std, last_sc = results
             display_speckle_contrast_formula(placeholders['formula'], last_x, last_y, last_std, last_mean, last_sc)
+        elif technique == "nlm":
+            results = calculate_nlm(image_np, kernel_size, search_window_size, filter_strength, stride, i)
+            denoised_image, weight_sum_map, last_x, last_y, last_weight_sum = results
+            display_nlm_formula(placeholders['formula'], last_x, last_y, kernel_size, search_window_size, filter_strength)
         # Add calculations for other techniques here
         
-        update_visualizations(image_np, kernel_size, last_x, last_y, results, cmap, technique, placeholders, stride)
-          
-      
+        update_visualizations(image_np, kernel_size, last_x, last_y, results, cmap, technique, placeholders, stride, search_window_size)
+        
         if not st.session_state.is_animating:
             break
         
@@ -171,16 +213,22 @@ def run_analysis_loop(image_np: np.ndarray, kernel_size: int, stride: int, max_p
     
     return results
 
-def update_visualizations(image_np: np.ndarray, kernel_size: int, last_x: int, last_y: int, results: Tuple[np.ndarray, ...], cmap: str, technique: str, placeholders: Dict[str, st.empty], stride: int):
+def update_visualizations(image_np: np.ndarray, kernel_size: int, last_x: int, last_y: int, results: Tuple[np.ndarray, ...], cmap: str, technique: str, placeholders: Dict[str, st.empty], stride: int, search_window_size: Optional[int] = None):
     fig_original = create_plot(
         image_np, [], last_x, last_y, kernel_size,
         ["Original Image with Current Kernel"], cmap=cmap, 
-        search_window=None, figsize=(5, 5)
+        search_window=search_window_size, figsize=(5, 5)
     )
     placeholders['original_image'].pyplot(fig_original)
     plt.close(fig_original)  # Close the figure after plotting
 
-    zoomed_kernel = image_np[last_y : last_y + kernel_size, last_x : last_x + kernel_size]
+    # Ensure kernel is centered and within image bounds
+    kernel_start_y = max(0, last_y - kernel_size // 2)
+    kernel_start_x = max(0, last_x - kernel_size // 2)
+    kernel_end_y = min(image_np.shape[0], last_y + kernel_size // 2 + 1)
+    kernel_end_x = min(image_np.shape[1], last_x + kernel_size // 2 + 1)
+    
+    zoomed_kernel = image_np[kernel_start_y:kernel_end_y, kernel_start_x:kernel_end_x]
     display_kernel_view(zoomed_kernel, image_np, "Zoomed-In Kernel", placeholders['zoomed_kernel'], cmap)
 
     if technique == "speckle":
@@ -190,30 +238,51 @@ def update_visualizations(image_np: np.ndarray, kernel_size: int, last_x: int, l
             "Std Dev Filter": std_dev_filter,
             "Speckle Contrast": sc_filter
         }
-        for filter_name, filter_data in filter_options.items():
-            display_filter(filter_name, filter_data, last_x, last_y, cmap, placeholders, stride)
-    # Add visualizations for other techniques here
+    if technique == "nlm":
+        denoised_image, weight_sum_map = results[:2]
+        difference_map = np.abs(image_np - denoised_image)
+        filter_options = {
+            "Denoised Image": denoised_image,
+            "Weight Map": weight_sum_map,
+            "Difference Map": difference_map
+        }
+
+    for filter_name, filter_data in filter_options.items():
+        display_filter(filter_name, filter_data, last_x, last_y, cmap, placeholders, stride)
 
 def display_filter(filter_name: str, filter_data: np.ndarray, last_x: int, last_y: int, cmap: str, placeholders: Dict[str, st.empty], stride: int):
     key = filter_name.lower().replace(" ", "_")
     
     if key in placeholders and placeholders[key] is not None:
         fig_full, ax_full = plt.subplots()
-        ax_full.imshow(filter_data, cmap=cmap)
+        im = ax_full.imshow(filter_data, cmap=cmap)
         ax_full.set_title(filter_name)
         ax_full.axis('off')
+
+
+       # Only add colorbar for Weight Map
+        if filter_name == "Weight Map":
+            cbar = plt.colorbar(im, ax=ax_full)
+            cbar.set_label("Weight Value")
+        
         placeholders[key].pyplot(fig_full)
         plt.close(fig_full)  # Close the figure after plotting
     
-        zoom_size = 1
-        zoomed_data = filter_data[last_y // stride : last_y // stride + zoom_size, last_x // stride : last_x // stride + zoom_size]
+        zoom_size = 5
+        zoomed_data = filter_data[max(0, last_y - zoom_size // 2):min(filter_data.shape[0], last_y + zoom_size // 2 + 1),
+                                  max(0, last_x - zoom_size // 2):min(filter_data.shape[1], last_x + zoom_size // 2 + 1)]
         fig_zoom, ax_zoom = plt.subplots()
-        ax_zoom.imshow(zoomed_data, cmap=cmap)
+        im_zoom = ax_zoom.imshow(zoomed_data, cmap=cmap)
         ax_zoom.set_title(f"Zoomed-In {filter_name}")
         ax_zoom.axis('off')
+
+        # Only add colorbar for Weight Map in zoomed view
+        if filter_name == "Weight Map":
+            plt.colorbar(im_zoom, ax=ax_zoom, label="Weight Value")
+        
         for i, row in enumerate(zoomed_data):
             for j, val in enumerate(row):
-                ax_zoom.text(j, i, f"{val:.2f}", ha="center", va="center", color="red", fontsize=10)
+                ax_zoom.text(j, i, f"{val:.2f}", ha="center", va="center", color="red", fontsize=8)
         fig_zoom.tight_layout(pad=2)
         
         zoomed_key = f'zoomed_{key}'
@@ -309,7 +378,7 @@ def get_search_window_description(search_size):
 # ---------------------------- Main Entry Point ---------------------------- #
 
 
-def handle_image_analysis(tab: st.tabs, image_np: np.ndarray, kernel_size: int, stride: int, max_pixels: int, animation_speed: float, cmap: str, technique: str = "speckle") -> Tuple[np.ndarray, ...]:
+def handle_image_analysis(tab: st.tabs, image_np: np.ndarray, kernel_size: int, stride: int, max_pixels: int, animation_speed: float, cmap: str, technique: str = "speckle", search_window_size: Optional[int] = None, filter_strength: float = 0.1) -> Tuple[np.ndarray, ...]:
     with tab:
         st.header(f"{technique.capitalize()} Analysis", divider="rainbow")
         
@@ -320,7 +389,7 @@ def handle_image_analysis(tab: st.tabs, image_np: np.ndarray, kernel_size: int, 
         create_sections(placeholders, technique)
         
         # Calculation and visualization loop
-        results = run_analysis_loop(image_np, kernel_size, stride, max_pixels, animation_speed, cmap, technique, placeholders)
+        results = run_analysis_loop(image_np, kernel_size, stride, max_pixels, animation_speed, cmap, technique, placeholders, search_window_size, filter_strength)
         
         # Save Results Section
         create_save_section(results, technique)

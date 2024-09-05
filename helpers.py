@@ -5,7 +5,7 @@ from typing import Tuple, List, Optional
 import streamlit as st
 
  
-def create_plot(main_image: np.ndarray, overlays: List[np.ndarray], last_x: int, last_y: int, kernel_size: int, titles: List[str], cmap: str = "viridis", search_window: Optional[int | str] = None, figsize: Tuple[int, int] = (15, 5)) -> plt.Figure:
+def create_plot(main_image: np.ndarray, overlays: List[np.ndarray], last_x: int, last_y: int, kernel_size: int, titles: List[str], cmap: str = "viridis", search_window: Optional[int] = None, figsize: Tuple[int, int] = (15, 5)) -> plt.Figure:
     n_plots = 1 + len(overlays)
     fig, axs = plt.subplots(1, n_plots, figsize=figsize)
     axs = [axs] if n_plots == 1 else axs
@@ -17,29 +17,29 @@ def create_plot(main_image: np.ndarray, overlays: List[np.ndarray], last_x: int,
     axs[0].axis('off')
     
     # Add kernel rectangle
-    kernel_rect = plt.Rectangle((last_x - 0.5, last_y - 0.5), kernel_size, kernel_size, edgecolor="r", linewidth=2, facecolor="none")
+    kernel_start_x = last_x - kernel_size // 2
+    kernel_start_y = last_y - kernel_size // 2
+    kernel_rect = plt.Rectangle((kernel_start_x - 0.5, kernel_start_y - 0.5), kernel_size, kernel_size, edgecolor="r", linewidth=2, facecolor="none")
     axs[0].add_patch(kernel_rect)
     
     # Add kernel grid
-    kernel_lines = ([[(last_x - 0.5 + i, last_y - 0.5), (last_x - 0.5 + i, last_y + kernel_size - 0.5)] for i in range(1, kernel_size)] +
-                    [[(last_x - 0.5, last_y - 0.5 + i), (last_x + kernel_size - 0.5, last_y - 0.5 + i)] for i in range(1, kernel_size)])
+    kernel_lines = ([[(kernel_start_x - 0.5 + i, kernel_start_y - 0.5), (kernel_start_x - 0.5 + i, kernel_start_y + kernel_size - 0.5)] for i in range(1, kernel_size)] +
+                    [[(kernel_start_x - 0.5, kernel_start_y - 0.5 + i), (kernel_start_x + kernel_size - 0.5, kernel_start_y - 0.5 + i)] for i in range(1, kernel_size)])
     axs[0].add_collection(LineCollection(kernel_lines, colors='gray', linestyles=':', linewidths=0.5))
     
     if search_window is not None:
-        if search_window == "full":
-            search_x_start, search_y_start = 0, 0
-            search_x_end, search_y_end = main_image.shape[1], main_image.shape[0]
-        elif isinstance(search_window, int):
+        if search_window == "full":  # Full image search window
+            search_rect = plt.Rectangle((-0.5, -0.5), main_image.shape[1], main_image.shape[0], 
+                                        edgecolor="blue", linewidth=2, facecolor="none")
+            axs[0].add_patch(search_rect)
+        elif isinstance(search_window, int):  # Integer search window size
             half_window = search_window // 2
-            search_x_start = max(0, last_x - half_window)
-            search_y_start = max(0, last_y - half_window)
-            search_x_end = min(main_image.shape[1], last_x + half_window)
-            search_y_end = min(main_image.shape[0], last_y + half_window)
-        
-        search_rect = plt.Rectangle((search_x_start - 0.5, search_y_start - 0.5), 
-                                    search_x_end - search_x_start, search_y_end - search_y_start,
-                                    edgecolor="g", linewidth=2, facecolor="none")
-        axs[0].add_patch(search_rect)
+            search_x_start = last_x - half_window
+            search_y_start = last_y - half_window
+            search_rect = plt.Rectangle((search_x_start - 0.5, search_y_start - 0.5), 
+                                        search_window, search_window,
+                                        edgecolor="blue", linewidth=2, facecolor="none")
+            axs[0].add_patch(search_rect)
 
     # Plot overlays
     for ax, overlay, title in zip(axs[1:], overlays, titles[1:]):
