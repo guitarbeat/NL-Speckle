@@ -7,3 +7,4 @@ charset-normalizer
 streamlit-image-comparison
 opencv-python
 streamlit-nested-layout
+streamlit-latex
