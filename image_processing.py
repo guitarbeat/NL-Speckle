@@ -112,12 +112,13 @@ def calculate_nlm_pixel(search_area: np.ndarray, kernel_size: int, filter_streng
 
 def create_placeholders(technique: str) -> Dict[str, Any]:
     placeholders = {
-        'formula': st.empty(),
         'original_image': None,
         'zoomed_kernel': None,
+        
     }
     if technique == "speckle":
         placeholders.update({
+            'formula': st.empty(),
             'mean_filter': None,
             'zoomed_mean_filter': None,
             'standard_deviation_filter': None,
@@ -127,6 +128,7 @@ def create_placeholders(technique: str) -> Dict[str, Any]:
         })
     if technique == "nlm":
         placeholders.update({
+            'formula': st.empty(),
             'denoised_image': None,
             'zoomed_denoised_image': None,
             'weight_map': None,
@@ -181,8 +183,7 @@ def create_sections(placeholders: Dict[str, Any], technique: str):
                 elif filter_name == "Difference Map":
                     placeholders['difference_map'], placeholders['zoomed_difference_map'] = create_section("Difference Map", expanded_main=True, expanded_zoomed=False)
         
-        # Add a section for the NLM formula
-        placeholders['formula'] = st.empty()
+       
 
     # Remove any placeholders that weren't created
     keys_to_remove = [key for key in placeholders if placeholders[key] is None]
@@ -277,7 +278,7 @@ def display_nlm_formula(formula_placeholder, x, y, kernel_size, search_size, fil
             ### Key Variables:
             - **Target Pixel**: Coordinates $(x_{{{x}}}, y_{{{y}}})$ are the pixel we want to clean up. It's the pixel we're focusing on.
             - **$I(i,j)$**: This is the original image value (or intensity) at any pixel $(i,j)$, where $(i,j)$ represents pixel coordinates in the image.
-            - **Search Window ($\Omega$)**: {get_search_window_description(search_size)}. This is the area we search around the target pixel to find similar pixels.
+            - **Search Window ($\Omega$)**: {get_search_window_description(search_size)} This is the area we search around the target pixel to find similar pixels.
             - **Neighborhood ($N(x,y)$)**: A small area ({kernel_size}x{kernel_size}) around each pixel $(x,y)$. Think of this as a little box of pixels around each pixel, used to calculate its average color.
             - **Smoothing Strength ($h$)**: This is a parameter that controls how much smoothing is done. A higher value means stronger smoothing.
             """)
@@ -402,8 +403,7 @@ def handle_image_analysis(
     technique: str = "speckle",
     search_window_size: Optional[int] = None,
     filter_strength: float = 0.1,
-    placeholders: Optional[Dict[str, Any]] = None,
-    create_save: bool = True
+    placeholders: Optional[Dict[str, Any]] = None
 ) -> Tuple[np.ndarray, ...]:
     
     with tab:
@@ -424,8 +424,7 @@ def handle_image_analysis(
         # Update visualizations with the results, passing search_window_size for both techniques
         process_and_visualize_image(image_np, kernel_size, last_x, last_y, results, cmap, technique, placeholders, stride, search_window_size)
 
-        if create_save:
-            create_save_section(results, technique)
+        # create_save_section(results, technique)
 
     return results
 
@@ -490,6 +489,7 @@ def process_and_visualize_image(image: np.ndarray, kernel_size: int, x: int, y: 
     fig_original = create_plot(image, x, y, kernel_size, ["Original Image with Current Kernel"], cmap, 
                                search_window_size if technique == "nlm" else None)
     
+    
     if 'original_image' in placeholders and placeholders['original_image'] is not None:
         placeholders['original_image'].pyplot(fig_original)
 
@@ -550,4 +550,7 @@ def process_and_visualize_image(image: np.ndarray, kernel_size: int, x: int, y: 
                 placeholders[zoomed_key].pyplot(fig_zoom)
         else:
             print(f"Placeholder for {filter_name} not found or is None. Skipping visualization.")
+
+    # close all figures
+    plt.close('all')
 
