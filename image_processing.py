@@ -450,6 +450,9 @@ def process_and_visualize_image(image: np.ndarray, kernel_size: int, x: int, y: 
         kx, ky = int(plot_x - plot_kernel_size // 2), int(plot_y - plot_kernel_size // 2)
         ax.add_patch(plt.Rectangle((kx - 0.5, ky - 0.5), plot_kernel_size, plot_kernel_size, 
                                    edgecolor="r", linewidth=1, facecolor="none"))
+        # Mark the center of the kernel with a colored square pixel
+        ax.add_patch(plt.Rectangle((plot_x - 0.5, plot_y - 0.5), 1, 1, 
+                                   edgecolor="r", linewidth=0.5, facecolor="r", alpha=0.2))
         
         lines = ([[(kx + i - 0.5, ky - 0.5), (kx + i - 0.5, ky + plot_kernel_size - 0.5)] for i in range(1, plot_kernel_size)] +
                  [[(kx - 0.5, ky + i - 0.5), (kx + plot_kernel_size - 0.5, ky + i - 0.5)] for i in range(1, plot_kernel_size)])
@@ -460,6 +463,8 @@ def process_and_visualize_image(image: np.ndarray, kernel_size: int, x: int, y: 
             rect = plt.Rectangle((-0.5, -0.5), plot_image.shape[1], plot_image.shape[0], 
                                  edgecolor="blue", linewidth=2, facecolor="none")
             ax.add_patch(rect)
+
+
         elif isinstance(plot_search_window, int):
             # Adjust the search window size to be centered on the current pixel
             half_window = plot_search_window // 2
@@ -468,13 +473,6 @@ def process_and_visualize_image(image: np.ndarray, kernel_size: int, x: int, y: 
                                  edgecolor="blue", linewidth=1, facecolor="none")
             ax.add_patch(rect)
             
-            # Add a point to mark the center pixel
-            ax.plot(plot_x, plot_y, 'ro', markersize=3)
-            
-            # Add text to show the search window size
-            ax.text(plot_x, plot_y - half_window - 1, f"Search Window: {plot_search_window}x{plot_search_window}", 
-                    color='blue', ha='center', va='bottom', fontsize=8)
-
         fig.tight_layout(pad=2)
         return fig
 

@@ -1,14 +1,17 @@
 import streamlit as st
-import streamlit_nested_layout  # noqa: F401
 from typing import Dict, List
-from image_processing import handle_image_analysis, handle_image_comparison
-import streamlit as st
 from PIL import Image
 import numpy as np
 
+# Ensure streamlit_nested_layout is imported
+import streamlit_nested_layout  # noqa: F401
+
+# Import custom modules
+from image_processing import handle_image_analysis, handle_image_comparison
 
 # Constants
 TABS = ["Speckle Contrast Calculation", "Non-Local Means Denoising", "Speckle Contrast Comparison"]
+
 PAGE_CONFIG = {
     "page_title": "Speckle Contrast Visualization",
     "layout": "wide",
@@ -30,17 +33,19 @@ COLOR_MAPS: List[str] = [
     "cividis", "gray", "pink"
 ]
 
-# Default Values
-DEFAULT_KERNEL_SIZE = 3
+# Default values
 DEFAULT_STRIDE = 1
 DEFAULT_SEARCH_WINDOW_SIZE = "full"
 DEFAULT_FILTER_STRENGTH = 10.0
+DEFAULT_KERNEL_SIZE = 7
 
 # Slider Ranges
-KERNEL_SIZE_RANGE = (1, 11)
-STRIDE_RANGE = (1, 5)
-FILTER_STRENGTH_RANGE = (0.1, 50.0, 0.1)  # min, max, step
+KERNEL_SIZE_RANGE = (3, 21, DEFAULT_KERNEL_SIZE, 2)  # min, max, default, step
+STRIDE_RANGE = (1, 5, DEFAULT_STRIDE)
+FILTER_STRENGTH_RANGE = (0.01, 30.0, DEFAULT_FILTER_STRENGTH)
 
+
+#--------------------------------------------------------------#
 
 # Caching loaded image data
 @st.cache_data
@@ -63,7 +68,8 @@ def configure_image_processing():
         st.image(image, "Input Image", use_column_width=True)
 
         # Processing parameters
-        kernel_size = st.slider('Kernel Size', *KERNEL_SIZE_RANGE, DEFAULT_KERNEL_SIZE)
+        kernel_size = st.slider('Kernel Size', *KERNEL_SIZE_RANGE)
+
         stride = st.slider('Stride', *STRIDE_RANGE, DEFAULT_STRIDE)
 
         # NLM Parameters
