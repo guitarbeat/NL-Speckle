@@ -10,16 +10,12 @@ import time
 from functools import wraps
 import multiprocessing as mp
 
+# ---------------------------- Logging and Timing ---------------------------- #
 
-# ---------------------------- Image Analysis Algorithms ---------------------------- #
-
-import logging
-import time
-
-# Configure logging to remove default log information like INFO:root:
 logging.basicConfig(format='%(message)s', level=logging.INFO)
 
 def timing_decorator(func):
+    @wraps(func)
     def wrapper(*args, **kwargs):
         start_time = time.time()
         result = func(*args, **kwargs)
@@ -27,6 +23,8 @@ def timing_decorator(func):
         logging.info(f"{func.__name__} took {end_time - start_time:.2f} seconds")
         return result
     return wrapper
+
+# ---------------------------- Image Analysis Algorithms ---------------------------- #
 
 @timing_decorator
 @st.cache_data(persist=True)
@@ -230,7 +228,6 @@ def handle_image_comparison(tab, cmap_name: str, images: Dict[str, np.ndarray]):
 
 # ---------------------------- Formula Display ---------------------------- #
 
-
 # Define formulas and explanations for each technique
 FORMULA_CONFIG = {
     "speckle": {
@@ -348,7 +345,6 @@ def generate_kernel_matrix_formula(kernel_size, center_value, kernel_matrix):
             r"\\" + r"\\".join(matrix_rows) + r"\end{array}")
 
 # ---------------------------- Image Visualization ---------------------------- #
-
 
 def create_combined_plot(plot_image: np.ndarray, plot_x: int, plot_y: int, plot_kernel_size: int, 
                          title: str, plot_cmap: str = "viridis", plot_search_window: Optional[Union[str, int]] = None, 
@@ -475,6 +471,7 @@ def process_and_visualize_image(image: np.ndarray, kernel_size: int, x: int, y: 
     plt.close('all')
 
 # ---------------------------- Main Analysis Handler ---------------------------- #
+
 def handle_image_analysis(
     tab: Any,
     image_np: np.ndarray,
