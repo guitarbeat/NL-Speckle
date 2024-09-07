@@ -1,365 +1,236 @@
 import numpy as np
-import time
 import streamlit as st
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
-from typing import Tuple, List, Optional, Union, Any, Dict
-import io
-from PIL import Image
+from typing import Tuple, List, Optional, Union, Any, Dict, Callable
 from streamlit_image_comparison import image_comparison
+from numba import jit
+import logging
+import time
+from functools import wraps
 
-# ---------------------------- Core Image Stuff ---------------------------- #
 
-# ---------------------------- Core Calculations ---------------------------- #
 
-@st.cache_resource
+# Define formulas and explanations for each technique
+FORMULA_CONFIG = {
+    "speckle": {
+        "main_formula": r"SC_{{{x}, {y}}} = \frac{{\sigma}}{{\mu}} = \frac{{{std:.3f}}}{{{mean:.3f}}} = {sc:.3f}",
+        "variables": {},  # To be filled dynamically
+        "explanation": "This formula calculates the Speckle Contrast (SC) for pixel ({x}, {y})."
+    },
+    "nlm": {
+        "main_formula": r"\text{{NLM}}(x_{{{x}}}, y_{{{y}}}) = \frac{{1}}{{W(x_{{{x}}}, y_{{{y}}})}} \sum_{{(i,j) \in \Omega}} I(i,j) \cdot w((x_{{{x}}}, y_{{{y}}}), (i,j))",
+        "variables": {},  # To be filled dynamically
+        "explanation": "This formula represents the Non-Local Means (NLM) denoising algorithm for pixel ({x}, {y}).",
+        "additional_formulas": [
+            {
+                "title": "Normalization Factor",
+                "formula": r"W(x_{{{x}}}, y_{{{y}}}) = \sum_{{(i,j) \in \Omega}} w((x_{{{x}}}, y_{{{y}}}), (i,j))",
+                "explanation": "This formula calculates the normalization factor to ensure all weights sum to 1."
+            },
+            {
+                "title": "Weight Calculation",
+                "formula": r"w((x_{{{x}}}, y_{{{y}}}), (i,j)) = \exp\left(-\frac{{|P(i,j) - P(x_{{{x}}}, y_{{{y}}})|^2}}{{h^2}}\right)",
+                "explanation": "This formula determines the weight of each pixel based on neighborhood similarity. h={filter_strength} is the smoothing strength."
+            },
+            {
+                "title": "Neighborhood Average",
+                "formula": r"P(x_{{{x}}}, y_{{{y}}}) = \frac{{1}}{{|N(x_{{{x}}}, y_{{{y}}})|}} \sum_{{(k,l) \in N(x_{{{x}}}, y_{{{y}}})}} I(k,l)",
+                "explanation": "This formula calculates the average intensity of the {kernel_size}x{kernel_size} neighborhood around a pixel."
+            }
+        ]
+    }
+}
+
+# ---------------------------- Image Analysis Algorithms ---------------------------- #
+logging.basicConfig(level=logging.INFO)
+
+def timing_decorator(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        start_time = time.time()
+        result = func(*args, **kwargs)
+        end_time = time.time()
+        
+        # Extract max_pixels from args or kwargs
+        max_pixels = next((arg for arg in args if isinstance(arg, int)), None)
+        if max_pixels is None:
+            max_pixels = kwargs.get('max_pixels', 'Unknown')
+        
+        logging.info(f"{func.__name__} processed {max_pixels} pixels in {end_time - start_time:.2f} seconds")
+        return result
+    return wrapper
+
+@timing_decorator
+@st.cache_data(persist=True)
 def calculate_speckle(image: np.ndarray, kernel_size: int, stride: int, max_pixels: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray, int, int, float, float, float]:
     pad_size = kernel_size // 2
     output_height = (image.shape[0] - kernel_size + 1)
     output_width = (image.shape[1] - kernel_size + 1)
     total_pixels = min(max_pixels, output_height * output_width)
 
-    mean_filter = np.zeros((image.shape[0], image.shape[1]))
-    std_dev_filter = np.zeros((image.shape[0], image.shape[1]))
-    sc_filter = np.zeros((image.shape[0], image.shape[1]))
+    # Use float32 for better memory efficiency
+    mean_filter = np.zeros(image.shape, dtype=np.float32)
+    std_dev_filter = np.zeros(image.shape, dtype=np.float32)
+    sc_filter = np.zeros(image.shape, dtype=np.float32)
 
-    for pixel in range(total_pixels):
-        row, col = divmod(pixel, output_width)
-        center_y, center_x = row + pad_size, col + pad_size
+    # Use Numba to speed up the loop
+    @jit(nopython=True)
+    def process_pixels(image, mean_filter, std_dev_filter, sc_filter, kernel_size, output_width, total_pixels):
+        for pixel in range(total_pixels):
+            row, col = divmod(pixel, output_width)
+            center_y, center_x = row + pad_size, col + pad_size
 
-        local_window = image[row:row+kernel_size, col:col+kernel_size]
-        
-        # Calculate local statistics
-        local_mean = np.mean(local_window)
-        local_std = np.std(local_window)
-        speckle_contrast = local_std / local_mean if local_mean != 0 else 0
+            local_window = image[row:row+kernel_size, col:col+kernel_size]
+            
+            local_mean = np.mean(local_window)
+            local_std = np.std(local_window)
+            speckle_contrast = local_std / local_mean if local_mean != 0 else 0
 
-        mean_filter[center_y, center_x] = local_mean
-        std_dev_filter[center_y, center_x] = local_std
-        sc_filter[center_y, center_x] = speckle_contrast
+            mean_filter[center_y, center_x] = local_mean
+            std_dev_filter[center_y, center_x] = local_std
+            sc_filter[center_y, center_x] = speckle_contrast
 
-    last_x, last_y = col + pad_size, row + pad_size  # Center of the last processed kernel
-    return mean_filter, std_dev_filter, sc_filter, last_x, last_y, local_mean, local_std, speckle_contrast
+        return mean_filter, std_dev_filter, sc_filter
 
-@st.cache_resource
+    mean_filter, std_dev_filter, sc_filter = process_pixels(image, mean_filter, std_dev_filter, sc_filter, kernel_size, output_width, total_pixels)
+
+    last_x, last_y = (total_pixels - 1) % output_width + pad_size, (total_pixels - 1) // output_width + pad_size
+    return mean_filter, std_dev_filter, sc_filter, last_x, last_y, mean_filter[last_y, last_x], std_dev_filter[last_y, last_x], sc_filter[last_y, last_x]
+
+@timing_decorator
+@st.cache_data(persist=True)
 def calculate_nlm(image: np.ndarray, kernel_size: int, search_size: Optional[int], filter_strength: float, stride: int, max_pixels: int) -> Tuple[np.ndarray, np.ndarray, int, int, float]:
-    pad_size = kernel_size // 2
     
-    # Handle the "full image" search window case
-    if search_size is None or search_size == "full":
-        search_size = max(image.shape)
-    
-    search_pad = search_size // 2
-    output_height = (image.shape[0] - kernel_size + 1)
-    output_width = (image.shape[1] - kernel_size + 1)
-    total_pixels = min(max_pixels, output_height * output_width)
+    # Initialize output arrays for NLM(x, y) and W(x, y)
+    denoised_image = np.zeros_like(image, dtype=np.float32)
+    weight_sum_map = np.zeros_like(image, dtype=np.float32)
 
-    denoised_image = np.zeros_like(image, dtype=float)
-    weight_sum_map = np.zeros_like(image, dtype=float)
+    height, width = image.shape
+    total_pixels = min(max_pixels, height * width)
 
-    padded_image = np.pad(image, search_pad, mode='reflect')
+    @jit(nopython=True)
+    def process_nlm(image, denoised_image, weight_sum_map, kernel_size, filter_strength, total_pixels, search_size):
+        height, width = image.shape
+        pad_size = kernel_size // 2
+        for pixel in range(total_pixels):
+            y, x = divmod(pixel, width)
 
-    for pixel in range(total_pixels):
-        row, col = divmod(pixel, output_width)
-        center_y, center_x = row + search_pad, col + search_pad
+            # Define P(x, y): the neighborhood around the current pixel
+            y_start, y_end = max(0, y - pad_size), min(height, y + pad_size + 1)
+            x_start, x_end = max(0, x - pad_size), min(width, x + pad_size + 1)
+            center_patch = image[y_start:y_end, x_start:x_end]
+            
+            denoised_value = 0.0
+            weight_sum = 0.0  # This represents W(x, y) in the formula
 
-        search_area = padded_image[center_y-search_pad:center_y+search_pad+1, center_x-search_pad:center_x+search_pad+1]
-        _, denoised_value, weight_sum = calculate_nlm_pixel(search_area, kernel_size, filter_strength)
+            # Define Ω: the search window
+            if search_size is None:
+                search_y_start, search_y_end = 0, height
+                search_x_start, search_x_end = 0, width
+            else:
+                search_y_start = max(0, y - search_size // 2)
+                search_y_end = min(height, y + search_size // 2 + 1)
+                search_x_start = max(0, x - search_size // 2)
+                search_x_end = min(width, x + search_size // 2 + 1)
 
-        denoised_image[row+pad_size, col+pad_size] = denoised_value / weight_sum if weight_sum > 0 else search_area[search_pad, search_pad]
-        weight_sum_map[row+pad_size, col+pad_size] = weight_sum
+            # Iterate over Ω
+            for i in range(search_y_start, search_y_end):
+                for j in range(search_x_start, search_x_end):
+                    # Define P(i, j): the neighborhood around the comparison pixel
+                    i_start, i_end = max(0, i - pad_size), min(height, i + pad_size + 1)
+                    j_start, j_end = max(0, j - pad_size), min(width, j + pad_size + 1)
+                    patch = image[i_start:i_end, j_start:j_end]
+                    
+                    # Ensure patches are the same size for comparison
+                    min_height = min(center_patch.shape[0], patch.shape[0])
+                    min_width = min(center_patch.shape[1], patch.shape[1])
+                    center_patch_crop = center_patch[:min_height, :min_width]
+                    patch_crop = patch[:min_height, :min_width]
+                    
+                    # Calculate ||P(x, y) - P(i, j)||^2
+                    distance = np.sum((center_patch_crop - patch_crop)**2)
+                    
+                    # Calculate w((x, y), (i, j)) = exp(-||P(x, y) - P(i, j)||^2 / h^2)
+                    weight = np.exp(-distance / (filter_strength ** 2))
+                    
+                    # Accumulate w((x, y), (i, j)) * I(i, j)
+                    denoised_value += image[i, j] * weight
+                    # Accumulate W(x, y)
+                    weight_sum += weight
+                    # Track total weight for each pixel (not in original formula, used for visualization)
+                    weight_sum_map[i, j] += weight
 
-    last_x, last_y = col + pad_size, row + pad_size  # Center of the last processed kernel
+            # Calculate NLM(x, y) = (1 / W(x, y)) * Σ w((x, y), (i, j)) * I(i, j)
+            denoised_image[y, x] = denoised_value / weight_sum if weight_sum > 0 else image[y, x]
+
+        return denoised_image, weight_sum_map
+
+    denoised_image, weight_sum_map = process_nlm(image, denoised_image, weight_sum_map, kernel_size, filter_strength, total_pixels, search_size)
+
+    last_x, last_y = (total_pixels - 1) % width, (total_pixels - 1) // width
     last_weight_sum = weight_sum_map[last_y, last_x]
 
-    # Normalize the weight sum map
+    # Normalize weight_sum_map for visualization (not part of the original NLM formula)
     max_weight = np.max(weight_sum_map)
     normalized_weight_map = weight_sum_map / max_weight if max_weight > 0 else weight_sum_map
 
     return denoised_image, normalized_weight_map, last_x, last_y, last_weight_sum
 
-def calculate_nlm_pixel(search_area: np.ndarray, kernel_size: int, filter_strength: float) -> Tuple[np.ndarray, float, float]:
-    center = search_area.shape[0] // 2
-    center_patch = search_area[center:center+kernel_size, center:center+kernel_size]
 
-    weights = np.zeros_like(search_area)
-    denoised_value = 0.0
-    weight_sum = 0.0
+# ---------------------------- UI Components and Layout ---------------------------- #
 
-    for i in range(search_area.shape[0] - kernel_size + 1):
-        for j in range(search_area.shape[1] - kernel_size + 1):
-            patch = search_area[i:i+kernel_size, j:j+kernel_size]
-            
-            # Calculate patch difference
-            patch_diff = center_patch - patch
-            
-            # Calculate Euclidean distance
-            distance = np.sum(patch_diff ** 2)
-            
-            # Calculate weight using the NLM formula
-            weight = np.exp(-distance / (filter_strength ** 2))
-            
-            # Update weight map
-            weights[i+kernel_size//2, j+kernel_size//2] = weight
-            
-            # Update denoised value and weight sum
-            denoised_value += search_area[i+kernel_size//2, j+kernel_size//2] * weight
-            weight_sum += weight
-
-    return weights, denoised_value, weight_sum
-
-# ---------------------------- Placeholder and Section Creation ---------------------------- #
-
-def create_placeholders(technique: str) -> Dict[str, Any]:
-    placeholders = {
-        'original_image': None,
-        'zoomed_kernel': None,
-        
-    }
-    if technique == "speckle":
-        placeholders.update({
+def create_placeholders_and_sections(technique: str, tab: st.delta_generator.DeltaGenerator, show_full_processed: bool) -> Dict[str, Any]:
+    with tab:
+        placeholders = {
             'formula': st.empty(),
-            'mean_filter': None,
-            'zoomed_mean_filter': None,
-            'standard_deviation_filter': None,
-            'zoomed_standard_deviation_filter': None,
-            'speckle_contrast': None,
-            'zoomed_speckle_contrast': None
-        })
-    if technique == "nlm":
-        placeholders.update({
-            'formula': st.empty(),
-            'denoised_image': None,
-            'zoomed_denoised_image': None,
-            'weight_map': None,
-            'zoomed_weight_map': None,
-            'difference_map': None,
-            'zoomed_difference_map': None,
-        })
-    return placeholders
+            'original_image': st.empty()  # Always create a placeholder for the original image
+        }
 
-def create_sections(placeholders: Dict[str, Any], technique: str):
-    def create_section(title: str, expanded_main: bool = False, expanded_zoomed: bool = False):
-        with st.expander(title, expanded=expanded_main):
-            main_placeholder = st.empty()
-            with st.expander(f"Zoomed-in {title.split()[0]}", expanded=expanded_zoomed):
-                zoomed_placeholder = st.empty()
-        return main_placeholder, zoomed_placeholder
-    
-    if technique == "speckle":
-        filter_options = st.multiselect(
-            "Select filters to display",
-            ["Mean Filter", "Std Dev Filter", "Speckle Contrast"],
-            default=["Mean Filter", "Std Dev Filter", "Speckle Contrast"]
+        filter_options = {
+            "speckle": ["Mean Filter", "Std Dev Filter", "Speckle Contrast"],
+            "nlm": ["Weight Map", "NL-Means Image", "Difference Map"]
+        }
+
+        selected_filters = {
+            "speckle": ["Speckle Contrast"],
+            "nlm": ["NL-Means Image"]
+        }
+
+        selected_filters = st.multiselect(
+            "Select views to display",
+            filter_options[technique],
+            default=selected_filters[technique]
         )
-        
-        columns = st.columns(len(filter_options) + 1)  # +1 for the original image
-        
+
+        columns = st.columns(len(selected_filters) + 1)  # +1 for the original image
+
+        # Create placeholder for original image
         with columns[0]:
-            placeholders['original_image'], placeholders['zoomed_kernel'] = create_section("Original Image with Current Kernel", expanded_main=True, expanded_zoomed=False)
-        
-        for i, filter_name in enumerate(filter_options, start=1):
+            if not show_full_processed:
+                placeholders['original_image'], placeholders['zoomed_original_image'] = create_section("Original Image", expanded_main=True)
+            else:
+                placeholders['original_image'] = st.empty()
+
+        # Create placeholders for selected filters
+        for i, filter_name in enumerate(selected_filters, start=1):
             with columns[i]:
                 key = filter_name.lower().replace(" ", "_")
-                placeholders[key], placeholders[f'zoomed_{key}'] = create_section(filter_name, expanded_main=True, expanded_zoomed=False)
-    
-    elif technique == "nlm":
-        filter_options = st.multiselect(
-            "Select views to display",
-            ["Original Image", "Denoised Image", "Weight Map", "Difference Map"],
-            default=["Original Image", "Weight Map", "Denoised Image", "Difference Map"]
-        )
-        
-        columns = st.columns(len(filter_options))
-        
-        for i, filter_name in enumerate(filter_options):
-            with columns[i]:
-                if filter_name == "Original Image":
-                    placeholders['original_image'], placeholders['zoomed_kernel'] = create_section("Original Image with Current Kernel", expanded_main=True, expanded_zoomed=False)
-                elif filter_name == "Denoised Image":
-                    placeholders['denoised_image'], placeholders['zoomed_denoised_image'] = create_section("Denoised Image", expanded_main=True, expanded_zoomed=False)
-                elif filter_name == "Weight Map":
-                    placeholders['weight_map'], placeholders['zoomed_weight_map'] = create_section("Weight Map", expanded_main=True, expanded_zoomed=False)
-                elif filter_name == "Difference Map":
-                    placeholders['difference_map'], placeholders['zoomed_difference_map'] = create_section("Difference Map", expanded_main=True, expanded_zoomed=False)
-        
-       
+                if show_full_processed:
+                    placeholders[key] = st.empty()
+                else:
+                    placeholders[key], placeholders[f'zoomed_{key}'] = create_section(filter_name, expanded_main=True)
 
-    # Remove any placeholders that weren't created
-    keys_to_remove = [key for key in placeholders if placeholders[key] is None]
-    for key in keys_to_remove:
-        del placeholders[key]
+        if not show_full_processed:
+            placeholders['zoomed_kernel'] = placeholders.get('zoomed_kernel', st.empty())
 
-    return placeholders
+        return placeholders
 
-# ---------------------------- Analysis Loop and Visualization ---------------------------- #
-
-def display_filter(filter_name: str, filter_data: np.ndarray, last_x: int, last_y: int, cmap: str, placeholders: Dict[str, Any], stride: int):
-    key = filter_name.lower().replace(" ", "_")
-    
-    if key in placeholders and placeholders[key] is not None:
-        fig_full, ax_full = plt.subplots()
-        im = ax_full.imshow(filter_data, cmap=cmap)
-        ax_full.set_title(filter_name)
-        ax_full.axis('off')
-
-
-       # Only add colorbar for Weight Map
-        if filter_name == "Weight Map":
-            cbar = plt.colorbar(im, ax=ax_full, pad=0.01, format='%.0f%%')
-            cbar.ax.tick_params(labelsize=6)
-        
-        placeholders[key].pyplot(fig_full)
-        plt.close(fig_full)  # Close the figure after plotting
-    
-        zoom_size = 5
-        zoomed_data = filter_data[max(0, last_y - zoom_size // 2):min(filter_data.shape[0], last_y + zoom_size // 2 + 1),
-                                  max(0, last_x - zoom_size // 2):min(filter_data.shape[1], last_x + zoom_size // 2 + 1)]
-        fig_zoom, ax_zoom = plt.subplots()
-        im_zoom = ax_zoom.imshow(zoomed_data, cmap=cmap)
-        ax_zoom.set_title(f"Zoomed-In {filter_name}")
-        ax_zoom.axis('off')
-
-        # Only add colorbar for Weight Map in zoomed view
-        if filter_name == "Weight Map":
-            cbar = plt.colorbar(im_zoom, ax=ax_zoom, pad=0.01, format='%.0f%%')
-            cbar.ax.tick_params(labelsize=6)
-        
-        for i, row in enumerate(zoomed_data):
-            for j, val in enumerate(row):
-                ax_zoom.text(j, i, f"{val:.2f}", ha="center", va="center", color="red", fontsize=8)
-        fig_zoom.tight_layout(pad=2)
-        
-        zoomed_key = f'zoomed_{key}'
-        if zoomed_key in placeholders and placeholders[zoomed_key] is not None:
-            placeholders[zoomed_key].pyplot(fig_zoom)
-    else:
-        print(f"Placeholder for {filter_name} not found or is None. Skipping visualization.")
-
-# ---------------------------- Save Results ---------------------------- #
-
-def create_save_section(results: Tuple[np.ndarray, ...], technique: str):
-    with st.expander("Save Results"):
-        if technique == "speckle":
-            mean_filter, std_dev_filter, sc_filter, *_ = results
-            if std_dev_filter is not None and sc_filter is not None:
-                filter_options = {
-                    "std_dev_filter": (std_dev_filter, "std_dev_filter.png", "Download Std Dev Filter"),
-                    "speckle_contrast": (sc_filter, "speckle_contrast.png", "Download Speckle Contrast Image"),
-                    "mean_filter": (mean_filter, "mean_filter.png", "Download Mean Filter")
-                }
-                for filter_data, filename, button_text in filter_options.values():
-                    create_download_button(filter_data, filename, button_text)
-            else:
-                st.error("No results to save. Please generate images by running the analysis.")
-        # Add save options for other techniques here
-
-def create_download_button(image: np.ndarray, filename: str, button_text: str):
-    img_buffer = io.BytesIO()
-    Image.fromarray((255 * image).astype(np.uint8)).save(img_buffer, format='PNG')
-    img_buffer.seek(0)
-    st.download_button(label=button_text, data=img_buffer, file_name=filename, mime="image/png")
-
-# ---------------------------- Information Display ---------------------------- #
-
-def display_speckle_contrast_formula(formula_placeholder: Any, x: int, y: int, std: float, mean: float, sc: float):
-    """Display the speckle contrast formula."""
-    with formula_placeholder.container():
-        st.latex(f'SC_{{{x}, {y}}} = \\frac{{\\sigma}}{{\\mu}} = \\frac{{{std:.3f}}}{{{mean:.3f}}} = {sc:.3f}')
-
-# Display the formula for Non-Local Means denoising in simpler terms
-def display_nlm_formula(formula_placeholder, x, y, kernel_size, search_size, filter_strength):
-    """Display the formula for Non-Local Means denoising for a specific pixel."""
-    
-    with formula_placeholder.container():
-        with st.expander("Non-Local Means (NLM) Denoising Formula", expanded=False):
-            # Simple explanation of the variables
-            st.markdown(rf"""
-            ### Key Variables:
-            - **Target Pixel**: Coordinates $(x_{{{x}}}, y_{{{y}}})$ are the pixel we want to clean up. It's the pixel we're focusing on.
-            - **$I(i,j)$**: This is the original image value (or intensity) at any pixel $(i,j)$, where $(i,j)$ represents pixel coordinates in the image.
-            - **Search Window ($\Omega$)**: {get_search_window_description(search_size)} This is the area we search around the target pixel to find similar pixels.
-            - **Neighborhood ($N(x,y)$)**: A small area ({kernel_size}x{kernel_size}) around each pixel $(x,y)$. Think of this as a little box of pixels around each pixel, used to calculate its average color.
-            - **Smoothing Strength ($h$)**: This is a parameter that controls how much smoothing is done. A higher value means stronger smoothing.
-            """)
-
-            st.markdown("### NLM Formula Breakdown:")
-
-            # Explain the main NLM formula
-            st.latex(rf'''
-            \text{{NLM}}(x_{{{x}}}, y_{{{y}}}) = \frac{{1}}{{W(x_{{{x}}}, y_{{{y}}})}} \sum_{{(i,j) \in \Omega}} I(i,j) \cdot w((x_{{{x}}}, y_{{{y}}}), (i,j))
-            ''')
-            st.markdown(rf"""
-            **What does this formula mean?**
-            
-            - **NLM**: This is the denoised value for the pixel at $(x_{{{x}}}, y_{{{y}}})$ (the target pixel).
-            - **$W(x_{{{x}}}, y_{{{y}}})$**: This is a normalization factor that ensures all the weights (explained next) add up to 1.
-            - **$\sum_{{(i,j) \in \Omega}}$**: This symbol means we are adding up values for all pixels $(i,j)$ inside the search window $\Omega$.
-            - **$I(i,j)$**: This is the original image value (intensity) at pixel $(i,j)$.
-            - **$w((x_{{{x}}}, y_{{{y}}}), (i,j))$**: This is the weight we assign to pixel $(i,j)$, which depends on how similar its neighborhood is to the target pixel's neighborhood.
-            
-            In simple terms, this formula calculates the new value for the target pixel by averaging the values of all pixels in the search window. Pixels that are more similar to the target pixel's neighborhood are given more importance (higher weight).
-            """)
-
-            # Explain the normalization factor formula
-            st.latex(rf'''
-            W(x_{{{x}}}, y_{{{y}}}) = \sum_{{(i,j) \in \Omega}} w((x_{{{x}}}, y_{{{y}}}), (i,j))
-            ''')
-            st.markdown(rf"""
-            **What does this formula mean?**
-            
-            - **$W(x_{{{x}}}, y_{{{y}}})$**: This is the sum of all the weights for the pixels in the search window $\Omega$. 
-            - **$\sum_{{(i,j) \in \Omega}}$**: This symbol means we add up the weights for all pixels $(i,j)$ in the search window.
-            - **$w((x_{{{x}}}, y_{{{y}}}), (i,j))$**: These are the weights that tell us how much each pixel contributes to the final value of the target pixel.
-            
-            This ensures that the contributions (or weights) of all pixels in the search window add up to 1, so the final value is correctly balanced.
-            """)
-
-            # Explain the weight calculation formula
-            st.latex(rf'''
-            w((x_{{{x}}}, y_{{{y}}}), (i,j)) = \exp\left(-\frac{{|P(i,j) - P(x_{{{x}}}, y_{{{y}}})|^2}}{{h^2}}\right)
-            ''')
-            st.markdown(rf"""
-            **What does this formula mean?**
-            
-            - **$w((x_{{{x}}}, y_{{{y}}}), (i,j))$**: This is the weight given to the pixel $(i,j)$ when deciding the value of the target pixel.
-            - **$\exp()$**: This stands for "exponential function," and it's used here to ensure the weight decreases quickly as the difference between neighborhoods increases.
-            - **$|P(i,j) - P(x_{{{x}}}, y_{{{y}}})|^2$**: This is the squared difference between the average color (or intensity) of the neighborhood around pixel $(i,j)$ and the neighborhood around the target pixel $(x_{{{x}}}, y_{{{y}}})$.
-            - **$h$**: This is the smoothing strength. A smaller $h$ makes the formula more sensitive to differences, while a larger $h$ makes it less sensitive.
-
-            This formula says that the more similar two neighborhoods are, the higher the weight given to that pixel. Similar neighborhoods have a smaller difference, so they get a bigger weight.
-            """)
-
-            # Explain the neighborhood average formula 
-            st.latex(rf'''
-            P(x_{{{x}}}, y_{{{y}}}) = \frac{{1}}{{|N(x_{{{x}}}, y_{{{y}}})|}} \sum_{{(k,l) \in N(x_{{{x}}}, y_{{{y}}})}} I(k,l)
-            ''')
-            st.markdown(rf"""
-            **What does this formula mean?**
-            
-            - **$P(x_{{{x}}}, y_{{{y}}})$**: This is the average color (or intensity) of the neighborhood around the pixel $(x_{{{x}}}, y_{{{y}}})$.
-            - **$\sum_{{(k,l) \in N(x_{{{x}}}, y_{{{y}}})}}$**: This means we are adding up the values of all pixels $(k,l)$ in the neighborhood $N(x_{{{x}}}, y_{{{y}}})$.
-            - **$I(k,l)$**: This is the intensity (or color value) of pixel $(k,l)$.
-            - **$|N(x_{{{x}}}, y_{{{y}}})|$**: This is the number of pixels in the neighborhood/kernel (for example, if the neighborhood is 3x3, there are 9 pixels).
-
-            This formula calculates the average intensity of the pixels in the neighborhood around the target pixel. It's used to compare how similar different areas of the image are.
-            """)
-
-            st.markdown("""
-            ### Additional Notes:
-            - The **search window** ($\Omega$) is the area where we look for similar pixels to help denoise the target pixel.
-            - The **neighborhood size** affects how we measure the similarity between pixels.
-            - The **smoothing strength ($h$)** controls how much noise is removed. Larger $h$ means more aggressive denoising.
-            """)
-
-# Helper function to describe the search window in simpler terms
-def get_search_window_description(search_size):
-    if search_size == "full":
-        return "We search the entire image for similar pixels."
-    else:
-        return f"A search window of size {search_size}x{search_size} centered around the target pixel."
-
-# ---------------------------- Image Comparison ---------------------------- #
+def create_section(title: str, expanded_main: bool = False, expanded_zoomed: bool = False):
+    with st.expander(title, expanded=expanded_main):
+        main_placeholder = st.empty()
+        zoomed_placeholder = st.expander(f"Zoomed-in {title.split()[0]}", expanded=expanded_zoomed).empty()
+    return main_placeholder, zoomed_placeholder
 
 def handle_image_comparison(tab, cmap_name: str, images: Dict[str, np.ndarray]):
     with tab:
@@ -391,7 +262,170 @@ def handle_image_comparison(tab, cmap_name: str, images: Dict[str, np.ndarray]):
         else:
             st.info("Select two images to compare.")
 
-# ---------------------------- Main Entry Point ---------------------------- #
+# ---------------------------- Formula Display ---------------------------- #
+
+def display_formula(formula_placeholder: Any, technique: str, formula_config: Dict[str, Any], **kwargs):
+    """
+    Display the formula for various image processing techniques dynamically.
+    
+    :param formula_placeholder: Streamlit container to display the formula
+    :param technique: String identifier for the technique (e.g., "speckle", "nlm")
+    :param formula_config: Dictionary containing technique-specific parameters and formulas
+    :param kwargs: Additional keyword arguments for formula variables
+    """
+    with formula_placeholder.container():
+        if technique not in formula_config:
+            st.error(f"Unknown technique: {technique}")
+            return
+
+        config = formula_config[technique]
+        
+        # Update variables with provided kwargs
+        config['variables'].update(kwargs)
+        
+        # Display the main formula
+        st.latex(config['main_formula'].format(**config['variables']))
+        
+        # Display explanation if available
+        if 'explanation' in config:
+            st.markdown(config['explanation'].format(**config['variables']))
+        
+        # Display additional formulas and explanations
+        for additional_formula in config.get('additional_formulas', []):
+            with st.expander(additional_formula['title'], expanded=False):
+                st.latex(additional_formula['formula'].format(**config['variables']))
+                st.markdown(additional_formula['explanation'].format(**config['variables']))
+
+def get_search_window_description(search_size):
+    return "We search the entire image for similar pixels." if search_size == "full" else f"A search window of size {search_size}x{search_size} centered around the target pixel."
+
+# ---------------------------- Image Visualization ---------------------------- #
+
+def create_combined_plot(plot_image: np.ndarray, plot_x: int, plot_y: int, plot_kernel_size: int, 
+                         title: str, plot_cmap: str = "viridis", plot_search_window: Optional[Union[str, int]] = None, 
+                         zoom: bool = False, vmin: Optional[float] = None, vmax: Optional[float] = None) -> plt.Figure:
+    fig, ax = plt.subplots(1, 1)
+    
+    # Use the provided vmin and vmax for consistent color mapping
+    im = ax.imshow(plot_image, cmap=plot_cmap, vmin=vmin, vmax=vmax)
+    ax.set_title(title)
+    ax.axis('off')
+
+    if not zoom:
+        # Mark the center of the kernel
+        ax.add_patch(plt.Rectangle((plot_x - 0.5, plot_y - 0.5), 1, 1, 
+                                   edgecolor="r", linewidth=0.5, facecolor="r", alpha=0.2))
+        
+        # Kernel overlay for the original image
+        if title == "Original Image with Current Kernel":
+            kx, ky = int(plot_x - plot_kernel_size // 2), int(plot_y - plot_kernel_size // 2)
+            ax.add_patch(plt.Rectangle((kx - 0.5, ky - 0.5), plot_kernel_size, plot_kernel_size, 
+                                       edgecolor="r", linewidth=1, facecolor="none"))
+            lines = ([[(kx + i - 0.5, ky - 0.5), (kx + i - 0.5, ky + plot_kernel_size - 0.5)] for i in range(1, plot_kernel_size)] +
+                     [[(kx - 0.5, ky + i - 0.5), (kx + plot_kernel_size - 0.5, ky + i - 0.5)] for i in range(1, plot_kernel_size)])
+            ax.add_collection(LineCollection(lines, colors='red', linestyles=':', linewidths=0.5))
+            
+        # Search window overlay (for NLM)
+        if plot_search_window == "full":
+            rect = plt.Rectangle((-0.5, -0.5), plot_image.shape[1], plot_image.shape[0], 
+                                 edgecolor="blue", linewidth=2, facecolor="none")
+            ax.add_patch(rect)
+        elif isinstance(plot_search_window, int):
+            half_window = plot_search_window // 2
+            rect = plt.Rectangle((plot_x - half_window - 0.5, plot_y - half_window - 0.5), 
+                                 plot_search_window, plot_search_window, 
+                                 edgecolor="blue", linewidth=1, facecolor="none")
+            ax.add_patch(rect)
+    else:
+        # Value annotations for zoomed view
+        for i in range(plot_image.shape[0]):
+            for j in range(plot_image.shape[1]):
+                ax.text(j, i, f"{plot_image[i, j]:.2f}", ha="center", va="center", color="red", fontsize=8)
+
+    fig.tight_layout(pad=2)
+    return fig
+
+def process_and_visualize_image(image: np.ndarray, kernel_size: int, x: int, y: int, 
+                                results: Tuple[np.ndarray, ...], cmap: str, technique: str, 
+                                placeholders: Dict[str, Any], stride: int, 
+                                search_window_size: Optional[int] = None,
+                                show_full_processed: bool = False):
+    
+    # Calculate vmin and vmax for consistent color mapping
+    vmin, vmax = np.min(image), np.max(image)
+
+    # Always display original image
+    if show_full_processed:
+        fig_original = plt.figure()
+        plt.imshow(image, cmap=cmap, vmin=vmin, vmax=vmax)
+        plt.axis('off')
+        plt.title("Original Image")
+    else:
+        fig_original = create_combined_plot(image, x, y, kernel_size, "Original Image with Current Kernel", cmap, 
+                                            search_window_size if technique == "nlm" else None, vmin=vmin, vmax=vmax)
+    
+    placeholders['original_image'].pyplot(fig_original)
+
+    if not show_full_processed:
+        # Create zoomed view of original image
+        zoom_size = kernel_size
+        ky, kx = max(0, y - zoom_size // 2), max(0, x - zoom_size // 2)
+        zoomed_original = image[ky:min(image.shape[0], ky + zoom_size),
+                                kx:min(image.shape[1], kx + zoom_size)]
+        fig_zoom_original = create_combined_plot(zoomed_original, zoom_size // 2, zoom_size // 2, zoom_size, 
+                                                 "Zoomed-In Original Image", cmap, zoom=True, vmin=vmin, vmax=vmax)
+        if 'zoomed_original_image' in placeholders and placeholders['zoomed_original_image'] is not None:
+            placeholders['zoomed_original_image'].pyplot(fig_zoom_original)
+
+    # Process and display results based on technique
+    if technique == "speckle":
+        filter_options = {
+            "Mean Filter": results[0],
+            "Std Dev Filter": results[1],
+            "Speckle Contrast": results[2]
+        }
+    elif technique == "nlm":
+        denoised_image, weight_sum_map = results[:2]
+        filter_options = {
+            "NL-Means Image": denoised_image,
+            "Weight Map": weight_sum_map,
+            "Difference Map": np.abs(image - denoised_image)
+        }
+    else:
+        filter_options = {}
+
+    # Display filter results
+    for filter_name, filter_data in filter_options.items():
+        key = filter_name.lower().replace(" ", "_")
+        if key in placeholders and placeholders[key] is not None:
+            # Calculate vmin and vmax for this specific filter
+            filter_vmin, filter_vmax = np.min(filter_data), np.max(filter_data)
+            
+            # Full image view
+            if show_full_processed:
+                fig_full = plt.figure()
+                plt.imshow(filter_data, cmap=cmap, vmin=filter_vmin, vmax=filter_vmax)
+                plt.axis('off')
+                plt.title(filter_name)
+            else:
+                fig_full = create_combined_plot(filter_data, x, y, kernel_size, filter_name, cmap, vmin=filter_vmin, vmax=filter_vmax)
+            placeholders[key].pyplot(fig_full)
+
+            if not show_full_processed:
+                # Zoomed view
+                zoomed_data = filter_data[ky:min(filter_data.shape[0], ky + zoom_size),
+                                          kx:min(filter_data.shape[1], kx + zoom_size)]
+                fig_zoom = create_combined_plot(zoomed_data, zoom_size // 2, zoom_size // 2, zoom_size, 
+                                                f"Zoomed-In {filter_name}", cmap, zoom=True, vmin=filter_vmin, vmax=filter_vmax)
+                
+                zoomed_key = f'zoomed_{key}'
+                if zoomed_key in placeholders and placeholders[zoomed_key] is not None:
+                    placeholders[zoomed_key].pyplot(fig_zoom)
+
+    # Close all figures to avoid memory issues
+    plt.close('all')
+
+# ---------------------------- Main Analysis Handler ---------------------------- #
 
 def handle_image_analysis(
     tab: Any,
@@ -403,154 +437,25 @@ def handle_image_analysis(
     technique: str = "speckle",
     search_window_size: Optional[int] = None,
     filter_strength: float = 0.1,
-    placeholders: Optional[Dict[str, Any]] = None
+    placeholders: Optional[Dict[str, Any]] = None,
+    show_full_processed: bool = False
 ) -> Tuple[np.ndarray, ...]:
     
     with tab:
         if placeholders is None:
-            placeholders = create_placeholders(technique)
-            placeholders = create_sections(placeholders, technique)
+            placeholders = create_placeholders_and_sections(technique, tab, show_full_processed)
 
         if technique == "speckle":
             results = calculate_speckle(image_np, kernel_size, stride, max_pixels)
             last_x, last_y = results[3:5]
-            display_speckle_contrast_formula(placeholders['formula'], last_x, last_y, *results[5:])
+            display_formula(placeholders['formula'], technique, FORMULA_CONFIG, x=last_x, y=last_y, std=results[5], mean=results[6], sc=results[7])
+
         
         elif technique == "nlm":
             results = calculate_nlm(image_np, kernel_size, search_window_size, filter_strength, stride, max_pixels)
             last_x, last_y = results[2:4]
-            display_nlm_formula(placeholders['formula'], last_x, last_y, kernel_size, search_window_size, filter_strength)
+            display_formula(placeholders['formula'], technique, FORMULA_CONFIG, x=last_x, y=last_y, kernel_size=kernel_size, search_size=search_window_size, filter_strength=filter_strength)
 
-        # Update visualizations with the results, passing search_window_size for both techniques
-        process_and_visualize_image(image_np, kernel_size, last_x, last_y, results, cmap, technique, placeholders, stride, search_window_size)
-
-        # create_save_section(results, technique)
+        process_and_visualize_image(image_np, kernel_size, last_x, last_y, results, cmap, technique, placeholders, stride, search_window_size, show_full_processed)
 
     return results
-
-
-
-def create_plot(plot_image: np.ndarray, plot_x: int, plot_y: int, plot_kernel_size: int, 
-                titles: List[str], plot_cmap: str = "viridis", 
-                plot_search_window: Optional[Union[str, int]] = None, 
-                zoom: bool = False) -> plt.Figure:
-
-    # Adjust figure size for Weight Map to accommodate colorbar
- 
-    fig, ax = plt.subplots(1, 1)
-    im = ax.imshow(plot_image, cmap=plot_cmap, vmin=np.min(plot_image), vmax=np.max(plot_image))
-    ax.set_title(titles[0])
-    ax.axis('off')
-    
-    if not zoom:
-
-        # Mark the center of the kernel with a colored square pixel
-        ax.add_patch(plt.Rectangle((plot_x - 0.5, plot_y - 0.5), 1, 1, 
-                                   edgecolor="r", linewidth=0.5, facecolor="r", alpha=0.2))
-        
-        # only show kernel overly for the original image
-        if titles[0] == "Original Image with Current Kernel":
-            # Add kernel overlay
-            kx, ky = int(plot_x - plot_kernel_size // 2), int(plot_y - plot_kernel_size // 2)
-            ax.add_patch(plt.Rectangle((kx - 0.5, ky - 0.5), plot_kernel_size, plot_kernel_size, 
-                                    edgecolor="r", linewidth=1, facecolor="none"))
-            lines = ([[(kx + i - 0.5, ky - 0.5), (kx + i - 0.5, ky + plot_kernel_size - 0.5)] for i in range(1, plot_kernel_size)] +
-                    [[(kx - 0.5, ky + i - 0.5), (kx + plot_kernel_size - 0.5, ky + i - 0.5)] for i in range(1, plot_kernel_size)])
-            ax.add_collection(LineCollection(lines, colors='red', linestyles=':', linewidths=0.5))
-            
-        # Add search window if specified (only for original image in NLM)
-        if plot_search_window == "full":
-            rect = plt.Rectangle((-0.5, -0.5), plot_image.shape[1], plot_image.shape[0], 
-                                 edgecolor="blue", linewidth=2, facecolor="none")
-            ax.add_patch(rect)
-        elif isinstance(plot_search_window, int):
-            half_window = plot_search_window // 2
-            rect = plt.Rectangle((plot_x - half_window - 0.5, plot_y - half_window - 0.5), 
-                                 plot_search_window - 1, plot_search_window - 1,
-                                 edgecolor="blue", linewidth=1, facecolor="none")
-            ax.add_patch(rect)
-    else:
-        # Add value annotations for zoomed view
-        for i in range(plot_image.shape[0]):
-            for j in range(plot_image.shape[1]):
-                ax.text(j, i, f"{plot_image[i, j]:.2f}", ha="center", va="center", color="red", fontsize=8)
-
-    fig.tight_layout(pad=2)
-    return fig
-
-def process_and_visualize_image(image: np.ndarray, kernel_size: int, x: int, y: int, 
-                                results: Tuple[np.ndarray, ...], cmap: str, technique: str, 
-                                placeholders: Dict[str, Any], stride: int, 
-                                search_window_size: Optional[int] = None):
-    
- 
-
-    # Display original image
-    fig_original = create_plot(image, x, y, kernel_size, ["Original Image with Current Kernel"], cmap, 
-                               search_window_size if technique == "nlm" else None)
-    
-    
-    if 'original_image' in placeholders and placeholders['original_image'] is not None:
-        placeholders['original_image'].pyplot(fig_original)
-
-    # Display zoomed kernel
-    ky, kx = max(0, y - kernel_size // 2), max(0, x - kernel_size // 2)
-    zoomed_kernel = image[ky:min(image.shape[0], y + kernel_size // 2 + 1),
-                          kx:min(image.shape[1], x + kernel_size // 2 + 1)]
-    
-    fig_zoomed, ax_zoomed = plt.subplots()
-    ax_zoomed.imshow(zoomed_kernel, cmap=cmap, vmin=np.min(image), vmax=np.max(image))
-    ax_zoomed.set_title("Zoomed-In Kernel")
-    ax_zoomed.axis('off')
-    
-    for i, row in enumerate(zoomed_kernel):
-        for j, val in enumerate(row):
-            ax_zoomed.text(j, i, f"{val:.2f}", ha="center", va="center", color="red", fontsize=10)
-    
-    fig_zoomed.tight_layout(pad=2)
-    if 'zoomed_kernel' in placeholders and placeholders['zoomed_kernel'] is not None:
-        placeholders['zoomed_kernel'].pyplot(fig_zoomed)
-
-    # Process results based on technique
-    if technique == "speckle":
-        filter_options = {
-            "Mean Filter": results[0],
-            "Std Dev Filter": results[1],
-            "Speckle Contrast": results[2]
-        }
-    elif technique == "nlm":
-        denoised_image, weight_sum_map = results[:2]
-        filter_options = {
-            "Denoised Image": denoised_image,
-            "Weight Map": weight_sum_map,
-            "Difference Map": np.abs(image - denoised_image)
-        }
-    else:
-        filter_options = {}
-
-
-    # Display filter results
-    for filter_name, filter_data in filter_options.items():
-        key = filter_name.lower().replace(" ", "_")
-        
-        if key in placeholders and placeholders[key] is not None:
-            # Full image view
-            fig_full = create_plot(filter_data, x, y, kernel_size, [filter_name], cmap)
-            placeholders[key].pyplot(fig_full)
-            
-            # Zoomed view
-            zoom_size = 5
-            zoomed_data = filter_data[max(0, y - zoom_size // 2):min(filter_data.shape[0], y + zoom_size // 2 + 1),
-                                      max(0, x - zoom_size // 2):min(filter_data.shape[1], x + zoom_size // 2 + 1)]
-            fig_zoom = create_plot(zoomed_data, zoom_size // 2, zoom_size // 2, zoom_size, 
-                                   [f"Zoomed-In {filter_name}"], cmap, zoom=True)
-            
-            zoomed_key = f'zoomed_{key}'
-            if zoomed_key in placeholders and placeholders[zoomed_key] is not None:
-                placeholders[zoomed_key].pyplot(fig_zoom)
-        else:
-            print(f"Placeholder for {filter_name} not found or is None. Skipping visualization.")
-
-    # close all figures
-    plt.close('all')
-
