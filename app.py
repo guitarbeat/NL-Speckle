@@ -71,7 +71,6 @@ def setup_processing_parameters(image: Image.Image) -> Dict[str, Any]:
     st.markdown("### ⚙️ Processing Parameters")
     with st.form("processing_params"):
         kernel_size = st.slider('Kernel Size', 3, 21, 7, 2)
-        stride = st.slider('Stride', 1, 5, 1)
         use_full_image = st.checkbox("Use Full Image for Search", value=False)
         search_window_size = "full" if use_full_image else st.slider("Search Window Size", kernel_size + 2, min(max(image.width, image.height) // 2, 35), kernel_size + 2, step=2)
         filter_strength = st.slider("Filter Strength (h)", 0.01, 30.0, 0.10)
@@ -80,7 +79,6 @@ def setup_processing_parameters(image: Image.Image) -> Dict[str, Any]:
     
     return {
         "kernel_size": kernel_size,
-        "stride": stride,
         "search_window_size": search_window_size,
         "filter_strength": filter_strength,
         "cmap": cmap
@@ -159,7 +157,6 @@ def main():
     analysis_params = {
         "image_np": sidebar_params['image_np'],
         "kernel_size": sidebar_params['kernel_size'],
-        "stride": sidebar_params['stride'],
         "search_window_size": sidebar_params['search_window_size'],
         "filter_strength": sidebar_params['filter_strength'],
         "cmap": sidebar_params['cmap'],
@@ -175,7 +172,9 @@ def main():
     else:
         update_func(max_processable_pixels)
 
-    if 'speckle_results' in st.session_state and 'nlm_results' in st.session_state:
+    if 'speckle_results' in st.session_state and st.session_state.speckle_results is not None and \
+       'nlm_results' in st.session_state and st.session_state.nlm_results is not None:
+    
         handle_image_comparison(tab=tabs[2], cmap_name=sidebar_params['cmap'], images={
             'Unprocessed Image': sidebar_params['image_np'],
             'Standard Deviation': st.session_state.speckle_results[1],
