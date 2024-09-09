@@ -492,7 +492,6 @@ def get_technique_specific_params(technique: str, results: Tuple[np.ndarray, ...
     else:
         return {}
     
-
 # Define formulas and explanations for each technique
 FORMULA_CONFIG = {
     "speckle": {
@@ -526,41 +525,71 @@ FORMULA_CONFIG = {
         ]
     },
     "nlm": {
-        "main_formula": r"I_{{{input_x},{input_y}}} = {original_value:.3f} \quad \rightarrow \quad NLM_{{{output_x},{output_y}}} = {nlm_value:.3f} = \frac{{1}}{{W({input_x}, {input_y})}} \sum_{{(i,j) \in \Omega}} I(i,j) \cdot w(({input_x}, {input_y}), (i,j))",
-        "explanation": "This formula shows the transition from the original pixel intensity I({input_x},{input_y}) = {original_value:.3f} in the input image to the Non-Local Means (NLM) denoised value NLM({output_x},{output_y}) = {nlm_value:.3f} for the corresponding pixel in the output image.",
+        "main_formula": r"I_{{{x},{y}}} = {original_value:.3f} \quad \rightarrow \quad NLM_{{{x},{y}}} = \frac{{1}}{{W(x,y)}} \sum_{{(i,j) \in \Omega}} I_{{i,j}} \cdot w((x,y), (i,j)) = {nlm_value:.3f}",
+        "explanation": """
+        This formula shows the transition from the original pixel intensity I({x},{y}) to the denoised value NLM({x},{y}) using the Non-Local Means (NLM) algorithm:
+        
+        1. For each pixel (x,y), we look at a small patch around it.
+        2. We search for similar patches in a larger window Ω (size: {search_size}x{search_size}).
+        3. We calculate a weighted average of pixels with similar surrounding patches.
+        4. Pixels with more similar patches get higher weights in the average.
+        
+        Key components:
+        • I_{{{x},{y}}}: Original intensity at pixel ({x},{y})
+        • NLM_{{{x},{y}}}: Denoised value at pixel ({x},{y})
+        • W(x,y): Normalization factor (sum of all weights)
+        • w((x,y), (i,j)): Weight between pixels (x,y) and (i,j)
+        • Ω: Search window (size: {search_size}x{search_size})
+        
+        Filter strength (h): {filter_strength:.3f}
+        """,
         "variables": {},  # To be filled dynamically
         "additional_formulas": [
             {
-                "title": "Kernel Details",
-                "formula": r"\text{{Kernel Size: }} {kernel_size} \times {kernel_size}"
+                "title": "Patch Comparison",
+                "formula": r"\text{{Patch Size: }} {kernel_size} \times {kernel_size}"
                            r"\quad\quad\text{{Centered at pixel: }}({x}, {y})"
                            r"\\\\"
                            "{kernel_matrix}",
-                "explanation": "The NLM algorithm uses a {kernel_size}x{kernel_size} kernel centered around the pixel ({x},{y}) to define the neighborhood. This matrix shows the pixel values in the kernel. The central value (in bold) corresponds to the pixel ({x},{y})."
-            },
-            {
-                "title": "Normalization Factor",
-                "formula": r"W(x_{{{x}}}, y_{{{y}}}) = \sum_{{(i,j) \in \Omega}} w((x_{{{x}}}, y_{{{y}}}), (i,j))",
-                "explanation": "This formula calculates the normalization factor to ensure all weights sum to 1."
+                "explanation": "We compare {kernel_size}x{kernel_size} patches centered around each pixel. This matrix shows the pixel values in the patch centered at ({x},{y}). The central value (in bold) is the pixel being denoised."
             },
             {
                 "title": "Weight Calculation",
-                "formula": r"w((x_{{{x}}}, y_{{{y}}}), (i,j)) = \exp\left(-\frac{{|P(i,j) - P(x_{{{x}}}, y_{{{y}}})|^2}}{{h^2}}\right)",
-                "explanation": "This formula determines the weight of each pixel based on neighborhood similarity. h={filter_strength} is the smoothing strength parameter."
+                "formula": r"w((x,y), (i,j)) = \exp\left(-\frac{{||P(x,y) - P(i,j)||^2}}{{h^2}}\right)",
+                "explanation": """
+                This formula determines how much each pixel (i,j) contributes to denoising pixel (x,y):
+                
+                - P(x,y) and P(i,j) are patches centered at (x,y) and (i,j)
+                - ||P(x,y) - P(i,j)||^2 measures how different the patches are
+                - h = {filter_strength} controls the smoothing strength
+                - More similar patches result in higher weights
+                """
             },
             {
-                "title": "Neighborhood Average",
-                "formula": r"P(x_{{{x}}}, y_{{{y}}}) = \frac{{1}}{{|N(x_{{{x}}}, y_{{{y}}})|}} \sum_{{(k,l) \in N(x_{{{x}}}, y_{{{y}}})}} I(k,l)",
-                "explanation": "This formula calculates the average intensity of the {kernel_size}x{kernel_size} neighborhood around a pixel."
+                "title": "Normalization Factor",
+                "formula": r"W(x,y) = \sum_{{(i,j) \in \Omega}} w((x,y), (i,j))",
+                "explanation": "We sum all weights for pixel (x,y). This ensures the final weighted average preserves the overall image brightness."
             },
             {
                 "title": "Search Window",
                 "formula": r"\Omega = \begin{{cases}} \text{{Full Image}} & \text{{if search_size = 'full'}} \\ {search_size} \times {search_size} \text{{ window}} & \text{{otherwise}} \end{{cases}}",
-                "explanation": "The search window Ω defines the area where similar patches are searched. {search_window_description}"
+                "explanation": "The search window Ω is where we look for similar patches. {search_window_description}"
+            },
+            {
+                "title": "Visual Representation",
+                "formula": r"\text{{[Insert diagram here]}}", # Replace with actual diagram
+                "explanation": """
+                This diagram illustrates the NLM process:
+                1. The central pixel being denoised (x,y)
+                2. Its surrounding patch P(x,y)
+                3. The larger search window Ω
+                4. Example similar patches within Ω
+                """
             }
         ]
     }
 }
+
 
 def display_formula(formula_placeholder: Any, technique: str, formula_config: Dict[str, Any], kernel_matrix: Optional[List[List[float]]] = None, **kwargs):
     with formula_placeholder.container():
