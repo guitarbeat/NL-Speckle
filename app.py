@@ -44,6 +44,14 @@ def setup_sidebar() -> Dict[str, Any]:
     if 'current_position' not in st.session_state:
         st.session_state.current_position = 1
 
+    def update_pixels(key):
+        if key == 'slider':
+            st.session_state.pixels_input = st.session_state.pixels_slider
+        else:
+            st.session_state.pixels_slider = st.session_state.pixels_input
+        st.session_state.current_position = st.session_state.pixels_slider
+        update_func()
+
     with st.sidebar:
         st.title("Image Processing Settings")
 
@@ -61,14 +69,31 @@ def setup_sidebar() -> Dict[str, Any]:
         st.image(image, "Input Image", use_column_width=True)
 
         with st.expander("⚙️ Processing Parameters", expanded=True):
-            kernel_size = st.slider('Kernel Size', 3, 21, 7, 2)
+            kernel_size = st.number_input('Kernel Size', min_value=3, max_value=21, value=7, step=2,
+                                          help="Size of the kernel for image processing")
             
             # Calculate max processable pixels
             max_pixels = calculate_max_processable_pixels(image.width, image.height, kernel_size)
             
             use_full_image = st.checkbox("Use Full Image for Search", value=False)
-            search_window_size = "full" if use_full_image else st.slider("Search Window Size", kernel_size + 2, min(max(image.width, image.height) // 2, 35), kernel_size + 2, step=2)
-            filter_strength = st.slider("Filter Strength (h)", 0.01, 30.0, 0.10)
+            if not use_full_image:
+                search_window_size = st.number_input("Search Window Size", 
+                                                     min_value=kernel_size + 2, 
+                                                     max_value=min(max(image.width, image.height) // 2, 35),
+                                                     value=kernel_size + 2,
+                                                     step=2,
+                                                     help="Size of the search window for NL-Means denoising")
+            else:
+                search_window_size = "full"
+            
+            filter_strength = st.number_input("Filter Strength (h)", 
+                                              min_value=0.01, 
+                                              max_value=30.0, 
+                                              value=0.10, 
+                                              step=0.01,
+                                              format="%.2f",
+                                              help="Strength of the NL-Means filter")
+            
             cmap = st.selectbox("🎨 Color Map", COLOR_MAPS, index=0)
 
         with st.expander("🖼️ Display Options", expanded=True):
@@ -83,8 +108,28 @@ def setup_sidebar() -> Dict[str, Any]:
                 play_pause = col1.button("▶️/⏸️", use_container_width=True) 
                 reset = col2.button("🔄 Reset", use_container_width=True)
                 
-                pixels_to_process = st.slider("Pixels to process", 1, max_pixels, 
-                                            st.session_state.get('current_position', 1), on_change=update_func)
+                pixels_to_process = st.slider(
+                    "Pixels to process (slider)",
+                    min_value=1,
+                    max_value=max_pixels,
+                    value=st.session_state.get('current_position', 1),
+                    step=1,
+                    key="pixels_slider",
+                    on_change=update_pixels,
+                    args=('slider',)
+                )
+                
+                st.number_input(
+                    "Pixels to process (input)",
+                    min_value=1,
+                    max_value=max_pixels,
+                    value=st.session_state.get('current_position', 1),
+                    step=1,
+                    key="pixels_input",
+                    on_change=update_pixels,
+                    args=('input',)
+                )
+                
                 st.session_state.current_position = pixels_to_process
             else:
                 play_pause, reset, pixels_to_process = False, False, max_pixels
@@ -92,8 +137,18 @@ def setup_sidebar() -> Dict[str, Any]:
         with st.expander("🔬 Advanced Options"):
             add_noise = st.checkbox("Toggle Gaussian Noise")
             if add_noise:
-                noise_mean = st.slider("Noise Mean", 0.0, 1.0, 0.0, 0.01) 
-                noise_std = st.slider("Noise Std", 0.0, 1.0, 0.1, 0.01)
+                noise_mean = st.number_input("Noise Mean", 
+                                             min_value=0.0, 
+                                             max_value=1.0, 
+                                             value=0.0, 
+                                             step=0.01,
+                                             format="%.2f")
+                noise_std = st.number_input("Noise Std", 
+                                            min_value=0.0, 
+                                            max_value=1.0, 
+                                            value=0.1, 
+                                            step=0.01,
+                                            format="%.2f")
                 image_np = np.clip(np.array(image) / 255.0 + np.random.normal(noise_mean, noise_std, np.array(image).shape), 0, 1)
             else:
                 image_np = np.array(image) / 255.0
