@@ -2,9 +2,14 @@ import streamlit as st
 from PIL import Image
 import numpy as np
 import time
-from typing import Dict, Any
-from image_processing import handle_image_analysis, handle_image_comparison, create_placeholders_and_sections
+from typing import Dict, Any, Optional, Tuple
+from image_processing import handle_image_comparison, create_placeholders_and_sections
 import streamlit_nested_layout # type: ignore  # noqa: F401
+
+# For updating the image processing technique
+from image_processing import process_image, display_formula, create_combined_plot, FORMULA_CONFIG
+import matplotlib.pyplot as plt
+
 
 # Constants
 TABS = ["Speckle Contrast Calculation", "Non-Local Means Denoising", "Speckle Contrast Comparison"]
@@ -30,12 +35,8 @@ def load_image(image_source: str, selected_image: str = None, uploaded_file: Any
     st.warning('Please upload or select an image.')
     st.stop()
 
-def update_func(dummy=None):
-    time.sleep(0.1)  # Add a small delay
-    st.session_state.current_position = st.session_state.get('current_position', 1)
-    update_images({"tabs": st.session_state.tabs, "analysis_params": {**st.session_state.analysis_params, "max_pixels": st.session_state.current_position}, "show_full_processed": st.session_state.sidebar_params['show_full_processed']}, 
-                  {"speckle": st.session_state.speckle_placeholders, "nlm": st.session_state.nlm_placeholders})
-    
+
+
 def calculate_max_processable_pixels(image_width, image_height, kernel_size):
     return (image_width - kernel_size + 1) * (image_height - kernel_size + 1)
 
@@ -50,7 +51,17 @@ def setup_sidebar() -> Dict[str, Any]:
         else:
             st.session_state.pixels_slider = st.session_state.pixels_input
         st.session_state.current_position = st.session_state.pixels_slider
-        update_func()
+        update_images_analyze_and_visualize(
+            image_np=st.session_state.image_np,
+            kernel_size=st.session_state.kernel_size,
+            cmap=st.session_state.cmap,
+            technique=st.session_state.technique,
+            search_window_size=st.session_state.search_window_size,
+            filter_strength=st.session_state.filter_strength,
+            show_full_processed=st.session_state.show_full_processed,
+            update_state=True,
+            handle_visualization=True
+        )
 
     with st.sidebar:
         st.title("Image Processing Settings")
@@ -75,6 +86,9 @@ def setup_sidebar() -> Dict[str, Any]:
             # Calculate max processable pixels
             max_pixels = calculate_max_processable_pixels(image.width, image.height, kernel_size)
             
+            # based on the active tab, set the technique
+            technique = st.session_state.get('technique', 'speckle')
+            
             use_full_image = st.checkbox("Use Full Image for Search", value=False)
             if not use_full_image:
                 search_window_size = st.number_input("Search Window Size", 
@@ -84,7 +98,7 @@ def setup_sidebar() -> Dict[str, Any]:
                                                      step=2,
                                                      help="Size of the search window for NL-Means denoising")
             else:
-                search_window_size = "full"
+                search_window_size = None  # Changed from "full" to None
             
             filter_strength = st.number_input("Filter Strength (h)", 
                                               min_value=0.01, 
@@ -153,6 +167,15 @@ def setup_sidebar() -> Dict[str, Any]:
             else:
                 image_np = np.array(image) / 255.0
 
+    # Store values in session state for use in update_pixels function
+    st.session_state.image_np = image_np
+    st.session_state.kernel_size = kernel_size
+    st.session_state.cmap = cmap
+    st.session_state.technique = technique
+    st.session_state.search_window_size = search_window_size
+    st.session_state.filter_strength = filter_strength
+    st.session_state.show_full_processed = show_full_processed
+
     return {
         "image": image,
         "image_np": image_np,
@@ -167,16 +190,21 @@ def setup_sidebar() -> Dict[str, Any]:
         "filter_strength": filter_strength,
         "cmap": cmap,
         "max_pixels": max_pixels if show_full_processed else pixels_to_process,
+        "technique": technique
     }
 
-def update_images(params: Dict[str, Any], placeholders: Dict[str, Any]) -> None:
-    speckle_results = handle_image_analysis(params['tabs'][0], **params['analysis_params'], technique="speckle", placeholders=placeholders['speckle'], show_full_processed=params['show_full_processed'])
-    nlm_results = handle_image_analysis(params['tabs'][1], **params['analysis_params'], technique="nlm", placeholders=placeholders['nlm'], show_full_processed=params['show_full_processed'])
-    st.session_state.processed_pixels = params['analysis_params']['max_pixels']
-    st.session_state.speckle_results = speckle_results
-    st.session_state.nlm_results = nlm_results
-
-def handle_animation(animation_params: Dict[str, Any], max_processable_pixels: int, update_func: callable):
+def handle_animation(
+    animation_params: Dict[str, Any], 
+    max_processable_pixels: int, 
+    update_images_analyze_and_visualize: callable,
+    image_np: np.ndarray,
+    kernel_size: int,
+    cmap: str,
+    technique: str,
+    search_window_size: Optional[int] = None,
+    filter_strength: float = 0.1,
+    show_full_processed: bool = False
+):
     if animation_params['play_pause']:
         st.session_state.animate = not st.session_state.get('animate', False)
     
@@ -187,10 +215,215 @@ def handle_animation(animation_params: Dict[str, Any], max_processable_pixels: i
     if st.session_state.get('animate', False):
         for i in range(st.session_state.current_position, max_processable_pixels + 1):
             st.session_state.current_position = i
-            update_func(i)
+            update_images_analyze_and_visualize(
+                image_np=image_np,
+                kernel_size=kernel_size,
+                cmap=cmap,
+                technique=technique,
+                search_window_size=search_window_size,
+                filter_strength=filter_strength,
+                show_full_processed=show_full_processed,
+                update_state=True,
+                handle_visualization=True
+            )
             time.sleep(0.01)
             if not st.session_state.get('animate', False):
                 break
+
+
+
+
+def update_images_analyze_and_visualize(
+    image_np: np.ndarray,
+    kernel_size: int,
+    cmap: str,
+    technique: str = "speckle",
+    search_window_size: Optional[int] = None,
+    filter_strength: float = 0.1,
+    show_full_processed: bool = False,
+    update_state: bool = True,
+    handle_visualization: bool = True,
+    height: Optional[int] = None,
+    width: Optional[int] = None
+) -> Tuple[Dict[str, Any], Optional[Tuple[np.ndarray, ...]]]:
+    
+    if update_state:
+        time.sleep(0.1)  # Add a small delay
+        st.session_state.current_position = st.session_state.get('current_position', 1)
+    
+    # Prepare parameters for image analysis
+    params = {
+        "tabs": st.session_state.get('tabs', []),
+        "analysis_params": {
+            "image_np": image_np,
+            "kernel_size": kernel_size,
+            "max_pixels": st.session_state.current_position if update_state else st.session_state.get('current_position', 1),
+            "cmap": cmap,
+            "search_window_size": search_window_size,
+            "filter_strength": filter_strength
+        },
+        "show_full_processed": show_full_processed
+    }
+
+    placeholders = {
+        "speckle": st.session_state.get('speckle_placeholders', {}),
+        "nlm": st.session_state.get('nlm_placeholders', {})
+    }
+
+    results = None
+    
+    if handle_visualization:
+        try:
+            # Initial setup and calculations
+            height = height or image_np.shape[0]
+            width = width or image_np.shape[1]
+            
+            valid_height = height - kernel_size + 1
+            valid_width = width - kernel_size + 1
+            total_valid_pixels = valid_height * valid_width
+            
+            pixels_to_process = min(params['analysis_params']['max_pixels'], total_valid_pixels)
+            
+            # Image processing
+            results = process_image(technique, image_np, kernel_size, pixels_to_process, height, width, 
+                                    search_window_size, filter_strength)
+            
+            # Calculate the coordinates of the last processed pixel
+            last_pixel = pixels_to_process - 1
+            last_y = (last_pixel // valid_width) + kernel_size // 2
+            last_x = (last_pixel % valid_width) + kernel_size // 2
+            
+            half_kernel = kernel_size // 2
+            last_x, last_y = int(last_x), int(last_y)
+
+            # Extract kernel values
+            y_start = max(0, last_y - half_kernel)
+            y_end = min(height, last_y + half_kernel + 1)
+            x_start = max(0, last_x - half_kernel)
+            x_end = min(width, last_x + half_kernel + 1)
+
+            kernel_values = image_np[y_start:y_end, x_start:x_end]
+            
+            if kernel_values.size == 0:
+                raise ValueError(f"Extracted kernel at ({last_x}, {last_y}) is empty. Image shape: {image_np.shape}, Kernel size: {kernel_size}")
+
+            # Pad the kernel if necessary
+            if kernel_values.shape != (kernel_size, kernel_size):
+                pad_top = max(0, half_kernel - last_y)
+                pad_bottom = max(0, last_y + half_kernel + 1 - height)
+                pad_left = max(0, half_kernel - last_x)
+                pad_right = max(0, last_x + half_kernel + 1 - width)
+                kernel_values = np.pad(kernel_values, ((pad_top, pad_bottom), (pad_left, pad_right)), mode='edge')
+
+            kernel_matrix = [[float(kernel_values[i, j]) for j in range(kernel_size)] for i in range(kernel_size)]
+            original_value = float(image_np[last_y, last_x])
+
+            # Visualization logic
+            vmin, vmax = np.min(image_np), np.max(image_np)
+
+            # Display original image
+            if show_full_processed:
+                fig_original = plt.figure()
+                plt.imshow(image_np, cmap=cmap, vmin=vmin, vmax=vmax)
+                plt.axis('off')
+                plt.title("Original Image")
+            else:
+                fig_original = create_combined_plot(image_np, last_x, last_y, kernel_size, "Original Image with Current Kernel", cmap, 
+                                                    search_window_size if technique == "nlm" else None, vmin=vmin, vmax=vmax)
+            
+            placeholders[technique]['original_image'].pyplot(fig_original)
+
+            if not show_full_processed:
+                # Create zoomed view of original image
+                zoom_size = kernel_size
+                ky = int(max(0, last_y - zoom_size // 2))
+                kx = int(max(0, last_x - zoom_size // 2))
+                zoomed_original = image_np[ky:min(height, ky + zoom_size),
+                                           kx:min(width, kx + zoom_size)]
+                fig_zoom_original = create_combined_plot(zoomed_original, zoom_size // 2, zoom_size // 2, zoom_size, 
+                                                       "Zoomed-In Original Image", cmap, zoom=True, vmin=vmin, vmax=vmax)
+                if 'zoomed_original_image' in placeholders[technique] and placeholders[technique]['zoomed_original_image'] is not None:
+                    placeholders[technique]['zoomed_original_image'].pyplot(fig_zoom_original)
+
+            # Process and display results based on technique
+            if technique == "speckle":
+                filter_options = {
+                    "Mean Filter": results[0],
+                    "Std Dev Filter": results[1],
+                    "Speckle Contrast": results[2]
+                }
+                specific_params = {
+                    "std": results[5],
+                    "mean": results[6],
+                    "sc": results[7],
+                    "total_pixels": pixels_to_process
+                }
+            elif technique == "nlm":
+                denoised_image, weight_sum_map = results[:2]
+                filter_options = {
+                    "NL-Means Image": denoised_image,
+                    "Weight Map": weight_sum_map,
+                    "Difference Map": np.abs(image_np - denoised_image)
+                }
+                specific_params = {
+                    "filter_strength": filter_strength,
+                    "search_size": search_window_size,
+                    "total_pixels": pixels_to_process,
+                    "nlm_value": denoised_image[last_y, last_x]
+                }
+            else:
+                filter_options = {}
+                specific_params = {}
+
+            # Display filter results
+            for filter_name, filter_data in filter_options.items():
+                key = filter_name.lower().replace(" ", "_")
+                if key in placeholders[technique] and placeholders[technique][key] is not None:
+                    filter_vmin, filter_vmax = np.min(filter_data), np.max(filter_data)
+                    
+                    if show_full_processed:
+                        fig_full = plt.figure()
+                        plt.imshow(filter_data, cmap=cmap, vmin=filter_vmin, vmax=filter_vmax)
+                        plt.axis('off')
+                        plt.title(filter_name)
+                    else:
+                        fig_full = create_combined_plot(filter_data, last_x, last_y, kernel_size, filter_name, cmap, vmin=filter_vmin, vmax=filter_vmax)
+                    placeholders[technique][key].pyplot(fig_full)
+
+                    if not show_full_processed:
+                        zoomed_data = filter_data[ky:min(filter_data.shape[0], ky + zoom_size),
+                                                  kx:min(filter_data.shape[1], kx + zoom_size)]
+                        fig_zoom = create_combined_plot(zoomed_data, zoom_size // 2, zoom_size // 2, zoom_size, 
+                                                        f"Zoomed-In {filter_name}", cmap, zoom=True, vmin=filter_vmin, vmax=filter_vmax)
+                        
+                        zoomed_key = f'zoomed_{key}'
+                        if zoomed_key in placeholders[technique] and placeholders[technique][zoomed_key] is not None:
+                            placeholders[technique][zoomed_key].pyplot(fig_zoom)
+
+            plt.close('all')
+
+            # Display formula
+            display_formula(placeholders[technique]['formula'], technique, FORMULA_CONFIG,
+                            x=last_x, y=last_y, 
+                            input_x=last_x, input_y=last_y,
+                            kernel_size=kernel_size,
+                            kernel_matrix=kernel_matrix,
+                            original_value=original_value,
+                            **specific_params)
+
+        except (ValueError, IndexError) as e:
+            st.error(f"Error during image analysis and visualization: {str(e)}")
+            return None
+
+    # Update session state with results
+    if update_state:
+        st.session_state.processed_pixels = params['analysis_params']['max_pixels']
+        if technique == "speckle":
+            st.session_state.speckle_results = results
+        elif technique == "nlm":
+            st.session_state.nlm_results = results
+
+    return params, results
 
 def main():
     st.set_page_config(**PAGE_CONFIG)
@@ -208,7 +441,7 @@ def main():
         "search_window_size": sidebar_params['search_window_size'],
         "filter_strength": sidebar_params['filter_strength'],
         "cmap": sidebar_params['cmap'],
-        "max_pixels": sidebar_params['max_pixels'],  # Use max_pixels instead of max_processable_pixels
+        "max_pixels": sidebar_params['max_pixels'],
         "height": sidebar_params['image_np'].shape[0],
         "width": sidebar_params['image_np'].shape[1]
     }
@@ -221,24 +454,42 @@ def main():
     st.session_state.analysis_params = analysis_params
 
     if not sidebar_params['show_full_processed']:
-        handle_animation(sidebar_params['animation_params'], sidebar_params['max_pixels'], update_func)
-
-    # Always call update_func, regardless of show_full_processed
-    update_func()
+        handle_animation(
+            animation_params=sidebar_params['animation_params'],
+            max_processable_pixels=sidebar_params['max_pixels'],
+            update_images_analyze_and_visualize=update_images_analyze_and_visualize,
+            image_np=sidebar_params['image_np'],
+            kernel_size=sidebar_params['kernel_size'],
+            cmap=sidebar_params['cmap'],
+            technique=sidebar_params['technique'],
+            search_window_size=sidebar_params['search_window_size'],
+            filter_strength=sidebar_params['filter_strength'],
+            show_full_processed=sidebar_params['show_full_processed']
+        )
 
     # Process images for both techniques
-    speckle_results = handle_image_analysis(
-        tab=tabs[0],
+    speckle_params, speckle_results = update_images_analyze_and_visualize(
+        image_np=sidebar_params['image_np'],
+        kernel_size=sidebar_params['kernel_size'],
+        cmap=sidebar_params['cmap'],
         technique="speckle",
-        placeholders=speckle_placeholders,
-        **analysis_params
+        search_window_size=sidebar_params['search_window_size'],
+        filter_strength=sidebar_params['filter_strength'],
+        show_full_processed=sidebar_params['show_full_processed'],
+        update_state=True,
+        handle_visualization=True
     )
     
-    nlm_results = handle_image_analysis(
-        tab=tabs[1],
+    nlm_params, nlm_results = update_images_analyze_and_visualize(
+        image_np=sidebar_params['image_np'],
+        kernel_size=sidebar_params['kernel_size'],
+        cmap=sidebar_params['cmap'],
         technique="nlm",
-        placeholders=nlm_placeholders,
-        **analysis_params
+        search_window_size=sidebar_params['search_window_size'],
+        filter_strength=sidebar_params['filter_strength'],
+        show_full_processed=sidebar_params['show_full_processed'],
+        update_state=True,
+        handle_visualization=True
     )
 
     # Store results in session state
@@ -264,6 +515,8 @@ def main():
         st.write(f"Kernel size: {analysis_params['kernel_size']}x{analysis_params['kernel_size']}")
         st.write(f"Max processable pixels: {sidebar_params['max_pixels']}")
         st.write(f"Actual processed pixels: {min(sidebar_params['max_pixels'], (analysis_params['width'] - analysis_params['kernel_size'] + 1) * (analysis_params['height'] - analysis_params['kernel_size'] + 1))}")
+        st.write(f"Processing technique: {sidebar_params['technique']}")
+
 
 if __name__ == "__main__":
     main()
