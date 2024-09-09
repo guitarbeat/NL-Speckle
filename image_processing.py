@@ -414,13 +414,18 @@ def handle_image_analysis(
             
             original_value, kernel_matrix = get_kernel_values(image_np, last_x, last_y, kernel_size)
             
+            specific_params = get_technique_specific_params(technique, results, filter_strength, search_window_size, pixels_to_process, image_np, last_x, last_y)
+            
+            # Remove 'original_value' from specific_params if it exists
+            specific_params.pop('original_value', None)
+            
             display_formula(placeholders['formula'], technique, FORMULA_CONFIG,
                             x=last_x, y=last_y, 
                             input_x=last_x, input_y=last_y,
                             kernel_size=kernel_size,
                             kernel_matrix=kernel_matrix,
                             original_value=original_value,
-                            **get_technique_specific_params(technique, results, filter_strength, search_window_size, pixels_to_process))
+                            **specific_params)
             
             process_and_visualize_image(image_np, kernel_size, last_x, last_y, results, cmap, technique, 
                                         placeholders, search_window_size, show_full_processed)
@@ -463,24 +468,30 @@ def get_kernel_values(image_np: np.ndarray, last_x: float, last_y: float, kernel
     except IndexError as e:
         raise IndexError(f"Index error while extracting kernel. last_x: {last_x}, last_y: {last_y}, kernel_size: {kernel_size}, image shape: {image_np.shape}") from e
 
-def get_technique_specific_params(technique: str, results: Tuple[np.ndarray, ...], filter_strength: float, search_window_size: Optional[int], pixels_to_process: int) -> Dict[str, Any]:
+# ---------------------------- Formula Display ---------------------------- #
+
+
+def get_technique_specific_params(technique: str, results: Tuple[np.ndarray, ...], filter_strength: float, search_window_size: Optional[int], pixels_to_process: int, image_np: np.ndarray, x: int, y: int) -> Dict[str, Any]:
     if technique == "speckle":
         return {
             "std": results[5],
             "mean": results[6],
             "sc": results[7],
-            "total_pixels": pixels_to_process
+            "total_pixels": pixels_to_process,
+            "original_value": image_np[y, x]
         }
     elif technique == "nlm":
+        denoised_image = results[0]
         return {
             "filter_strength": filter_strength,
             "search_size": search_window_size,
-            "total_pixels": pixels_to_process
+            "total_pixels": pixels_to_process,
+            "original_value": image_np[y, x],
+            "nlm_value": denoised_image[y, x]
         }
     else:
         return {}
     
-# ---------------------------- Formula Display ---------------------------- #
 
 # Define formulas and explanations for each technique
 FORMULA_CONFIG = {
@@ -515,8 +526,8 @@ FORMULA_CONFIG = {
         ]
     },
     "nlm": {
-        "main_formula": r"\text{{NLM}}(x_{{{input_x}}}, y_{{{input_y}}}) = \frac{{1}}{{W(x_{{{input_x}}}, y_{{{input_y}}})}} \sum_{{(i,j) \in \Omega}} I(i,j) \cdot w((x_{{{input_x}}}, y_{{{input_y}}}), (i,j))",
-        "explanation": "This formula represents the Non-Local Means (NLM) denoising algorithm for input pixel ({input_x}, {input_y}), resulting in output pixel ({output_x}, {output_y}).",
+        "main_formula": r"I_{{{input_x},{input_y}}} = {original_value:.3f} \quad \rightarrow \quad NLM_{{{output_x},{output_y}}} = {nlm_value:.3f} = \frac{{1}}{{W({input_x}, {input_y})}} \sum_{{(i,j) \in \Omega}} I(i,j) \cdot w(({input_x}, {input_y}), (i,j))",
+        "explanation": "This formula shows the transition from the original pixel intensity I({input_x},{input_y}) = {original_value:.3f} in the input image to the Non-Local Means (NLM) denoised value NLM({output_x},{output_y}) = {nlm_value:.3f} for the corresponding pixel in the output image.",
         "variables": {},  # To be filled dynamically
         "additional_formulas": [
             {
