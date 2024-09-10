@@ -1,11 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import streamlit as st
-from typing import Any, Dict, List, Optional, Union
+from typing import Optional, Union
 from matplotlib.collections import LineCollection
 
-from analysis.speckle import SPECKLE_FORMULA_CONFIG
-from analysis.nlm import NLM_FORMULA_CONFIG
 
 # ----------------------------- Plot Creation ----------------------------- #
 def draw_kernel_overlay(ax: plt.Axes, x: int, y: int, kernel_size: int):
@@ -72,63 +70,3 @@ def prepare_comparison_images():
         return None
 
 # ---------------------------- Formula Display ---------------------------- #
-
-def generate_kernel_matrix(kernel_size: int, kernel_matrix: List[List[float]]) -> str:
-    center = kernel_size // 2
-    center_value = kernel_matrix[center][center]
-    
-    matrix_rows = []
-    for i in range(kernel_size):
-        row = [r"\mathbf{{{:.3f}}}".format(center_value) if i == center and j == center 
-               else r"{:.3f}".format(kernel_matrix[i][j]) for j in range(kernel_size)]
-        matrix_rows.append(" & ".join(row))
-
-    return (r"\def\arraystretch{1.5}\begin{array}{|" + ":".join(["c"] * kernel_size) + "|}" +
-            r"\hline" + r"\\ \hdashline".join(matrix_rows) + r"\\ \hline\end{array}")
-
-def display_formula(formula_placeholder: Any, technique: str, **kwargs):
-    with formula_placeholder.container():
-        if technique == "speckle":
-            config = SPECKLE_FORMULA_CONFIG
-        elif technique == "nlm":
-            config = NLM_FORMULA_CONFIG
-        else:
-            st.error(f"Unknown technique: {technique}")
-            return
-
-        variables = kwargs.copy()
-        
-        # Only calculate input_x and input_y if they're not provided
-        if 'input_x' not in variables or 'input_y' not in variables:
-            kernel_size = variables.get('kernel_size', 3)  # Default to 3 if not provided
-            variables['input_x'] = variables['x'] - kernel_size // 2
-            variables['input_y'] = variables['y'] - kernel_size // 2
-
-        if 'kernel_size' in variables and 'kernel_matrix' in variables:
-            variables['kernel_matrix'] = generate_kernel_matrix(variables['kernel_size'], variables['kernel_matrix'])
-
-        if technique == "nlm":
-            search_size = variables.get('search_size')
-            variables['search_window_description'] = (
-                "We search the entire image for similar pixels." if search_size == "full" 
-                else f"A search window of size {search_size}x{search_size} centered around the target pixel."
-            )
-        display_main_formula(config, variables)
-        display_additional_formulas(config, variables)
-
-def display_main_formula(config: Dict[str, Any], variables: Dict[str, Any]):
-    try:
-        st.latex(config['main_formula'].format(**variables))
-        st.markdown(config['explanation'].format(**variables))
-    except KeyError as e:
-        st.error(f"Missing key in main formula or explanation: {e}")
-
-def display_additional_formulas(config: Dict[str, Any], variables: Dict[str, Any]):
-    with st.expander("Additional Formulas", expanded=False):
-        for additional_formula in config['additional_formulas']:
-            with st.expander(additional_formula['title'], expanded=False):
-                try:
-                    st.latex(additional_formula['formula'].format(**variables))
-                    st.markdown(additional_formula['explanation'].format(**variables))
-                except KeyError as e:
-                    st.error(f"Missing key in additional formula: {e}")

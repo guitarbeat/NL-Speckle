@@ -1,9 +1,11 @@
 import numpy as np
-from typing import Tuple, Dict, Any
+from typing import Tuple, Dict, Any, List
 from numba import njit
-
+from utils import generate_kernel_matrix, display_formula_section, display_additional_formulas
 import streamlit as st
-from image_processing import calculate_processing_details
+from utils import calculate_processing_details,visualize_image
+
+
 
 SPECKLE_FORMULA_CONFIG = {
     "main_formula": r"I_{{{x},{y}}} = {original_value:.3f} \quad \rightarrow \quad SC_{{{x},{y}}} = \frac{{\sigma_{{{x},{y}}}}}{{\mu_{{{x},{y}}}}} = \frac{{{std:.3f}}}{{{mean:.3f}}} = {sc:.3f}",
@@ -97,3 +99,89 @@ def process_speckle(image: np.ndarray, kernel_size: int, max_pixels: int) -> Dic
             'image_dimensions': (details['height'], details['width'])
         }
     }
+
+
+
+
+def prepare_speckle_variables(kwargs: Dict[str, Any]) -> Dict[str, Any]:
+    variables = kwargs.copy()
+    
+    if 'input_x' not in variables or 'input_y' not in variables:
+        kernel_size = variables.get('kernel_size', 3)
+        variables['input_x'] = variables['x'] - kernel_size // 2
+        variables['input_y'] = variables['y'] - kernel_size // 2
+
+    if 'kernel_size' in variables and 'kernel_matrix' in variables:
+        variables['kernel_matrix'] = generate_kernel_matrix(variables['kernel_size'], variables['kernel_matrix'])
+
+    return variables
+
+def display_speckle_formula(formula_placeholder: Any, **kwargs):
+    with formula_placeholder.container():
+        variables = prepare_speckle_variables(kwargs)
+        display_formula_section(SPECKLE_FORMULA_CONFIG, variables, 'main')
+        display_additional_formulas(SPECKLE_FORMULA_CONFIG, variables)
+
+
+#------ Display ------#
+
+def prepare_speckle_filter_options_and_params(
+    results: Dict[str, Any], 
+    first_pixel: Tuple[int, int]
+) -> Tuple[Dict[str, np.ndarray], Dict[str, Any]]:
+    first_x, first_y = first_pixel
+    
+    return {
+        "Mean Filter": results['mean_filter'],
+        "Std Dev Filter": results['std_dev_filter'],
+        "Speckle Contrast": results['speckle_contrast_filter']
+    }, {
+        "std": results['first_pixel_stats']['std_dev'],
+        "mean": results['first_pixel_stats']['mean'],
+        "sc": results['first_pixel_stats']['speckle_contrast'],
+        "total_pixels": results['additional_info']['pixels_processed']
+    }
+
+def visualize_speckle_results(
+    image_np: np.ndarray,
+    results: Dict[str, Any],
+    placeholders: Dict[str, Any],
+    params: Dict[str, Any],
+    first_pixel: Tuple[int, int],
+    kernel_size: int,
+    kernel_matrix: List[List[float]],
+    original_value: float
+):
+    first_x, first_y = first_pixel
+    vmin, vmax = np.min(image_np), np.max(image_np)
+    show_full_processed = params['show_full_processed']
+    cmap = params['analysis_params']['cmap']
+
+    visualize_image(image_np, placeholders['original_image'], first_x, first_y, kernel_size, cmap, 
+                    show_full_processed, vmin, vmax, "Original Image", "speckle")
+    
+    if not show_full_processed:
+        visualize_image(image_np, placeholders['zoomed_original_image'], first_x, first_y, kernel_size, 
+                        cmap, show_full_processed, vmin, vmax, "Zoomed-In Original Image", zoom=True)
+
+    filter_options, specific_params = prepare_speckle_filter_options_and_params(results, (first_x, first_y))
+    
+    for filter_name, filter_data in filter_options.items():
+        key = filter_name.lower().replace(" ", "_")
+        if key in placeholders:
+            visualize_image(filter_data, placeholders[key], first_x, first_y, kernel_size, cmap, 
+                            show_full_processed, np.min(filter_data), np.max(filter_data), filter_name)
+            
+            if not show_full_processed:
+                zoomed_key = f'zoomed_{key}'
+                if zoomed_key in placeholders:
+                    visualize_image(filter_data, placeholders[zoomed_key], first_x, first_y, kernel_size, 
+                                    cmap, show_full_processed, np.min(filter_data), np.max(filter_data), 
+                                    f"Zoomed-In {filter_name}", zoom=True)
+
+    specific_params.update({
+        'x': first_x, 'y': first_y, 'input_x': first_x, 'input_y': first_y,
+        'kernel_size': kernel_size, 'kernel_matrix': kernel_matrix, 'original_value': original_value
+    })
+
+    display_speckle_formula(placeholders['formula'], **specific_params)
