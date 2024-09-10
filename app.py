@@ -3,7 +3,7 @@ import streamlit as st
 from typing import Any, Dict, List, Optional
 
 from visualization import prepare_comparison_images
-from image_processing import handle_image_comparison, process_and_display_images
+from image_processing import handle_image_comparison, process_techniques
 from utils import calculate_processing_details
 
 from PIL import Image
@@ -199,7 +199,7 @@ def main() -> None:
         st.session_state.sidebar_params = sidebar_params
         st.session_state.analysis_params = analysis_params
         
-        process_and_display_images(analysis_params)
+        process_techniques(analysis_params)
         
         comparison_images = prepare_comparison_images()
         handle_image_comparison(tabs[2], analysis_params['cmap'], comparison_images)
