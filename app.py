@@ -52,12 +52,15 @@ def load_image() -> Optional[Image.Image]:
 
 def get_processing_params(image: Image.Image) -> Dict[str, Any]:
     try:
-        with st.sidebar.expander("⚙️ Processing Parameters", expanded=True):
-            kernel_size = st.number_input('Kernel Size', min_value=3, max_value=21, value=7, step=2)
+        st.markdown("### ⚙️ Processing Parameters")
+        col1, col2 = st.columns(2)
+
+        with col1:
+            kernel_size = st.number_input('Kernel Size (pixels)', min_value=3, max_value=21, value=7, step=2)
             use_full_image = st.checkbox("Use Full Image for Search", value=False, 
                                          help="Toggle to use the entire image as the search window")
             search_window_size = (
-                st.number_input("Search Window Size", 
+                st.number_input("Search Window Size (pixels)", 
                                 min_value=kernel_size + 2, 
                                 max_value=min(max(image.width, image.height) // 2, 35),
                                 value=kernel_size + 2,
@@ -65,13 +68,22 @@ def get_processing_params(image: Image.Image) -> Dict[str, Any]:
                                 help="Size of the search window for NL-Means denoising")
                 if not use_full_image else None
             )
-            filter_strength = st.number_input("Filter Strength (h)", min_value=0.01, max_value=30.0, value=0.10, step=0.01, format="%.2f")
+
+        with col2:
+            filter_strength = st.slider("Filter Strength (h)", min_value=0.01, max_value=30.0, value=0.10, step=0.01)
             cmap = st.selectbox("🎨 Color Map", COLOR_MAPS, index=0)
+
+        if st.button("Reset to Defaults"):
+            kernel_size = 7
+            use_full_image = False
+            search_window_size = 9
+            filter_strength = 0.10
+            cmap = "viridis"
 
         return locals()
     except Exception as e:
         logger.error(f"Error getting processing parameters: {str(e)}")
-        st.sidebar.error("Failed to set processing parameters. Using default values.")
+        st.error("Failed to set processing parameters. Using default values.")
         return {"kernel_size": 7, "search_window_size": None, "filter_strength": 0.1, "cmap": "viridis"}
 
 def get_display_options(image: Image.Image, kernel_size: int) -> Dict[str, Any]:
@@ -116,14 +128,12 @@ def setup_sidebar() -> Optional[Dict[str, Any]]:
         if image is None:
             return None
 
-        processing_params = get_processing_params(image)
-        display_options = get_display_options(image, processing_params['kernel_size'])
+        display_options = get_display_options(image, 7)  # Use default kernel_size of 7
         advanced_options = get_advanced_options(image)
 
         return {
             "image": image,
             "image_np": advanced_options['image_np'],
-            **processing_params,
             **display_options,
             **advanced_options
         }
@@ -169,15 +179,18 @@ def main() -> None:
         if sidebar_params is None:
             st.stop()
 
+        # Move processing parameters to the top of the page
+        processing_params = get_processing_params(sidebar_params['image'])
+        
         tabs = setup_tabs()
         
         details = calculate_processing_details(
             sidebar_params['image_np'], 
-            sidebar_params['kernel_size'], 
+            processing_params['kernel_size'], 
             None if sidebar_params['show_full_processed'] else sidebar_params['pixels_to_process']
         )
         
-        analysis_params = prepare_analysis_params(sidebar_params, details)
+        analysis_params = prepare_analysis_params({**sidebar_params, **processing_params}, details)
         if not analysis_params:
             st.stop()
         
