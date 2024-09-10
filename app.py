@@ -1,14 +1,13 @@
-import streamlit_nested_layout  # type: ignore  # noqa: F401
 import streamlit as st
+import streamlit_nested_layout  # type: ignore  # noqa: F401
+import numpy as np
+import logging
+from PIL import Image
 from typing import Any, Dict, List, Optional
 
 from visualization import prepare_comparison_images
 from image_processing import handle_image_comparison, process_techniques
 from utils import calculate_processing_details
-
-from PIL import Image
-import numpy as np
-import logging
 
 PRELOADED_IMAGES = {
     "image50.png": "media/image50.png",
@@ -22,49 +21,17 @@ PAGE_CONFIG = {
     "page_icon": "favicon.png",
     "initial_sidebar_state": "expanded"
 }
+
 COLOR_MAPS = ["viridis", "plasma", "inferno", "magma", "cividis", "gray", "pink"]
 
-
-# Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-
-
-# ----- Sidebar -----#
-
-def setup_sidebar() -> Optional[Dict[str, Any]]:
-    try:
-        st.sidebar.title("Image Processing Settings")
-
-        # Modular components
-        image = load_image()
-        if image is None:
-            return None
-
-        processing_params = get_processing_params(image)
-        display_options = get_display_options(image, processing_params['kernel_size'])
-        advanced_options = get_advanced_options(image)
-
-        sidebar_params = {
-            "image": image,
-            "image_np": advanced_options['image_np'],
-            **processing_params,
-            **display_options,
-            **advanced_options
-        }
-
-        return sidebar_params
-    except Exception as e:
-        logger.error(f"Error setting up sidebar: {str(e)}")
-        st.sidebar.error("An error occurred while setting up the sidebar. Please try again.")
-        return None
-
 def load_image() -> Optional[Image.Image]:
+    st.sidebar.markdown("### 📷 Image Source")
+    image_source = st.sidebar.radio("", ("Preloaded Images", "Upload Image"))
+    
     try:
-        st.sidebar.markdown("### 📷 Image Source")
-        image_source = st.sidebar.radio("", ("Preloaded Images", "Upload Image"))
-        
         if image_source == "Preloaded Images":
             selected_image = st.sidebar.selectbox("Select Image", list(PRELOADED_IMAGES))
             image = Image.open(PRELOADED_IMAGES[selected_image]).convert('L')
@@ -88,7 +55,7 @@ def get_processing_params(image: Image.Image) -> Dict[str, Any]:
         with st.sidebar.expander("⚙️ Processing Parameters", expanded=True):
             kernel_size = st.number_input('Kernel Size', min_value=3, max_value=21, value=7, step=2)
             use_full_image = st.checkbox("Use Full Image for Search", value=False, 
-                                       help="Toggle to use the entire image as the search window")
+                                         help="Toggle to use the entire image as the search window")
             search_window_size = (
                 st.number_input("Search Window Size", 
                                 min_value=kernel_size + 2, 
@@ -113,23 +80,23 @@ def get_display_options(image: Image.Image, kernel_size: int) -> Dict[str, Any]:
             show_full_processed = st.checkbox("Show Fully Processed Image", value=True)
             max_pixels = (image.width - kernel_size + 1) * (image.height - kernel_size + 1)
 
-            if not show_full_processed:
-                pixels_to_process = st.number_input("Pixels to process", min_value=1, max_value=max_pixels, 
-                                                    value=1, step=1, key='pixels_to_process')
-            else:
-                pixels_to_process = max_pixels
+            pixels_to_process = (
+                max_pixels if show_full_processed else
+                st.number_input("Pixels to process", min_value=1, max_value=max_pixels, 
+                                value=1, step=1, key='pixels_to_process')
+            )
 
         return locals()
     except Exception as e:
         logger.error(f"Error getting display options: {str(e)}")
         st.sidebar.error("Failed to set display options. Using default values.")
-        return {"show_full_processed": True, "max_pixels": (image.width - kernel_size + 1) * (image.height - kernel_size + 1)}
+        return {"show_full_processed": True, "max_pixels": max_pixels, "pixels_to_process": max_pixels}
 
 def get_advanced_options(image: Image.Image) -> Dict[str, Any]:
     try:
         with st.sidebar.expander("🔬 Advanced Options"):
             add_noise = st.checkbox("Add Gaussian Noise", value=False,
-                                  help="Add Gaussian noise to the image")
+                                    help="Add Gaussian noise to the image")
             if add_noise:
                 noise_mean = st.number_input("Noise Mean", min_value=0.0, max_value=1.0, value=0.0, step=0.01, format="%.2f")
                 noise_std = st.number_input("Noise Std", min_value=0.0, max_value=1.0, value=0.1, step=0.01, format="%.2f")
@@ -142,10 +109,30 @@ def get_advanced_options(image: Image.Image) -> Dict[str, Any]:
         st.sidebar.error("Failed to set advanced options. Using default values.")
         return {"image_np": np.array(image) / 255.0}
 
-# ----- Main Content -----#
+def setup_sidebar() -> Optional[Dict[str, Any]]:
+    try:
+        st.sidebar.title("Image Processing Settings")
+        image = load_image()
+        if image is None:
+            return None
+
+        processing_params = get_processing_params(image)
+        display_options = get_display_options(image, processing_params['kernel_size'])
+        advanced_options = get_advanced_options(image)
+
+        return {
+            "image": image,
+            "image_np": advanced_options['image_np'],
+            **processing_params,
+            **display_options,
+            **advanced_options
+        }
+    except Exception as e:
+        logger.error(f"Error setting up sidebar: {str(e)}")
+        st.sidebar.error("An error occurred while setting up the sidebar. Please try again.")
+        return None
 
 def setup_page_config() -> None:
-    """Set up the page configuration."""
     st.set_page_config(**PAGE_CONFIG)
     st.logo("media/logo.png")
 
@@ -175,7 +162,6 @@ def prepare_analysis_params(sidebar_params: Dict[str, Any], details: Dict[str, A
         return {}
 
 def main() -> None:
-    """Main application flow."""
     setup_page_config()
     
     try:
