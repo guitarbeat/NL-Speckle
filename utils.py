@@ -1,4 +1,3 @@
-
 import numpy as np
 from typing import Dict, Optional
 from typing import Any, List
@@ -59,15 +58,14 @@ def generate_kernel_matrix(kernel_size: int, kernel_matrix: List[List[float]]) -
             r"\hline" + r"\\ \hdashline".join(matrix_rows) + r"\\ \hline\end{array}")
 
 def display_formula_section(config: Dict[str, Any], variables: Dict[str, Any], section_key: str):
-    formula_key = f'{section_key}_formula'
-    explanation_key = 'explanation' if section_key == 'main' else f'{section_key}_explanation'
+    formula_key = 'formula' if section_key == 'formula' else f'{section_key}_formula'
+    explanation_key = 'explanation'
     
     try:
         st.latex(config[formula_key].format(**variables))
         st.markdown(config[explanation_key].format(**variables))
     except KeyError as e:
         st.error(f"Missing key in {section_key} formula or explanation: {e}")
-
 
 def display_additional_formulas(config: Dict[str, Any], variables: Dict[str, Any]):
     with st.expander("Additional Formulas", expanded=False):
