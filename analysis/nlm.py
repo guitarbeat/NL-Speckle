@@ -1,9 +1,9 @@
 import numpy as np
-from typing import Optional, Tuple, Dict, Any
+from typing import Optional, Tuple, Dict, Any, List
 from numba import njit
-
+from utils import generate_kernel_matrix, display_formula_section, display_additional_formulas
 import streamlit as st
-from image_processing import calculate_processing_details
+from utils import calculate_processing_details,visualize_image
 
 NLM_FORMULA_CONFIG = {
     "main_formula": r"I_{{{x},{y}}} = {original_value:.3f} \quad \rightarrow \quad NLM_{{{x},{y}}} = \frac{{1}}{{W_{{{x},{y}}}}} \sum_{{(i,j) \in \Omega_{{{x},{y}}}}} I_{{i,j}} \cdot w_{{{x},{y}}}(i,j) = {nlm_value:.3f}",
@@ -137,3 +137,99 @@ def apply_nlm(image: np.ndarray, kernel_size: int, search_size: Optional[int], f
         process_pixel(row, col, image, denoised_image, weight_sum_map, kernel_size, search_size, filter_strength, height, width)
 
     return denoised_image, weight_sum_map
+
+def prepare_nlm_variables(kwargs: Dict[str, Any]) -> Dict[str, Any]:
+    variables = kwargs.copy()
+    
+    if 'input_x' not in variables or 'input_y' not in variables:
+        kernel_size = variables.get('kernel_size', 3)
+        variables['input_x'] = variables['x'] - kernel_size // 2
+        variables['input_y'] = variables['y'] - kernel_size // 2
+
+    if 'kernel_size' in variables and 'kernel_matrix' in variables:
+        variables['kernel_matrix'] = generate_kernel_matrix(variables['kernel_size'], variables['kernel_matrix'])
+
+    search_size = variables.get('search_size')
+    variables['search_window_description'] = (
+        "We search the entire image for similar pixels." if search_size == "full" 
+        else f"A search window of size {search_size}x{search_size} centered around the target pixel."
+    )
+
+    return variables
+
+def display_nlm_formula(formula_placeholder: Any, **kwargs):
+    with formula_placeholder.container():
+        variables = prepare_nlm_variables(kwargs)
+        display_formula_section(NLM_FORMULA_CONFIG, variables, 'main')
+        display_additional_formulas(NLM_FORMULA_CONFIG, variables)
+
+
+
+#------ Display ------#
+
+def prepare_nlm_filter_options_and_params(
+    results: Dict[str, Any], 
+    first_pixel: Tuple[int, int], 
+    filter_strength: float, 
+    search_window_size: int
+) -> Tuple[Dict[str, np.ndarray], Dict[str, Any]]:
+    first_x, first_y = first_pixel
+    
+    return {
+        "NL-Means Image": results['processed_image'],
+        "Weight Map": results['normalized_weight_map'],
+        "Difference Map": np.abs(results['processed_image'] - results['additional_info']['image_dimensions'][0])
+    }, {
+        "filter_strength": filter_strength,
+        "search_size": search_window_size,
+        "total_pixels": results['additional_info']['pixels_processed'],
+        "nlm_value": results['processed_image'][first_y, first_x]
+    }
+
+def visualize_nlm_results(
+    image_np: np.ndarray,
+    results: Dict[str, Any],
+    placeholders: Dict[str, Any],
+    params: Dict[str, Any],
+    first_pixel: Tuple[int, int],
+    kernel_size: int,
+    kernel_matrix: List[List[float]],
+    original_value: float
+):
+    first_x, first_y = first_pixel
+    vmin, vmax = np.min(image_np), np.max(image_np)
+    show_full_processed = params['show_full_processed']
+    cmap = params['analysis_params']['cmap']
+    search_window_size = params['analysis_params'].get('search_window_size')
+    filter_strength = params['analysis_params'].get('filter_strength')
+
+    visualize_image(image_np, placeholders['original_image'], first_x, first_y, kernel_size, cmap, 
+                    show_full_processed, vmin, vmax, "Original Image", "nlm", search_window_size)
+    
+    if not show_full_processed:
+        visualize_image(image_np, placeholders['zoomed_original_image'], first_x, first_y, kernel_size, 
+                        cmap, show_full_processed, vmin, vmax, "Zoomed-In Original Image", zoom=True)
+
+    filter_options, specific_params = prepare_nlm_filter_options_and_params(
+        results, (first_x, first_y), filter_strength, search_window_size
+    )
+    
+    for filter_name, filter_data in filter_options.items():
+        key = filter_name.lower().replace(" ", "_")
+        if key in placeholders:
+            visualize_image(filter_data, placeholders[key], first_x, first_y, kernel_size, cmap, 
+                            show_full_processed, np.min(filter_data), np.max(filter_data), filter_name)
+            
+            if not show_full_processed:
+                zoomed_key = f'zoomed_{key}'
+                if zoomed_key in placeholders:
+                    visualize_image(filter_data, placeholders[zoomed_key], first_x, first_y, kernel_size, 
+                                    cmap, show_full_processed, np.min(filter_data), np.max(filter_data), 
+                                    f"Zoomed-In {filter_name}", zoom=True)
+
+    specific_params.update({
+        'x': first_x, 'y': first_y, 'input_x': first_x, 'input_y': first_y,
+        'kernel_size': kernel_size, 'kernel_matrix': kernel_matrix, 'original_value': original_value
+    })
+
+    display_nlm_formula(placeholders['formula'], **specific_params)
