@@ -45,7 +45,6 @@ def create_ui_elements(technique: str, tab: st.delta_generator.DeltaGenerator, s
         st.error(f"Failed to create UI elements for {technique}. Please try again.")
         return {}
 
-
 def process_and_visualize_image(params: Dict[str, Any]) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]]]:
     try:
         image_np = params['image_np']
@@ -134,9 +133,7 @@ def process_techniques(analysis_params: Dict[str, Any]) -> None:
             logger.error(f"Error processing {technique} technique: {str(e)}")
             st.error(f"Failed to process {technique} technique. Please check your inputs and try again.")
 
-# Main function to be called
-def process_and_display_images(analysis_params: Dict[str, Any]) -> None:
-    process_techniques(analysis_params)
+
 
 def visualize_results(
     image_np: np.ndarray,
