@@ -8,8 +8,7 @@ from cache_manager import cached_db
 
 SPECKLE_FORMULA_CONFIG = {
     "main_formula": r"I_{{{x},{y}}} = {original_value:.3f} \quad \rightarrow \quad SC_{{{x},{y}}} = \frac{{\sigma_{{{x},{y}}}}}{{\mu_{{{x},{y}}}}} = \frac{{{std:.3f}}}{{{mean:.3f}}} = {sc:.3f}",
-    "explanation": "This formula shows the transition from the original pixel intensity I({x},{y}) to the Speckle Contrast (SC) for the same pixel position.",
-    "variables": {},  # To be filled dynamically
+    "explanation": r"This formula shows the transition from the original pixel intensity $I_{{{x},{y}}}$ to the Speckle Contrast (SC) for the same pixel position.",
     "additional_formulas": [
         {
             "title": "Neighborhood Analysis",
@@ -17,22 +16,22 @@ SPECKLE_FORMULA_CONFIG = {
                        r"\quad\quad\text{{Centered at pixel: }}({x}, {y})"
                        r"\\\\"
                        "{kernel_matrix}",
-            "explanation": "We analyze a {kernel_size}x{kernel_size} neighborhood centered around the pixel ({x},{y}). This matrix shows the pixel values in the neighborhood. The central value (in bold) corresponds to the pixel being processed."
+            "explanation": r"Analysis of a ${kernel_size}\times{kernel_size}$ neighborhood centered at pixel $({x},{y})$. The matrix shows pixel values, with the central value (in bold) being the processed pixel."
         },
         {
             "title": "Mean Calculation", 
-            "formula": r"\mu_{{{x},{y}}} = \frac{{1}}{{N}} \sum_{{(i,j) \in K_{{{x},{y}}}}} I_{{i,j}} = \frac{{1}}{{{total_pixels}}} \sum_{{(i,j) \in K_{{{x},{y}}}}} I_{{i,j}} = {mean:.3f}",
-            "explanation": "The mean (μ) is calculated as the average intensity of all pixels in the kernel K centered at ({x},{y}), where N is the total number of pixels in the kernel (N = {kernel_size}^2 = {total_pixels})."
+            "formula": r"\mu_{{{x},{y}}} = \frac{{1}}{{N}} \sum_{{i,j \in K_{{{x},{y}}}}} I_{{i,j}} = \frac{{1}}{{{kernel_size}^2}} \sum_{{i,j \in K_{{{x},{y}}}}} I_{{i,j}} = {mean:.3f}",
+            "explanation": r"Mean ($\mu$) calculation: average intensity of all pixels in the kernel $K$ centered at $({x},{y})$. $N = {kernel_size}^2 = {total_pixels}$."
         },
         {
             "title": "Standard Deviation Calculation",
-            "formula": r"\sigma_{{{x},{y}}} = \sqrt{{\frac{{1}}{{N}} \sum_{{(i,j) \in K_{{{x},{y}}}}} (I_{{i,j}} - \mu_{{{x},{y}}})^2}} = \sqrt{{\frac{{1}}{{{total_pixels}}} \sum_{{(i,j) \in K_{{{x},{y}}}}} (I_{{i,j}} - {mean:.3f})^2}} = {std:.3f}",
-            "explanation": "The standard deviation (σ) is calculated using all pixels in the kernel K centered at ({x},{y}), measuring the spread of intensities around the mean."
+            "formula": r"\sigma_{{{x},{y}}} = \sqrt{{\frac{{1}}{{N}} \sum_{{i,j \in K_{{{x},{y}}}}} (I_{{i,j}} - \mu_{{{x},{y}}})^2}} = \sqrt{{\frac{{1}}{{{kernel_size}^2}} \sum_{{i,j \in K_{{{x},{y}}}}} (I_{{i,j}} - {mean:.3f})^2}} = {std:.3f}",
+            "explanation": r"Standard deviation ($\sigma$) calculation: measure of intensity spread around the mean for all pixels in the kernel $K$ centered at $({x},{y})$."
         },
         {
             "title": "Speckle Contrast Calculation",
             "formula": r"SC_{{{x},{y}}} = \frac{{\sigma_{{{x},{y}}}}}{{\mu_{{{x},{y}}}}} = \frac{{{std:.3f}}}{{{mean:.3f}}} = {sc:.3f}",
-            "explanation": "The Speckle Contrast (SC) is the ratio of the standard deviation to the mean intensity within the kernel centered at ({x},{y})."
+            "explanation": r"Speckle Contrast (SC): ratio of standard deviation to mean intensity within the kernel centered at $({x},{y})$."
         }
     ]
 }
