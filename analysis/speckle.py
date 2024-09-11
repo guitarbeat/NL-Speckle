@@ -1,9 +1,8 @@
 import numpy as np
 from typing import Tuple, Dict, Any, List
 from numba import njit
-from utils import generate_kernel_matrix, display_formula_section, display_additional_formulas
-import streamlit as st
-from utils import calculate_processing_details,visualize_image
+from utils import generate_kernel_matrix, display_formula_section, display_additional_formulas, calculate_processing_details,visualize_image
+from cache_manager import cached_db
 
 
 
@@ -73,7 +72,8 @@ def apply_speckle_contrast(image: np.ndarray, kernel_size: int, pixels_to_proces
 
     return mean_filter, std_dev_filter, sc_filter
 
-@st.cache_data(persist=True)
+@cached_db
+# @st.cache_data(persist=True)
 def process_speckle(image: np.ndarray, kernel_size: int, max_pixels: int) -> Dict[str, Any]:
     """Process the image using Speckle Contrast calculation."""
     details = calculate_processing_details(image, kernel_size, max_pixels)

@@ -3,11 +3,16 @@ import streamlit_nested_layout  # type: ignore  # noqa: F401
 import numpy as np
 import logging
 from PIL import Image
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from visualization import prepare_comparison_images
 from image_processing import handle_image_comparison, process_techniques
 from utils import calculate_processing_details
+
+import hashlib
+import time
+from cache_manager import clear_cache, get_cache_size, redis_client
+
 
 PRELOADED_IMAGES = {
     "image50.png": "media/image50.png",
@@ -163,7 +168,6 @@ def setup_sidebar() -> Optional[Dict[str, Any]]:
         st.sidebar.error("An error occurred while setting up the sidebar. Please try again.")
         return None
  
-
 def prepare_analysis_params(sidebar_params: Dict[str, Any], details: Dict[str, Any]) -> Dict[str, Any]:
     try:
         return {
@@ -190,6 +194,10 @@ def main() -> None:
     st.set_page_config(**PAGE_CONFIG)
     st.logo("media/logo.png")
     
+    # Generate a unique session ID
+    if 'session_id' not in st.session_state:
+        st.session_state.session_id = hashlib.md5(str(time.time()).encode()).hexdigest()
+
     try:
         sidebar_params = setup_sidebar()
         if sidebar_params is None:
@@ -218,7 +226,22 @@ def main() -> None:
         
         comparison_images = prepare_comparison_images()
         handle_image_comparison(tabs[2], analysis_params['cmap'], comparison_images)
-    
+
+        # Add cache management options
+        with st.expander("Cache Management"):
+            st.write(f"Current cache size: {get_cache_size()} entries")
+            if st.button("Clear My Cache"):
+                clear_cache(st.session_state.session_id)
+                st.success("Your cache has been cleared.")
+            if st.button("Clear All Cache"):
+                clear_cache()
+                st.success("All cache has been cleared.")
+        
+        if redis_client is not None:
+            st.sidebar.success("Caching is active")
+        else:
+            st.sidebar.warning("Caching is inactive")
+
     except Exception as e:
         logger.error(f"Unhandled exception in main: {str(e)}")
         st.error("An unexpected error occurred. Please try reloading the application.")
