@@ -51,44 +51,65 @@ def load_image() -> Optional[Image.Image]:
         return None
 
 def get_processing_params(image: Image.Image) -> Dict[str, Any]:
-    try:
-        st.markdown("### ⚙️ Processing Parameters")
-        col1, col2 = st.columns(2)
+    with st.popover("🔧 Processing Parameters"):
+        tab1, tab2, tab3 = st.tabs(["Speckle", "NL-means", "Display"])
+        
+        with tab1:
+            kernel_size = st.number_input('Kernel Size (side length in pixels)', 
+                                          min_value=3, max_value=21, value=7, step=2,
+                                          help="Used as moving window for Speckle and neighborhood for NL-means")
+            kernel_size_slider = st.slider('Kernel Size Slider', 
+                                           min_value=3, max_value=21, value=kernel_size, step=2, 
+                                           key='kernel_slider')
+            kernel_size = kernel_size_slider  # Use the slider value
+            
+            st.info("This will be the size of the moving window for Speckle and the neighborhood for NL-means.")
+            # Add any Speckle-specific parameters here if needed
 
-        with col1:
-            kernel_size = st.number_input('Kernel Size (pixels)', min_value=3, max_value=21, value=7, step=2)
-            use_full_image = st.checkbox("Use Full Image for Search", value=False, 
-                                         help="Toggle to use the entire image as the search window")
-            search_window_size = (
-                st.number_input("Search Window Size (pixels)", 
-                                min_value=kernel_size + 2, 
-                                max_value=min(max(image.width, image.height) // 2, 35),
-                                value=kernel_size + 2,
-                                step=2,
-                                help="Size of the search window for NL-Means denoising")
-                if not use_full_image else None
-            )
+        with tab2:
+            st.info("NL-means uses the Kernel Size as its neighborhood.")
+            filter_strength = st.number_input("Filter Strength (h)", 
+                                              min_value=0.01, max_value=30.0, value=0.10, step=0.01, 
+                                              format="%.2f")
+            filter_strength_slider = st.slider('Filter Strength Slider', 
+                                               min_value=0.01, max_value=30.0, value=filter_strength, 
+                                               step=0.01, format="%.2f", key='filter_slider')
+            filter_strength = filter_strength_slider  # Use the slider value
 
-        with col2:
-            filter_strength = st.slider("Filter Strength (h)", min_value=0.01, max_value=30.0, value=0.10, step=0.01)
+            use_full_image = st.toggle("Use Full Image", value=False, 
+                                       help="Toggle to use the entire image as the search window")
+            if not use_full_image:
+                search_window_size = st.number_input("Search Window Ω (pixels)", 
+                                    min_value=kernel_size + 2, 
+                                    max_value=min(max(image.width, image.height) // 2, 35),
+                                    value=kernel_size + 2,
+                                    step=2,
+                                    help="Size of the search window for NL-Means denoising")
+                search_window_slider = st.slider('Search Window Ω Slider', 
+                                                 min_value=kernel_size + 2, 
+                                                 max_value=min(max(image.width, image.height) // 2, 35),
+                                                 value=search_window_size,
+                                                 step=2,
+                                                 key='search_slider')
+                search_window_size = search_window_slider
+            else:
+                search_window_size = None
+
+        with tab3:
             cmap = st.selectbox("🎨 Color Map", COLOR_MAPS, index=0)
 
-        if st.button("Reset to Defaults"):
+        if st.button("Reset Defaults", help="Reset all parameters to their default values"):
             kernel_size = 7
             use_full_image = False
             search_window_size = 9
             filter_strength = 0.10
             cmap = "viridis"
 
-        return locals()
-    except Exception as e:
-        logger.error(f"Error getting processing parameters: {str(e)}")
-        st.error("Failed to set processing parameters. Using default values.")
-        return {"kernel_size": 7, "search_window_size": None, "filter_strength": 0.1, "cmap": "viridis"}
+    return locals()
 
 def get_display_options(image: Image.Image, kernel_size: int) -> Dict[str, Any]:
     try:
-        with st.sidebar.expander("🖼️ Display Options", expanded=True):
+        with st.sidebar.expander("🖼️ Display Options", expanded=False):
             show_full_processed = st.checkbox("Show Fully Processed Image", value=True)
             max_pixels = (image.width - kernel_size + 1) * (image.height - kernel_size + 1)
 
@@ -141,13 +162,7 @@ def setup_sidebar() -> Optional[Dict[str, Any]]:
         logger.error(f"Error setting up sidebar: {str(e)}")
         st.sidebar.error("An error occurred while setting up the sidebar. Please try again.")
         return None
-
-def setup_page_config() -> None:
-    st.set_page_config(**PAGE_CONFIG)
-    st.logo("media/logo.png")
-
-def setup_tabs() -> List[st.delta_generator.DeltaGenerator]:
-    return st.tabs(["Speckle", "NL-Means", "Image Comparison"])
+ 
 
 def prepare_analysis_params(sidebar_params: Dict[str, Any], details: Dict[str, Any]) -> Dict[str, Any]:
     try:
@@ -172,7 +187,8 @@ def prepare_analysis_params(sidebar_params: Dict[str, Any], details: Dict[str, A
         return {}
 
 def main() -> None:
-    setup_page_config()
+    st.set_page_config(**PAGE_CONFIG)
+    st.logo("media/logo.png")
     
     try:
         sidebar_params = setup_sidebar()
@@ -182,7 +198,7 @@ def main() -> None:
         # Move processing parameters to the top of the page
         processing_params = get_processing_params(sidebar_params['image'])
         
-        tabs = setup_tabs()
+        tabs = st.tabs(["Speckle", "NL-Means", "Image Comparison"])
         
         details = calculate_processing_details(
             sidebar_params['image_np'], 

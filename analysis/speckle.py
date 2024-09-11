@@ -101,8 +101,6 @@ def process_speckle(image: np.ndarray, kernel_size: int, max_pixels: int) -> Dic
     }
 
 
-
-
 def prepare_speckle_variables(kwargs: Dict[str, Any]) -> Dict[str, Any]:
     variables = kwargs.copy()
     
