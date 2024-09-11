@@ -5,44 +5,43 @@ from utils import generate_kernel_matrix, display_formula_section, display_addit
 from cache_manager import cached_db
 
 NLM_FORMULA_CONFIG = {
-    "main_formula": r"I_{{{x},{y}}} = {original_value:.3f} \quad \rightarrow \quad NLM_{{{x},{y}}} = \frac{{1}}{{W_{{{x},{y}}}}} \sum_{{(i,j) \in \Omega_{{{x},{y}}}}} I_{{i,j}} \cdot w_{{{x},{y}}}(i,j) = {nlm_value:.3f}",
-    "explanation": "This formula shows the transition from the original pixel intensity I({x},{y}) to the denoised value NLM({x},{y}) using the Non-Local Means (NLM) algorithm.",
-    "variables": {},  # To be filled dynamically
+    "main_formula": r"I_{{{x},{y}}} = {original_value:.3f} \quad \rightarrow \quad NLM_{{{x},{y}}} = \frac{{1}}{{W_{{{x},{y}}}}} \sum_{{i,j \in \Omega_{{{x},{y}}}}} I_{{i,j}} \cdot w_{{{x},{y}}}(i,j) = {nlm_value:.3f}",
+    "explanation": r"Transition from original pixel intensity $I_{{{x},{y}}}$ to denoised value $NLM_{{{x},{y}}}$ using Non-Local Means (NLM) algorithm.",
     "additional_formulas": [
         {
             "title": "Neighborhood Analysis",
             "formula": r"\text{{Patch Size: }} {kernel_size} \times {kernel_size}"
-                       r"\quad\quad\text{{Centered at pixel: }}({x}, {y})"
+                       r"\quad\quad\text{{Centered at: }}({x}, {y})"
                        r"\\\\"
                        "{kernel_matrix}",
-            "explanation": "We analyze a {kernel_size}x{kernel_size} patch centered around the pixel ({x},{y}). This matrix shows the pixel values in the patch. The central value (in bold) corresponds to the pixel being denoised."
+            "explanation": r"Analysis of a ${kernel_size}\times{kernel_size}$ patch centered at $({x},{y})$. Matrix shows pixel values, with the central value (bold) being the denoised pixel."
         },
         {
             "title": "Weight Calculation",
             "formula": r"w_{{{x},{y}}}(i,j) = \exp\left(-\frac{{\|P_{{{x},{y}}} - P_{{i,j}}\|^2}}{{h^2}}\right)",
             "explanation": r"""
-            This formula determines the weight of each pixel (i,j) when denoising pixel (x,y):
-            - w_{{{x},{y}}}(i,j): Weight assigned to pixel (i,j) when denoising (x,y) 
-            - P_{{{x},{y}}} and P_{{i,j}} are patches centered at (x,y) and (i,j)
-            - \|P_{{{x},{y}}} - P_{{i,j}}\|^2 measures the squared difference between patches
-            - h = {filter_strength} controls the smoothing strength
-            - More similar patches result in higher weights
+            Weight calculation for pixel $(i,j)$ when denoising $(x,y)$:
+            - $w_{{({x},{y})}}(i,j)$: Weight for pixel $(i,j)$
+            - $P_{{({x},{y})}}$, $P_{{(i,j)}}$: Patches centered at $(x,y)$ and $(i,j)$
+            - $\|P_{{({x},{y})}} - P_{{(i,j)}}\|^2$: Squared difference between patches
+            - $h = {filter_strength}$: Smoothing strength
+            - Similar patches yield higher weights
             """
         },
         {
             "title": "Normalization Factor",
-            "formula": r"W_{{{x},{y}}} = \sum_{{(i,j) \in \Omega_{{{x},{y}}}}} w_{{{x},{y}}}(i,j)", 
-            "explanation": "We sum all weights for pixel (x,y). This ensures the final weighted average preserves the overall image brightness."
+            "formula": r"W_{{{x},{y}}} = \sum_{{i,j \in \Omega_{{{x},{y}}}}} w_{{{x},{y}}}(i,j)", 
+            "explanation": r"Sum of all weights for pixel $(x,y)$, ensuring the final weighted average preserves overall image brightness."
         },
         {
             "title": "Search Window",
-            "formula": r"\Omega_{{{x},{y}}} = \begin{{cases}} \text{{Full Image}} & \text{{if search_size = 'full'}} \\ {search_size} \times {search_size} \text{{ window}} & \text{{otherwise}} \end{{cases}}",
-            "explanation": "The search window Ω_{{{x},{y}}} is where we look for similar patches. {search_window_description}"
+            "formula": r"\Omega_{{{x},{y}}} = \begin{{cases}} \text{{Full Image}} & \text{{if search\_size = 'full'}} \\ {search_size} \times {search_size} \text{{ window}} & \text{{otherwise}} \end{{cases}}",
+            "explanation": r"Search window $\Omega_{{({x},{y})}}$ for similar patches. {search_window_description}"
         },
         {   
             "title": "NLM Calculation",
-            "formula": r"NLM_{{{x},{y}}} = \frac{{1}}{{W_{{{x},{y}}}}} \sum_{{(i,j) \in \Omega_{{{x},{y}}}}} I_{{i,j}} \cdot w_{{{x},{y}}}(i,j) = {nlm_value:.3f}",
-            "explanation": "The final NLM value for pixel (x,y) is a weighted average of pixels in the search window, normalized by the sum of weights."
+            "formula": r"NLM_{{{x},{y}}} = \frac{{1}}{{W_{{{x},{y}}}}} \sum_{{i,j \in \Omega_{{{x},{y}}}}} I_{{i,j}} \cdot w_{{{x},{y}}}(i,j) = {nlm_value:.3f}",
+            "explanation": r"Final NLM value for pixel $(x,y)$: weighted average of pixels in the search window, normalized by sum of weights."
         }
     ]
 }
