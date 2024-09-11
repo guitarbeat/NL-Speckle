@@ -68,9 +68,11 @@ def display_formula_section(config: Dict[str, Any], variables: Dict[str, Any], s
         st.error(f"Missing key in {section_key} formula or explanation: {e}")
 
 def display_additional_formulas(config: Dict[str, Any], variables: Dict[str, Any]):
-    with st.expander("Additional Formulas", expanded=False):
-        for additional_formula in config['additional_formulas']:
-            with st.expander(additional_formula['title'], expanded=False):
+    st.write("Additional Formulas:")
+    cols = st.columns(len(config['additional_formulas']))
+    for col, additional_formula in zip(cols, config['additional_formulas']):
+        with col:
+            with st.popover(additional_formula['title']):
                 display_formula_section(additional_formula, variables, 'formula')
 
 def calculate_processing_details(image: np.ndarray, kernel_size: int, max_pixels: Optional[int]) -> Dict[str, int]:
