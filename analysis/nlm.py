@@ -1,9 +1,8 @@
 import numpy as np
 from typing import Optional, Tuple, Dict, Any, List
 from numba import njit
-from utils import generate_kernel_matrix, display_formula_section, display_additional_formulas
-import streamlit as st
-from utils import calculate_processing_details,visualize_image
+from utils import generate_kernel_matrix, display_formula_section, display_additional_formulas, calculate_processing_details,visualize_image
+from cache_manager import cached_db
 
 NLM_FORMULA_CONFIG = {
     "main_formula": r"I_{{{x},{y}}} = {original_value:.3f} \quad \rightarrow \quad NLM_{{{x},{y}}} = \frac{{1}}{{W_{{{x},{y}}}}} \sum_{{(i,j) \in \Omega_{{{x},{y}}}}} I_{{i,j}} \cdot w_{{{x},{y}}}(i,j) = {nlm_value:.3f}",
@@ -97,7 +96,8 @@ def is_valid_pixel(i: int, j: int, half_kernel: int, height: int, width: int) ->
     """Check if a pixel is valid for processing."""
     return (half_kernel <= j < width - half_kernel) and (half_kernel <= i < height - half_kernel)
 
-@st.cache_data(persist=True)
+@cached_db
+# @st.cache_data(persist=True)
 def process_nlm(image: np.ndarray, kernel_size: int, max_pixels: int, search_window_size: int, 
                 filter_strength: float) -> Dict[str, Any]:
     """Process the image using Non-Local Means denoising."""
