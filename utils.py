@@ -69,11 +69,12 @@ def display_formula_section(config: Dict[str, Any], variables: Dict[str, Any], s
 
 def display_additional_formulas(config: Dict[str, Any], variables: Dict[str, Any]):
     st.write("Additional Formulas:")
-    cols = st.columns(len(config['additional_formulas']))
-    for col, additional_formula in zip(cols, config['additional_formulas']):
-        with col:
-            with st.popover(additional_formula['title']):
-                display_formula_section(additional_formula, variables, 'formula')
+    # Create a list of tab labels using the titles of additional formulas
+    tab_labels = [formula['title'] for formula in config['additional_formulas']]
+    tabs = st.tabs(tab_labels)
+    for tab, additional_formula in zip(tabs, config['additional_formulas']):
+        with tab:
+            display_formula_section(additional_formula, variables, 'formula')
 
 def calculate_processing_details(image: np.ndarray, kernel_size: int, max_pixels: Optional[int]) -> Dict[str, int]:
     """

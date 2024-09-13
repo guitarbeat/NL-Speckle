@@ -13,6 +13,9 @@ import hashlib
 import time
 from cache_manager import clear_cache, get_cache_size, redis_client
 
+###################
+# CONSTANTS
+###################
 
 PRELOADED_IMAGES = {
     "image50.png": "media/image50.png",
@@ -29,8 +32,16 @@ PAGE_CONFIG = {
 
 COLOR_MAPS = ["viridis", "plasma", "inferno", "magma", "cividis", "gray", "pink"]
 
+###################
+# LOGGING SETUP
+###################
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+###################
+# IMAGE LOADING
+###################
 
 def load_image() -> Optional[Image.Image]:
     st.sidebar.markdown("### 📷 Image Source")
@@ -54,6 +65,10 @@ def load_image() -> Optional[Image.Image]:
         logger.error(f"Error loading image: {str(e)}")
         st.sidebar.error("Failed to load the image. Please try again or choose a different image.")
         return None
+
+###################
+# PARAMETER COLLECTION
+###################
 
 def get_processing_params(image: Image.Image) -> Dict[str, Any]:
     with st.popover("🔧 Processing Parameters"):
@@ -147,6 +162,10 @@ def get_advanced_options(image: Image.Image) -> Dict[str, Any]:
         st.sidebar.error("Failed to set advanced options. Using default values.")
         return {"image_np": np.array(image) / 255.0}
 
+###################
+# SIDEBAR SETUP
+###################
+
 def setup_sidebar() -> Optional[Dict[str, Any]]:
     try:
         st.sidebar.title("Image Processing Settings")
@@ -168,6 +187,10 @@ def setup_sidebar() -> Optional[Dict[str, Any]]:
         st.sidebar.error("An error occurred while setting up the sidebar. Please try again.")
         return None
  
+###################
+# PARAMETER PREPARATION
+###################
+
 def prepare_analysis_params(sidebar_params: Dict[str, Any], details: Dict[str, Any]) -> Dict[str, Any]:
     try:
         return {
@@ -190,6 +213,10 @@ def prepare_analysis_params(sidebar_params: Dict[str, Any], details: Dict[str, A
         st.error("Failed to prepare analysis parameters. Please try again.")
         return {}
 
+###################
+# MAIN APPLICATION
+###################
+
 def main() -> None:
     st.set_page_config(**PAGE_CONFIG)
     st.logo("media/logo.png")
@@ -199,35 +226,43 @@ def main() -> None:
         st.session_state.session_id = hashlib.md5(str(time.time()).encode()).hexdigest()
 
     try:
+        # Sidebar setup
         sidebar_params = setup_sidebar()
         if sidebar_params is None:
             st.stop()
 
-        # Move processing parameters to the top of the page
+        # Processing parameters
         processing_params = get_processing_params(sidebar_params['image'])
         
+        # Main content
         tabs = st.tabs(["Speckle", "NL-Means", "Image Comparison"])
         
+        # Calculate processing details
         details = calculate_processing_details(
             sidebar_params['image_np'], 
             processing_params['kernel_size'], 
             None if sidebar_params['show_full_processed'] else sidebar_params['pixels_to_process']
         )
         
+        # Prepare analysis parameters
         analysis_params = prepare_analysis_params({**sidebar_params, **processing_params}, details)
         if not analysis_params:
             st.stop()
         
+        # Store session state
         st.session_state.tabs = tabs 
         st.session_state.sidebar_params = sidebar_params
         st.session_state.analysis_params = analysis_params
         
+        # Process techniques and handle image comparison
         process_techniques(analysis_params)
-        
         comparison_images = prepare_comparison_images()
         handle_image_comparison(tabs[2], analysis_params['cmap'], comparison_images)
 
-        # Add cache management options
+        ###################
+        # CACHE MANAGEMENT
+        ###################
+
         with st.expander("Cache Management"):
             st.write(f"Current cache size: {get_cache_size()} entries")
             if st.button("Clear My Cache"):
@@ -237,6 +272,7 @@ def main() -> None:
                 clear_cache()
                 st.success("All cache has been cleared.")
         
+        # Display cache status
         if redis_client is not None:
             st.sidebar.success("Caching is active")
         else:
@@ -246,6 +282,10 @@ def main() -> None:
         logger.error(f"Unhandled exception in main: {str(e)}")
         st.error("An unexpected error occurred. Please try reloading the application.")
         st.exception(e)
+
+###################
+# SCRIPT ENTRY POINT
+###################
 
 if __name__ == "__main__":
     main()

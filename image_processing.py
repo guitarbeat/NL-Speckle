@@ -9,17 +9,33 @@ from analysis.speckle import process_speckle, visualize_speckle_results
 from analysis.nlm import process_nlm,  visualize_nlm_results
 from utils import calculate_processing_details 
 
+# Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Constants
 FILTER_OPTIONS = {
     "speckle": ["Mean Filter", "Std Dev Filter", "Speckle Contrast"],
     "nlm": ["Weight Map", "NL-Means Image", "Difference Map"]
 }
 
 # ----------------------------- UI Elements ----------------------------- #
+"""
+This section contains functions for creating and managing UI elements in Streamlit.
+"""
 
 def create_ui_elements(technique: str, tab: st.delta_generator.DeltaGenerator, show_full_processed: bool) -> Dict[str, Any]:
+    """
+    Create UI elements for the given technique and tab.
+    
+    Args:
+    technique (str): The image processing technique ('speckle' or 'nlm').
+    tab (st.delta_generator.DeltaGenerator): The Streamlit tab to render elements in.
+    show_full_processed (bool): Whether to show the full processed image or not.
+    
+    Returns:
+    Dict[str, Any]: A dictionary of placeholders for various UI elements.
+    """
     try:
         with tab:
             placeholders = {'formula': st.empty(), 'original_image': st.empty()}
@@ -43,8 +59,20 @@ def create_ui_elements(technique: str, tab: st.delta_generator.DeltaGenerator, s
         return {}
 
 # ----------------------------- Image Processing ----------------------------- #
+"""
+This section contains functions for processing and visualizing images using different techniques.
+"""
 
 def process_and_visualize_image(params: Dict[str, Any]) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]]]:
+    """
+    Process and visualize an image based on the given parameters.
+    
+    Args:
+    params (Dict[str, Any]): A dictionary containing all necessary parameters for processing and visualization.
+    
+    Returns:
+    Tuple[Dict[str, Any], Optional[Dict[str, Any]]]: The input parameters and the processing results (if successful).
+    """
     try:
         image_np = params['image_np']
         technique = params['technique']
@@ -101,6 +129,12 @@ def process_and_visualize_image(params: Dict[str, Any]) -> Tuple[Dict[str, Any],
         return params, None
 
 def process_techniques(analysis_params: Dict[str, Any]) -> None:
+    """
+    Process images using both speckle and NLM techniques.
+    
+    Args:
+    analysis_params (Dict[str, Any]): Parameters for the analysis, including image data and processing settings.
+    """
     for technique in ["speckle", "nlm"]:
         try:
             tab = st.session_state.tabs[0 if technique == "speckle" else 1]
@@ -133,8 +167,19 @@ def process_techniques(analysis_params: Dict[str, Any]) -> None:
             st.error(f"Failed to process {technique} technique. Please check your inputs and try again.")
 
 # ----------------------------- Image Comparison ----------------------------- #
+"""
+This section contains functions for comparing processed images.
+"""
 
 def handle_image_comparison(tab: st.delta_generator.DeltaGenerator, cmap_name: str, images: Dict[str, np.ndarray]):
+    """
+    Handle the image comparison UI and functionality.
+    
+    Args:
+    tab (st.delta_generator.DeltaGenerator): The Streamlit tab to render the comparison in.
+    cmap_name (str): The name of the colormap to use for image display.
+    images (Dict[str, np.ndarray]): A dictionary of images to compare.
+    """
     with tab:
         st.header("Image Comparison")
         if not images:
@@ -161,6 +206,9 @@ def handle_image_comparison(tab: st.delta_generator.DeltaGenerator, cmap_name: s
             st.info("Select two images to compare.")
 
 # ----------------------------- Kernel Extraction ----------------------------- #
+"""
+This section contains functions for extracting kernel information from images.
+"""
 
 def extract_kernel_info(image_np: np.ndarray, last_x: int, last_y: int, kernel_size: int) -> Tuple[List[List[float]], float]:
     """
