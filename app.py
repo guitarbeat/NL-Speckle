@@ -1,22 +1,17 @@
 import streamlit as st
-import streamlit_nested_layout  # type: ignore  # noqa: F401
+import streamlit_nested_layout  # noqa: F401
 import numpy as np
 import logging
 from PIL import Image
-from typing import Any, Dict, Optional
 
-from visualization import prepare_comparison_images
-from image_processing import handle_image_comparison, process_techniques
-from utils import calculate_processing_details
+from image_processing import handle_image_comparison, prepare_comparison_images, calculate_processing_details
+from utils import process_techniques
 
 import hashlib
 import time
 from cache_manager import clear_cache, get_cache_size, redis_client
 
-###################
-# CONSTANTS
-###################
-
+# Constants
 PRELOADED_IMAGES = {
     "image50.png": "media/image50.png",
     "spatial.tif": "media/spatial.tif",
@@ -32,20 +27,14 @@ PAGE_CONFIG = {
 
 COLOR_MAPS = ["viridis", "plasma", "inferno", "magma", "cividis", "gray", "pink"]
 
-###################
-# LOGGING SETUP
-###################
-
+# Logging setup
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-###################
-# IMAGE LOADING
-###################
-
-def load_image() -> Optional[Image.Image]:
+# Image loading
+def load_image():
     st.sidebar.markdown("### 📷 Image Source")
-    image_source = st.sidebar.radio("", ("Preloaded Images", "Upload Image"))
+    image_source = st.sidebar.radio("Select Image Source", ("Preloaded Images", "Upload Image"))
     
     try:
         if image_source == "Preloaded Images":
@@ -66,11 +55,9 @@ def load_image() -> Optional[Image.Image]:
         st.sidebar.error("Failed to load the image. Please try again or choose a different image.")
         return None
 
-###################
-# PARAMETER COLLECTION
-###################
-
-def get_processing_params(image: Image.Image) -> Dict[str, Any]:
+# Parameter collection
+def get_processing_params(image):
+    # TODO: Consider splitting this function into smaller, more focused functions
     with st.popover("🔧 Processing Parameters"):
         tab1, tab2, tab3 = st.tabs(["Speckle", "NL-means", "Display"])
         
@@ -127,7 +114,7 @@ def get_processing_params(image: Image.Image) -> Dict[str, Any]:
 
     return locals()
 
-def get_display_options(image: Image.Image, kernel_size: int) -> Dict[str, Any]:
+def get_display_options(image, kernel_size):
     try:
         with st.sidebar.expander("🖼️ Display Options", expanded=False):
             show_full_processed = st.checkbox("Show Fully Processed Image", value=True)
@@ -145,7 +132,7 @@ def get_display_options(image: Image.Image, kernel_size: int) -> Dict[str, Any]:
         st.sidebar.error("Failed to set display options. Using default values.")
         return {"show_full_processed": True, "max_pixels": max_pixels, "pixels_to_process": max_pixels}
 
-def get_advanced_options(image: Image.Image) -> Dict[str, Any]:
+def get_advanced_options(image):
     try:
         with st.sidebar.expander("🔬 Advanced Options"):
             add_noise = st.checkbox("Add Gaussian Noise", value=False,
@@ -162,11 +149,8 @@ def get_advanced_options(image: Image.Image) -> Dict[str, Any]:
         st.sidebar.error("Failed to set advanced options. Using default values.")
         return {"image_np": np.array(image) / 255.0}
 
-###################
-# SIDEBAR SETUP
-###################
-
-def setup_sidebar() -> Optional[Dict[str, Any]]:
+# Sidebar setup
+def setup_sidebar():
     try:
         st.sidebar.title("Image Processing Settings")
         image = load_image()
@@ -187,11 +171,8 @@ def setup_sidebar() -> Optional[Dict[str, Any]]:
         st.sidebar.error("An error occurred while setting up the sidebar. Please try again.")
         return None
  
-###################
-# PARAMETER PREPARATION
-###################
-
-def prepare_analysis_params(sidebar_params: Dict[str, Any], details: Dict[str, Any]) -> Dict[str, Any]:
+# Parameter preparation
+def prepare_analysis_params(sidebar_params, details):
     try:
         return {
             "image_np": sidebar_params['image_np'],
@@ -213,11 +194,8 @@ def prepare_analysis_params(sidebar_params: Dict[str, Any], details: Dict[str, A
         st.error("Failed to prepare analysis parameters. Please try again.")
         return {}
 
-###################
-# MAIN APPLICATION
-###################
-
-def main() -> None:
+# Main application
+def main():
     st.set_page_config(**PAGE_CONFIG)
     st.logo("media/logo.png")
     
@@ -259,10 +237,7 @@ def main() -> None:
         comparison_images = prepare_comparison_images()
         handle_image_comparison(tabs[2], analysis_params['cmap'], comparison_images)
 
-        ###################
-        # CACHE MANAGEMENT
-        ###################
-
+        # Cache management
         with st.expander("Cache Management"):
             st.write(f"Current cache size: {get_cache_size()} entries")
             if st.button("Clear My Cache"):
@@ -283,9 +258,6 @@ def main() -> None:
         st.error("An unexpected error occurred. Please try reloading the application.")
         st.exception(e)
 
-###################
-# SCRIPT ENTRY POINT
-###################
-
+# Script entry point
 if __name__ == "__main__":
     main()

@@ -1,15 +1,17 @@
 import numpy as np
-from typing import Tuple, Dict, Any, List
 from numba import njit
-from utils import generate_kernel_matrix, display_formula_section, display_additional_formulas, calculate_processing_details, visualize_image
+from image_processing import calculate_processing_details
 from cache_manager import cached_db
 import streamlit as st
+from dataclasses import dataclass
+
 
 #------------------------------------------------------------------------------
 # Constants
 #------------------------------------------------------------------------------
 
 SPECKLE_FORMULA_CONFIG = {
+    "title": "Speckle Contrast Calculation",
     "main_formula": r"I_{{{x},{y}}} = {original_value:.3f} \quad \rightarrow \quad SC_{{{x},{y}}} = \frac{{\sigma_{{{x},{y}}}}}{{\mu_{{{x},{y}}}}} = \frac{{{std:.3f}}}{{{mean:.3f}}} = {sc:.3f}",
     "explanation": r"This formula shows the transition from the original pixel intensity $I_{{{x},{y}}}$ to the Speckle Contrast (SC) for the same pixel position.",
     "additional_formulas": [
@@ -38,13 +40,10 @@ SPECKLE_FORMULA_CONFIG = {
         }
     ]
 }
-
-#------------------------------------------------------------------------------
 # Core Speckle Contrast Calculation Functions
-#------------------------------------------------------------------------------
 
 @njit
-def calculate_speckle_stats(local_window: np.ndarray) -> Tuple[float, float, float]:
+def calculate_speckle_stats(local_window):
     """Calculate mean, standard deviation, and speckle contrast for a local window."""
     local_mean = np.mean(local_window)
     local_std = np.std(local_window)
@@ -52,8 +51,7 @@ def calculate_speckle_stats(local_window: np.ndarray) -> Tuple[float, float, flo
     return local_mean, local_std, speckle_contrast
 
 @njit
-def process_pixel(row: int, col: int, image: np.ndarray, mean_filter: np.ndarray, 
-                  std_dev_filter: np.ndarray, sc_filter: np.ndarray, kernel_size: int) -> None:
+def process_pixel(row, col, image, mean_filter, std_dev_filter, sc_filter, kernel_size):
     """Process a single pixel for speckle contrast calculation."""
     half_kernel = kernel_size // 2
     local_window = image[row-half_kernel:row+half_kernel+1, col-half_kernel:col+half_kernel+1]
@@ -64,8 +62,7 @@ def process_pixel(row: int, col: int, image: np.ndarray, mean_filter: np.ndarray
     sc_filter[row, col] = speckle_contrast
 
 @njit
-def apply_mean_filter(image: np.ndarray, kernel_size: int, pixels_to_process: int, 
-                      height: int, width: int, first_x: int, first_y: int) -> np.ndarray:
+def apply_mean_filter(image, kernel_size, pixels_to_process, height, width, first_x, first_y):
     """Apply mean filter to the image."""
     mean_filter = np.zeros((height, width), dtype=np.float32)
     half_kernel = kernel_size // 2
@@ -79,8 +76,7 @@ def apply_mean_filter(image: np.ndarray, kernel_size: int, pixels_to_process: in
     return mean_filter
 
 @njit
-def apply_std_dev_filter(image: np.ndarray, mean_filter: np.ndarray, kernel_size: int, 
-                         pixels_to_process: int, height: int, width: int, first_x: int, first_y: int) -> np.ndarray:
+def apply_std_dev_filter(image, mean_filter, kernel_size, pixels_to_process, height, width, first_x, first_y):
     """Apply standard deviation filter to the image."""
     std_dev_filter = np.zeros((height, width), dtype=np.float32)
     half_kernel = kernel_size // 2
@@ -95,13 +91,12 @@ def apply_std_dev_filter(image: np.ndarray, mean_filter: np.ndarray, kernel_size
     return std_dev_filter
 
 @njit
-def apply_speckle_contrast_filter(mean_filter: np.ndarray, std_dev_filter: np.ndarray) -> np.ndarray:
+def apply_speckle_contrast_filter(mean_filter, std_dev_filter):
     """Apply speckle contrast filter using mean and standard deviation filters."""
     return np.where(mean_filter != 0, std_dev_filter / mean_filter, 0)
 
 @njit
-def apply_speckle_contrast(image: np.ndarray, kernel_size: int, pixels_to_process: int, 
-                           height: int, width: int, first_x: int, first_y: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+def apply_speckle_contrast(image, kernel_size, pixels_to_process, height, width, first_x, first_y):
     """Apply speckle contrast calculation to the image."""
     mean_filter = apply_mean_filter(image, kernel_size, pixels_to_process, height, width, first_x, first_y)
     std_dev_filter = apply_std_dev_filter(image, mean_filter, kernel_size, pixels_to_process, height, width, first_x, first_y)
@@ -109,12 +104,10 @@ def apply_speckle_contrast(image: np.ndarray, kernel_size: int, pixels_to_proces
 
     return mean_filter, std_dev_filter, sc_filter
 
-#------------------------------------------------------------------------------
 # Main Processing Function
-#------------------------------------------------------------------------------
 
 @cached_db
-def process_speckle(image: np.ndarray, kernel_size: int, max_pixels: int) -> Dict[str, Any]:
+def process_speckle(image, kernel_size, max_pixels):
     """Process the image using Speckle Contrast calculation."""
     details = calculate_processing_details(image, kernel_size, max_pixels)
     
@@ -123,114 +116,30 @@ def process_speckle(image: np.ndarray, kernel_size: int, max_pixels: int) -> Dic
         details['first_x'], details['first_y']
     )
 
-    return {
-        'mean_filter': mean_filter,
-        'std_dev_filter': std_dev_filter,
-        'speckle_contrast_filter': sc_filter,
-        'first_pixel': (details['first_x'], details['first_y']),
-        'first_pixel_stats': {
-            'mean': mean_filter[details['first_y'], details['first_x']],
-            'std_dev': std_dev_filter[details['first_y'], details['first_x']],
-            'speckle_contrast': sc_filter[details['first_y'], details['first_x']]
-        },
-        'additional_info': {
-            'kernel_size': kernel_size,
-            'pixels_processed': details['pixels_to_process'],
-            'image_dimensions': (details['height'], details['width'])
-        }
-    }
+    first_x, first_y = details['first_x'], details['first_y']
 
-#------------------------------------------------------------------------------
-# Formula Display Helper Functions
-#------------------------------------------------------------------------------
+    return SpeckleResult(
+        mean_filter=mean_filter,
+        std_dev_filter=std_dev_filter,
+        speckle_contrast_filter=sc_filter,
+        first_pixel=(first_x, first_y),
+        first_pixel_mean=mean_filter[first_y, first_x],
+        first_pixel_std_dev=std_dev_filter[first_y, first_x],
+        first_pixel_speckle_contrast=sc_filter[first_y, first_x],
+        kernel_size=kernel_size,
+        pixels_processed=details['pixels_to_process'],
+        image_dimensions=(details['height'], details['width'])
+    )
 
-def prepare_speckle_variables(kwargs: Dict[str, Any]) -> Dict[str, Any]:
-    variables = kwargs.copy()
-    
-    if 'input_x' not in variables or 'input_y' not in variables:
-        kernel_size = variables.get('kernel_size', 3)
-        variables['input_x'] = variables['x'] - kernel_size // 2
-        variables['input_y'] = variables['y'] - kernel_size // 2
-
-    if 'kernel_size' in variables and 'kernel_matrix' in variables:
-        variables['kernel_matrix'] = generate_kernel_matrix(variables['kernel_size'], variables['kernel_matrix'])
-
-    return variables
-
-def display_speckle_formula(formula_placeholder: Any, **kwargs):
-    with formula_placeholder.container():
-        variables = prepare_speckle_variables(kwargs)
-        with st.expander("Speckle Contrast Calculation Details"):
-            display_formula_section(SPECKLE_FORMULA_CONFIG, variables, 'main')
-            display_additional_formulas(SPECKLE_FORMULA_CONFIG, variables)
-
-#------------------------------------------------------------------------------
-# Visualization Functions
-#------------------------------------------------------------------------------
-
-def prepare_speckle_filter_options_and_params(
-    results: Dict[str, Any], 
-    first_pixel: Tuple[int, int]
-) -> Tuple[Dict[str, np.ndarray], Dict[str, Any]]:
-    first_x, first_y = first_pixel
-    
-    return {
-        "Mean Filter": results['mean_filter'],
-        "Std Dev Filter": results['std_dev_filter'],
-        "Speckle Contrast": results['speckle_contrast_filter']
-    }, {
-        "std": results['first_pixel_stats']['std_dev'],
-        "mean": results['first_pixel_stats']['mean'],
-        "sc": results['first_pixel_stats']['speckle_contrast'],
-        "total_pixels": results['additional_info']['pixels_processed']
-    }
-
-def visualize_speckle_results(
-    image_np: np.ndarray,
-    results: Dict[str, Any],
-    placeholders: Dict[str, Any],
-    params: Dict[str, Any],
-    first_pixel: Tuple[int, int],
-    kernel_size: int,
-    kernel_matrix: List[List[float]],
-    original_value: float
-):
-    first_x, first_y = first_pixel
-    vmin, vmax = np.min(image_np), np.max(image_np)
-    show_full_processed = params['show_full_processed']
-    cmap = params['analysis_params']['cmap']
-
-    # Visualize original image
-    visualize_image(image_np, placeholders['original_image'], first_x, first_y, kernel_size, cmap, 
-                    show_full_processed, vmin, vmax, "Original Image", "speckle")
-    
-    if not show_full_processed:
-        visualize_image(image_np, placeholders['zoomed_original_image'], first_x, first_y, kernel_size, 
-                        cmap, show_full_processed, vmin, vmax, "Zoomed-In Original Image", zoom=True)
-
-    # Prepare and visualize filter options
-    filter_options, specific_params = prepare_speckle_filter_options_and_params(results, (first_x, first_y))
-    
-    for filter_name, filter_data in filter_options.items():
-        visualize_filter(filter_name, filter_data, placeholders, first_x, first_y, kernel_size, cmap, show_full_processed)
-
-    # Display formula
-    specific_params.update({
-        'x': first_x, 'y': first_y, 'input_x': first_x, 'input_y': first_y,
-        'kernel_size': kernel_size, 'kernel_matrix': kernel_matrix, 'original_value': original_value
-    })
-    display_speckle_formula(placeholders['formula'], **specific_params)
-
-def visualize_filter(filter_name: str, filter_data: np.ndarray, placeholders: Dict[str, Any], 
-                     first_x: int, first_y: int, kernel_size: int, cmap: str, show_full_processed: bool):
-    key = filter_name.lower().replace(" ", "_")
-    if key in placeholders:
-        visualize_image(filter_data, placeholders[key], first_x, first_y, kernel_size, cmap, 
-                        show_full_processed, np.min(filter_data), np.max(filter_data), filter_name)
-        
-        if not show_full_processed:
-            zoomed_key = f'zoomed_{key}'
-            if zoomed_key in placeholders:
-                visualize_image(filter_data, placeholders[zoomed_key], first_x, first_y, kernel_size, 
-                                cmap, show_full_processed, np.min(filter_data), np.max(filter_data), 
-                                f"Zoomed-In {filter_name}", zoom=True)
+@dataclass
+class SpeckleResult:
+    mean_filter: np.ndarray
+    std_dev_filter: np.ndarray
+    speckle_contrast_filter: np.ndarray
+    first_pixel: tuple[int, int]
+    first_pixel_mean: float
+    first_pixel_std_dev: float
+    first_pixel_speckle_contrast: float
+    kernel_size: int
+    pixels_processed: int
+    image_dimensions: tuple[int, int]
