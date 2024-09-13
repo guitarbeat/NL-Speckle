@@ -1,11 +1,10 @@
 import numpy as np
 from typing import Tuple, Dict, Any, List
 from numba import njit
-from utils import generate_kernel_matrix, display_formula_section, display_additional_formulas, calculate_processing_details,visualize_image
+from utils import generate_kernel_matrix, display_formula_section, display_additional_formulas, calculate_processing_details, visualize_image
 from cache_manager import cached_db
 
-
-
+# Constants
 SPECKLE_FORMULA_CONFIG = {
     "main_formula": r"I_{{{x},{y}}} = {original_value:.3f} \quad \rightarrow \quad SC_{{{x},{y}}} = \frac{{\sigma_{{{x},{y}}}}}{{\mu_{{{x},{y}}}}} = \frac{{{std:.3f}}}{{{mean:.3f}}} = {sc:.3f}",
     "explanation": r"This formula shows the transition from the original pixel intensity $I_{{{x},{y}}}$ to the Speckle Contrast (SC) for the same pixel position.",
@@ -36,6 +35,7 @@ SPECKLE_FORMULA_CONFIG = {
     ]
 }
 
+# Core calculation functions
 @njit
 def calculate_speckle_stats(local_window: np.ndarray) -> Tuple[float, float, float]:
     """Calculate mean, standard deviation, and speckle contrast for a local window."""
@@ -71,8 +71,8 @@ def apply_speckle_contrast(image: np.ndarray, kernel_size: int, pixels_to_proces
 
     return mean_filter, std_dev_filter, sc_filter
 
+# Main processing function
 @cached_db
-# @st.cache_data(persist=True)
 def process_speckle(image: np.ndarray, kernel_size: int, max_pixels: int) -> Dict[str, Any]:
     """Process the image using Speckle Contrast calculation."""
     details = calculate_processing_details(image, kernel_size, max_pixels)
@@ -99,7 +99,7 @@ def process_speckle(image: np.ndarray, kernel_size: int, max_pixels: int) -> Dic
         }
     }
 
-
+# Helper functions for formula display
 def prepare_speckle_variables(kwargs: Dict[str, Any]) -> Dict[str, Any]:
     variables = kwargs.copy()
     
@@ -119,9 +119,7 @@ def display_speckle_formula(formula_placeholder: Any, **kwargs):
         display_formula_section(SPECKLE_FORMULA_CONFIG, variables, 'main')
         display_additional_formulas(SPECKLE_FORMULA_CONFIG, variables)
 
-
-#------ Display ------#
-
+# Display functions
 def prepare_speckle_filter_options_and_params(
     results: Dict[str, Any], 
     first_pixel: Tuple[int, int]
@@ -154,6 +152,7 @@ def visualize_speckle_results(
     show_full_processed = params['show_full_processed']
     cmap = params['analysis_params']['cmap']
 
+    # Visualize original image
     visualize_image(image_np, placeholders['original_image'], first_x, first_y, kernel_size, cmap, 
                     show_full_processed, vmin, vmax, "Original Image", "speckle")
     
@@ -161,24 +160,29 @@ def visualize_speckle_results(
         visualize_image(image_np, placeholders['zoomed_original_image'], first_x, first_y, kernel_size, 
                         cmap, show_full_processed, vmin, vmax, "Zoomed-In Original Image", zoom=True)
 
+    # Prepare and visualize filter options
     filter_options, specific_params = prepare_speckle_filter_options_and_params(results, (first_x, first_y))
     
     for filter_name, filter_data in filter_options.items():
-        key = filter_name.lower().replace(" ", "_")
-        if key in placeholders:
-            visualize_image(filter_data, placeholders[key], first_x, first_y, kernel_size, cmap, 
-                            show_full_processed, np.min(filter_data), np.max(filter_data), filter_name)
-            
-            if not show_full_processed:
-                zoomed_key = f'zoomed_{key}'
-                if zoomed_key in placeholders:
-                    visualize_image(filter_data, placeholders[zoomed_key], first_x, first_y, kernel_size, 
-                                    cmap, show_full_processed, np.min(filter_data), np.max(filter_data), 
-                                    f"Zoomed-In {filter_name}", zoom=True)
+        visualize_filter(filter_name, filter_data, placeholders, first_x, first_y, kernel_size, cmap, show_full_processed)
 
+    # Display formula
     specific_params.update({
         'x': first_x, 'y': first_y, 'input_x': first_x, 'input_y': first_y,
         'kernel_size': kernel_size, 'kernel_matrix': kernel_matrix, 'original_value': original_value
     })
-
     display_speckle_formula(placeholders['formula'], **specific_params)
+
+def visualize_filter(filter_name: str, filter_data: np.ndarray, placeholders: Dict[str, Any], 
+                     first_x: int, first_y: int, kernel_size: int, cmap: str, show_full_processed: bool):
+    key = filter_name.lower().replace(" ", "_")
+    if key in placeholders:
+        visualize_image(filter_data, placeholders[key], first_x, first_y, kernel_size, cmap, 
+                        show_full_processed, np.min(filter_data), np.max(filter_data), filter_name)
+        
+        if not show_full_processed:
+            zoomed_key = f'zoomed_{key}'
+            if zoomed_key in placeholders:
+                visualize_image(filter_data, placeholders[zoomed_key], first_x, first_y, kernel_size, 
+                                cmap, show_full_processed, np.min(filter_data), np.max(filter_data), 
+                                f"Zoomed-In {filter_name}", zoom=True)
