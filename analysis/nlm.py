@@ -1,18 +1,15 @@
 import numpy as np
-from typing import Optional, Tuple, Dict, Any, List, Union
 from numba import njit
-from utils import generate_kernel_matrix, display_formula_section, display_additional_formulas, calculate_processing_details, visualize_image
+from image_processing import calculate_processing_details
 from cache_manager import cached_db
-import streamlit as st
-
-# Constants
-FULL_SEARCH = 'full'
+from dataclasses import dataclass
 
 #------------------------------------------------------------------------------
 # NLM Formula Configuration
 #------------------------------------------------------------------------------
 
 NLM_FORMULA_CONFIG = {
+    "title": "Non-Local Means (NLM) Denoising",
     "variables": {
         "h": "{filter_strength}",
         "patch_size": "{kernel_size}",
@@ -67,20 +64,17 @@ NLM_FORMULA_CONFIG = {
     ]
 }
 
-#------------------------------------------------------------------------------
 # Core NLM Functions
-#------------------------------------------------------------------------------
 
 @njit
-def calculate_weight(center_patch: np.ndarray, comparison_patch: np.ndarray, filter_strength: float) -> float:
+def calculate_weight(center_patch, comparison_patch, filter_strength):
     """Calculate the weight for a patch comparison."""
     distance = np.sum((center_patch - comparison_patch)**2)
     return np.exp(-distance / (filter_strength ** 2))
 
 @njit
-def process_pixel(center_row: int, center_col: int, image: np.ndarray, denoised_image: np.ndarray, 
-                  weight_map: np.ndarray, kernel_size: int, search_window_size: Optional[int], 
-                  filter_strength: float, height: int, width: int) -> None:
+def process_pixel(center_row, center_col, image, denoised_image, weight_map, kernel_size, search_window_size, 
+                  filter_strength, height, width):
     """Process a single pixel for NLM denoising."""
     half_kernel = kernel_size // 2
     center_patch = image[center_row-half_kernel:center_row+half_kernel+1, center_col-half_kernel:center_col+half_kernel+1]
@@ -108,7 +102,7 @@ def process_pixel(center_row: int, center_col: int, image: np.ndarray, denoised_
     weight_map[center_row, center_col] = pixel_weight_map
 
 @njit
-def get_search_range(center: int, dimension: int, search_window_size: Optional[int]) -> Tuple[int, int]:
+def get_search_range(center, dimension, search_window_size):
     """Calculate the search range for a given dimension."""
     if search_window_size is None:
         return 0, dimension
@@ -118,17 +112,14 @@ def get_search_range(center: int, dimension: int, search_window_size: Optional[i
         return start, end
 
 @njit
-def is_valid_pixel(i: int, j: int, half_kernel: int, height: int, width: int) -> bool:
+def is_valid_pixel(i, j, half_kernel, height, width):
     """Check if a pixel is valid for processing."""
     return (half_kernel <= j < width - half_kernel) and (half_kernel <= i < height - half_kernel)
 
-#------------------------------------------------------------------------------
 # Main NLM Processing Functions
-#------------------------------------------------------------------------------
 
-# @cached_db
-def process_nlm(image: np.ndarray, kernel_size: int, max_pixels: int, search_window_size: int, 
-                filter_strength: float) -> Dict[str, Any]:
+@cached_db
+def process_nlm(image, kernel_size, max_pixels, search_window_size, filter_strength):
     """Process the image using Non-Local Means denoising."""
     details = calculate_processing_details(image, kernel_size, max_pixels)
     
@@ -139,24 +130,23 @@ def process_nlm(image: np.ndarray, kernel_size: int, max_pixels: int, search_win
     first_x, first_y = details['first_x'], details['first_y']
     per_pixel_weight_map = weight_map[first_y, first_x]
     normalized_weight_map = per_pixel_weight_map / np.max(per_pixel_weight_map) if np.max(per_pixel_weight_map) > 0 else per_pixel_weight_map
+    difference_map = np.abs(denoised_image - image)
 
-    return {
-        'processed_image': denoised_image,
-        'normalized_weight_map': normalized_weight_map,
-        'first_pixel': (first_x, first_y),
-        'max_weight': np.max(per_pixel_weight_map),
-        'additional_info': {
-            'kernel_size': kernel_size,
-            'pixels_processed': details['pixels_to_process'],
-            'image_dimensions': (details['height'], details['width']),
-            'search_window_size': search_window_size,
-            'filter_strength': filter_strength
-        }
-    }
+    return NLMResult(
+        processed_image=denoised_image,
+        normalized_weight_map=normalized_weight_map,
+        difference_map=difference_map,
+        first_pixel=(first_x, first_y),
+        max_weight=np.max(per_pixel_weight_map),
+        kernel_size=kernel_size,
+        pixels_processed=details['pixels_to_process'],
+        image_dimensions=(details['height'], details['width']),
+        search_window_size=search_window_size,
+        filter_strength=filter_strength
+    )
 
 @njit(parallel=True)
-def apply_nlm(image: np.ndarray, kernel_size: int, search_window_size: Optional[int], filter_strength: float, 
-              pixels_to_process: int, height: int, width: int, first_x: int, first_y: int) -> Tuple[np.ndarray, np.ndarray]:
+def apply_nlm(image, kernel_size, search_window_size, filter_strength, pixels_to_process, height, width, first_x, first_y):
     """Apply Non-Local Means denoising to the image."""
     denoised_image = np.zeros((height, width), dtype=np.float32)
     weight_map = np.zeros((height, width, height, width), dtype=np.float32)
@@ -168,108 +158,15 @@ def apply_nlm(image: np.ndarray, kernel_size: int, search_window_size: Optional[
 
     return denoised_image, weight_map
 
-#------------------------------------------------------------------------------
-# Formula Display Functions
-#------------------------------------------------------------------------------
-
-def prepare_nlm_variables(kwargs: Dict[str, Any]) -> Dict[str, Any]:
-    variables = kwargs.copy()
-    
-    kernel_size = variables.get('kernel_size', 3)
-    variables['patch_size'] = kernel_size
-    variables['h'] = variables.get('filter_strength', 1.0)
-    
-    if 'input_x' not in variables or 'input_y' not in variables:
-        variables['input_x'] = variables['x'] - kernel_size // 2
-        variables['input_y'] = variables['y'] - kernel_size // 2
-
-    if 'kernel_matrix' in variables:
-        variables['kernel_matrix'] = generate_kernel_matrix(kernel_size, variables['kernel_matrix'])
-
-    search_window_size = variables.get('search_window_size')
-    variables['search_window_description'] = (
-        "We search the entire image for similar pixels." if search_window_size == FULL_SEARCH
-        else f"A search window of size {search_window_size}x{search_window_size} centered around the target pixel."
-    )
-
-    return variables
-
-def display_nlm_formula(formula_placeholder: Any, **kwargs):
-    with formula_placeholder.container():
-        variables = prepare_nlm_variables(kwargs)
-
-        with st.expander("Non-Local Means Denoising Details"):
-            display_formula_section(NLM_FORMULA_CONFIG, variables, 'main')
-            display_additional_formulas(NLM_FORMULA_CONFIG, variables)
-
-#------------------------------------------------------------------------------
-# Visualization Functions
-#------------------------------------------------------------------------------
-
-def prepare_nlm_filter_options_and_params(
-    results: Dict[str, Any], 
-    first_pixel: Tuple[int, int], 
-    filter_strength: float, 
-    search_window_size: Union[int, str]
-) -> Tuple[Dict[str, np.ndarray], Dict[str, Any]]:
-    first_x, first_y = first_pixel
-    processed_image = results['processed_image']
-    
-    return {
-        "NL-Means Image": processed_image,
-        "Weight Map": results['normalized_weight_map'],
-        "Difference Map": np.abs(processed_image - results['additional_info']['image_dimensions'][0])
-    }, {
-        "filter_strength": filter_strength,
-        "search_window_size": search_window_size,
-        "total_pixels": results['additional_info']['pixels_processed'],
-        "nlm_value": processed_image[first_y, first_x]
-    }
-
-def visualize_nlm_results(
-    image_np: np.ndarray,
-    results: Dict[str, Any],
-    placeholders: Dict[str, Any],
-    params: Dict[str, Any],
-    first_pixel: Tuple[int, int],
-    kernel_size: int,
-    kernel_matrix: List[List[float]],
-    original_value: float
-):
-    first_x, first_y = first_pixel
-    vmin, vmax = np.min(image_np), np.max(image_np)
-    show_full_processed = params['show_full_processed']
-    cmap = params['analysis_params']['cmap']
-    search_window_size = params['analysis_params'].get('search_window_size')
-    filter_strength = params['analysis_params'].get('filter_strength')
-
-    visualize_image(image_np, placeholders['original_image'], first_x, first_y, kernel_size, cmap, 
-                    show_full_processed, vmin, vmax, "Original Image", "nlm", search_window_size)
-    
-    if not show_full_processed:
-        visualize_image(image_np, placeholders['zoomed_original_image'], first_x, first_y, kernel_size, 
-                        cmap, show_full_processed, vmin, vmax, "Zoomed-In Original Image", zoom=True)
-
-    filter_options, specific_params = prepare_nlm_filter_options_and_params(
-        results, (first_x, first_y), filter_strength, search_window_size
-    )
-    
-    for filter_name, filter_data in filter_options.items():
-        key = filter_name.lower().replace(" ", "_")
-        if key in placeholders:
-            visualize_image(filter_data, placeholders[key], first_x, first_y, kernel_size, cmap, 
-                            show_full_processed, np.min(filter_data), np.max(filter_data), filter_name)
-            
-            if not show_full_processed:
-                zoomed_key = f'zoomed_{key}'
-                if zoomed_key in placeholders:
-                    visualize_image(filter_data, placeholders[zoomed_key], first_x, first_y, kernel_size, 
-                                    cmap, show_full_processed, np.min(filter_data), np.max(filter_data), 
-                                    f"Zoomed-In {filter_name}", zoom=True)
-
-    specific_params.update({
-        'x': first_x, 'y': first_y, 'input_x': first_x, 'input_y': first_y,
-        'kernel_size': kernel_size, 'kernel_matrix': kernel_matrix, 'original_value': original_value
-    })
-
-    display_nlm_formula(placeholders['formula'], **specific_params)
+@dataclass
+class NLMResult:
+    processed_image: np.ndarray
+    normalized_weight_map: np.ndarray
+    difference_map: np.ndarray
+    first_pixel: tuple[int, int]
+    max_weight: float
+    kernel_size: int
+    pixels_processed: int
+    image_dimensions: tuple[int, int]
+    search_window_size: int | None
+    filter_strength: float
