@@ -1,8 +1,28 @@
 import streamlit as st
+from analysis.nlm import NLM_FORMULA_CONFIG
+from analysis.speckle import SPECKLE_FORMULA_CONFIG
 
 FULL_SEARCH = 'full'
 
 # ----------------------------- Formula Display Functions ----------------------------- #
+
+def display_analysis_formula(specific_params, placeholders, analysis_type):
+    """
+    Display the analysis formula.
+    
+    Args:
+        specific_params: A dictionary of specific parameters for the formula.
+        placeholders: A dictionary of Streamlit placeholders.
+        analysis_type: The type of analysis ('nlm' or 'speckle').
+    """
+    formula_config = NLM_FORMULA_CONFIG if analysis_type == 'nlm' else SPECKLE_FORMULA_CONFIG
+    formula_placeholder = placeholders.get('formula')
+    if formula_placeholder:
+        display_formula(formula_config, specific_params, formula_placeholder)
+    else:
+        st.warning("Formula placeholder not found.")
+
+
 
 # Prepares and adjusts variables for formula display based on the analysis type
 def prepare_variables(kwargs, analysis_type):
