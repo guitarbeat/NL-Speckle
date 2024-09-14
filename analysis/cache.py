@@ -3,9 +3,23 @@ import json
 import hashlib
 import streamlit as st
 import numpy as np
-from typing import Any, Callable
 from functools import wraps
 import logging
+
+# ===== REDIS SERVER SETUP =====
+# To start the Redis server on macOS:
+# 1. Open a terminal window
+# 2. Start the Redis server:
+#    brew services start redis
+#    (or if you prefer to run it manually: redis-server)
+#
+# 3. Verify the server is running:
+#    redis-cli ping
+#    If it responds with "PONG", the server is running correctly.
+#
+# To stop the Redis server when you're done:
+# brew services stop redis
+# (or if running manually, use Ctrl+C in the terminal where redis-server is running)
 
 # ===== LOGGING SETUP =====
 logging.basicConfig(level=logging.INFO)

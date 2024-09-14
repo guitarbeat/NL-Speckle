@@ -1,7 +1,7 @@
 import numpy as np
 from numba import njit
-from image_processing import calculate_processing_details
-from cache_manager import cached_db
+from utils import calculate_processing_details
+from analysis.cache import cached_db
 from dataclasses import dataclass
 
 #------------------------------------------------------------------------------
@@ -101,6 +101,14 @@ def process_pixel(center_row, center_col, image, denoised_image, weight_map, ker
     denoised_image[center_row, center_col] = denoised_value / weight_sum if weight_sum > 0 else image[center_row, center_col]
     weight_map[center_row, center_col] = pixel_weight_map
 
+    # Comments explaining the weight map:
+    # The weight_map stores similarity scores for each pixel compared to the center pixel.
+    # - A weight close to 1 indicates high similarity (patches are very alike).
+    # - A weight close to 0 indicates low similarity (patches are very different).
+    # - The center pixel always has the highest similarity to itself (weight = 1).
+    # - Weights are relative and depend on the filter_strength parameter.
+    # - Higher filter_strength results in more uniform weights, lower leads to more distinct differences.
+
 @njit
 def get_search_range(center, dimension, search_window_size):
     """Calculate the search range for a given dimension."""
@@ -121,50 +129,53 @@ def is_valid_pixel(i, j, half_kernel, height, width):
 @cached_db
 def process_nlm(image, kernel_size, max_pixels, search_window_size, filter_strength):
     """Process the image using Non-Local Means denoising."""
-    details = calculate_processing_details(image, kernel_size, max_pixels)
+    processing_info = calculate_processing_details(image, kernel_size, max_pixels)
     
-    denoised_image, weight_map = apply_nlm(image, kernel_size, search_window_size, filter_strength, 
-                                           details['pixels_to_process'], details['height'], details['width'], 
-                                           details['first_x'], details['first_y'])
+    denoised_image, weight_map = apply_nlm(
+        image, kernel_size, search_window_size, filter_strength, 
+        processing_info.pixels_to_process, processing_info.image_height, processing_info.image_width, 
+        processing_info.start_x, processing_info.start_y
+    )
     
-    first_x, first_y = details['first_x'], details['first_y']
-    per_pixel_weight_map = weight_map[first_y, first_x]
-    normalized_weight_map = per_pixel_weight_map / np.max(per_pixel_weight_map) if np.max(per_pixel_weight_map) > 0 else per_pixel_weight_map
+    end_x, end_y = processing_info.end_x, processing_info.end_y
+    end_pixel_weight_map = weight_map[end_y, end_x]
+    normalized_weight_map = end_pixel_weight_map / np.max(end_pixel_weight_map) if np.max(end_pixel_weight_map) > 0 else end_pixel_weight_map
     difference_map = np.abs(denoised_image - image)
 
     return NLMResult(
-        processed_image=denoised_image,
-        normalized_weight_map=normalized_weight_map,
+        denoised_image=denoised_image,
+        weight_map_for_end_pixel=normalized_weight_map,
         difference_map=difference_map,
-        first_pixel=(first_x, first_y),
-        max_weight=np.max(per_pixel_weight_map),
+        processing_end_coord=(end_x, end_y),
+        end_pixel_max_weight=np.max(end_pixel_weight_map),
         kernel_size=kernel_size,
-        pixels_processed=details['pixels_to_process'],
-        image_dimensions=(details['height'], details['width']),
+        pixels_processed=processing_info.pixels_to_process,
+        image_dimensions=(processing_info.image_height, processing_info.image_width),
         search_window_size=search_window_size,
         filter_strength=filter_strength
     )
 
 @njit(parallel=True)
-def apply_nlm(image, kernel_size, search_window_size, filter_strength, pixels_to_process, height, width, first_x, first_y):
+def apply_nlm(image, kernel_size, search_window_size, filter_strength, pixels_to_process, height, width, start_x, start_y):
     """Apply Non-Local Means denoising to the image."""
     denoised_image = np.zeros((height, width), dtype=np.float32)
     weight_map = np.zeros((height, width, height, width), dtype=np.float32)
 
+    valid_width = width - kernel_size + 1
     for pixel in range(pixels_to_process):
-        row = first_y + pixel // (width - kernel_size + 1)
-        col = first_x + pixel % (width - kernel_size + 1)
+        row = start_y + pixel // valid_width
+        col = start_x + pixel % valid_width
         process_pixel(row, col, image, denoised_image, weight_map, kernel_size, search_window_size, filter_strength, height, width)
 
     return denoised_image, weight_map
 
 @dataclass
 class NLMResult:
-    processed_image: np.ndarray
-    normalized_weight_map: np.ndarray
+    denoised_image: np.ndarray
+    weight_map_for_end_pixel: np.ndarray
     difference_map: np.ndarray
-    first_pixel: tuple[int, int]
-    max_weight: float
+    processing_end_coord: tuple[int, int]
+    end_pixel_max_weight: float
     kernel_size: int
     pixels_processed: int
     image_dimensions: tuple[int, int]

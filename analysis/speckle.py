@@ -1,11 +1,11 @@
 import numpy as np
 from numba import njit
-from image_processing import calculate_processing_details
-from cache_manager import cached_db
-import streamlit as st
+from utils import calculate_processing_details
+from analysis.cache import cached_db
 from dataclasses import dataclass
+import logging
 
-
+logger = logging.getLogger(__name__)
 #------------------------------------------------------------------------------
 # Constants
 #------------------------------------------------------------------------------
@@ -62,28 +62,30 @@ def process_pixel(row, col, image, mean_filter, std_dev_filter, sc_filter, kerne
     sc_filter[row, col] = speckle_contrast
 
 @njit
-def apply_mean_filter(image, kernel_size, pixels_to_process, height, width, first_x, first_y):
+def apply_mean_filter(image, kernel_size, pixels_to_process, height, width, start_x, start_y):
     """Apply mean filter to the image."""
     mean_filter = np.zeros((height, width), dtype=np.float32)
     half_kernel = kernel_size // 2
+    valid_width = width - kernel_size + 1
 
     for pixel in range(pixels_to_process):
-        row = first_y + pixel // (width - kernel_size + 1)
-        col = first_x + pixel % (width - kernel_size + 1)
+        row = start_y + pixel // valid_width
+        col = start_x + pixel % valid_width
         local_window = image[row-half_kernel:row+half_kernel+1, col-half_kernel:col+half_kernel+1]
         mean_filter[row, col] = np.mean(local_window)
 
     return mean_filter
 
 @njit
-def apply_std_dev_filter(image, mean_filter, kernel_size, pixels_to_process, height, width, first_x, first_y):
+def apply_std_dev_filter(image, mean_filter, kernel_size, pixels_to_process, height, width, start_x, start_y):
     """Apply standard deviation filter to the image."""
     std_dev_filter = np.zeros((height, width), dtype=np.float32)
     half_kernel = kernel_size // 2
+    valid_width = width - kernel_size + 1
 
     for pixel in range(pixels_to_process):
-        row = first_y + pixel // (width - kernel_size + 1)
-        col = first_x + pixel % (width - kernel_size + 1)
+        row = start_y + pixel // valid_width
+        col = start_x + pixel % valid_width
         local_window = image[row-half_kernel:row+half_kernel+1, col-half_kernel:col+half_kernel+1]
         local_mean = mean_filter[row, col]
         std_dev_filter[row, col] = np.sqrt(np.mean((local_window - local_mean)**2))
@@ -96,10 +98,10 @@ def apply_speckle_contrast_filter(mean_filter, std_dev_filter):
     return np.where(mean_filter != 0, std_dev_filter / mean_filter, 0)
 
 @njit
-def apply_speckle_contrast(image, kernel_size, pixels_to_process, height, width, first_x, first_y):
+def apply_speckle_contrast(image, kernel_size, pixels_to_process, height, width, start_x, start_y):
     """Apply speckle contrast calculation to the image."""
-    mean_filter = apply_mean_filter(image, kernel_size, pixels_to_process, height, width, first_x, first_y)
-    std_dev_filter = apply_std_dev_filter(image, mean_filter, kernel_size, pixels_to_process, height, width, first_x, first_y)
+    mean_filter = apply_mean_filter(image, kernel_size, pixels_to_process, height, width, start_x, start_y)
+    std_dev_filter = apply_std_dev_filter(image, mean_filter, kernel_size, pixels_to_process, height, width, start_x, start_y)
     sc_filter = apply_speckle_contrast_filter(mean_filter, std_dev_filter)
 
     return mean_filter, std_dev_filter, sc_filter
@@ -109,37 +111,53 @@ def apply_speckle_contrast(image, kernel_size, pixels_to_process, height, width,
 @cached_db
 def process_speckle(image, kernel_size, max_pixels):
     """Process the image using Speckle Contrast calculation."""
-    details = calculate_processing_details(image, kernel_size, max_pixels)
+    try:
+        processing_info = calculate_processing_details(image, kernel_size, max_pixels)
+    except Exception as e:
+        logger.error(f"Error in calculate_processing_details: {e}")
+        raise
+
+    logger.debug(f"Processing info: {processing_info}")
+    logger.debug(f"Processing info attributes: {dir(processing_info)}")
     
-    mean_filter, std_dev_filter, sc_filter = apply_speckle_contrast(
-        image, kernel_size, details['pixels_to_process'], details['height'], details['width'], 
-        details['first_x'], details['first_y']
-    )
+    try:
+        mean_filter, std_dev_filter, sc_filter = apply_speckle_contrast(
+            image, kernel_size, processing_info.pixels_to_process, 
+            processing_info.image_height, processing_info.image_width, 
+            processing_info.start_x, processing_info.start_y
+        )
 
-    first_x, first_y = details['first_x'], details['first_y']
+        start_x, start_y = processing_info.start_x, processing_info.start_y
 
-    return SpeckleResult(
-        mean_filter=mean_filter,
-        std_dev_filter=std_dev_filter,
-        speckle_contrast_filter=sc_filter,
-        first_pixel=(first_x, first_y),
-        first_pixel_mean=mean_filter[first_y, first_x],
-        first_pixel_std_dev=std_dev_filter[first_y, first_x],
-        first_pixel_speckle_contrast=sc_filter[first_y, first_x],
-        kernel_size=kernel_size,
-        pixels_processed=details['pixels_to_process'],
-        image_dimensions=(details['height'], details['width'])
-    )
+        return SpeckleResult(
+            mean_filter=mean_filter,
+            std_dev_filter=std_dev_filter,
+            speckle_contrast_filter=sc_filter,
+            processing_start_coord=(start_x, start_y),
+            start_pixel_mean=mean_filter[start_y, start_x],
+            start_pixel_std_dev=std_dev_filter[start_y, start_x],
+            start_pixel_speckle_contrast=sc_filter[start_y, start_x],
+            kernel_size=kernel_size,
+            pixels_processed=processing_info.pixels_to_process,
+            image_dimensions=(processing_info.image_height, processing_info.image_width)
+        )
+    except AttributeError as e:
+        logger.error(f"AttributeError in process_speckle: {e}")
+        logger.error(f"ProcessingDetails object: {processing_info}")
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error in process_speckle: {e}")
+        raise
 
 @dataclass
 class SpeckleResult:
     mean_filter: np.ndarray
     std_dev_filter: np.ndarray
     speckle_contrast_filter: np.ndarray
-    first_pixel: tuple[int, int]
-    first_pixel_mean: float
-    first_pixel_std_dev: float
-    first_pixel_speckle_contrast: float
+    processing_start_coord: tuple[int, int]
+    start_pixel_mean: float
+    start_pixel_std_dev: float
+    start_pixel_speckle_contrast: float
     kernel_size: int
     pixels_processed: int
     image_dimensions: tuple[int, int]
