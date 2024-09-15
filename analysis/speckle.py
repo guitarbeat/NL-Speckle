@@ -1,11 +1,9 @@
 import numpy as np
 from numba import njit
 from utils import calculate_processing_details
-from analysis.cache import cached_db
 from dataclasses import dataclass
 import logging
-
-logger = logging.getLogger(__name__)
+import streamlit as st
 #------------------------------------------------------------------------------
 # Constants
 #------------------------------------------------------------------------------
@@ -51,10 +49,11 @@ def calculate_speckle_stats(local_window):
     return local_mean, local_std, speckle_contrast
 
 @njit
-def process_pixel(row, col, image, mean_filter, std_dev_filter, sc_filter, kernel_size):
+def process_pixel(row, col, image, mean_filter, std_dev_filter, sc_filter, kernel_size, height, width):
     """Process a single pixel for speckle contrast calculation."""
     half_kernel = kernel_size // 2
-    local_window = image[row-half_kernel:row+half_kernel+1, col-half_kernel:col+half_kernel+1]
+    local_window = image[max(0, row-half_kernel):min(height, row+half_kernel+1),
+                         max(0, col-half_kernel):min(width, col+half_kernel+1)]
     local_mean, local_std, speckle_contrast = calculate_speckle_stats(local_window)
 
     mean_filter[row, col] = local_mean
@@ -71,8 +70,10 @@ def apply_mean_filter(image, kernel_size, pixels_to_process, height, width, star
     for pixel in range(pixels_to_process):
         row = start_y + pixel // valid_width
         col = start_x + pixel % valid_width
-        local_window = image[row-half_kernel:row+half_kernel+1, col-half_kernel:col+half_kernel+1]
-        mean_filter[row, col] = np.mean(local_window)
+        if row < height and col < width:
+            local_window = image[max(0, row-half_kernel):min(height, row+half_kernel+1),
+                                 max(0, col-half_kernel):min(width, col+half_kernel+1)]
+            mean_filter[row, col] = np.mean(local_window)
 
     return mean_filter
 
@@ -86,9 +87,11 @@ def apply_std_dev_filter(image, mean_filter, kernel_size, pixels_to_process, hei
     for pixel in range(pixels_to_process):
         row = start_y + pixel // valid_width
         col = start_x + pixel % valid_width
-        local_window = image[row-half_kernel:row+half_kernel+1, col-half_kernel:col+half_kernel+1]
-        local_mean = mean_filter[row, col]
-        std_dev_filter[row, col] = np.sqrt(np.mean((local_window - local_mean)**2))
+        if row < height and col < width:
+            local_window = image[max(0, row-half_kernel):min(height, row+half_kernel+1),
+                                 max(0, col-half_kernel):min(width, col+half_kernel+1)]
+            local_mean = mean_filter[row, col]
+            std_dev_filter[row, col] = np.sqrt(np.mean((local_window - local_mean)**2))
 
     return std_dev_filter
 
@@ -107,20 +110,12 @@ def apply_speckle_contrast(image, kernel_size, pixels_to_process, height, width,
     return mean_filter, std_dev_filter, sc_filter
 
 # Main Processing Function
-
-@cached_db
+# @st.cache_data(persist=True, show_spinner="Retrieving cached data...")
 def process_speckle(image, kernel_size, max_pixels):
     """Process the image using Speckle Contrast calculation."""
     try:
         processing_info = calculate_processing_details(image, kernel_size, max_pixels)
-    except Exception as e:
-        logger.error(f"Error in calculate_processing_details: {e}")
-        raise
-
-    logger.debug(f"Processing info: {processing_info}")
-    logger.debug(f"Processing info attributes: {dir(processing_info)}")
-    
-    try:
+        
         mean_filter, std_dev_filter, sc_filter = apply_speckle_contrast(
             image, kernel_size, processing_info.pixels_to_process, 
             processing_info.image_height, processing_info.image_width, 
@@ -141,13 +136,9 @@ def process_speckle(image, kernel_size, max_pixels):
             pixels_processed=processing_info.pixels_to_process,
             image_dimensions=(processing_info.image_height, processing_info.image_width)
         )
-    except AttributeError as e:
-        logger.error(f"AttributeError in process_speckle: {e}")
-        logger.error(f"ProcessingDetails object: {processing_info}")
-        raise
     except Exception as e:
-        logger.error(f"Unexpected error in process_speckle: {e}")
-        raise
+        logging.error(f"Error in process_speckle: {str(e)}")
+        return None
 
 @dataclass
 class SpeckleResult:

@@ -10,3 +10,5 @@ streamlit-nested-layout
 scipy
 typing-extensions
 redis
+memory_profiler
+psutil

@@ -3,11 +3,11 @@ import streamlit_nested_layout  # noqa: F401
 from frontend.plotting import setup_and_run_analysis_techniques
 from utils import calculate_processing_details
 from frontend.ui_elements import (handle_image_comparison, prepare_comparison_images,
-                                  setup_sidebar, get_technique_params)  # Add this import
+                                  setup_sidebar, get_technique_params)
 import hashlib
 import time
-# from modules.cache_manager import clear_cache, get_cache_size, redis_client
-
+# Add this import
+# from memory_profiler import profile
 
 PAGE_CONFIG = {
     "page_title": "Speckle Contrast Visualization",
@@ -16,8 +16,8 @@ PAGE_CONFIG = {
     "initial_sidebar_state": "expanded"
 }
 
-
-# Main application
+# Modify the main function to include memory profiling
+# @profile
 def main():
     st.set_page_config(**PAGE_CONFIG)
     st.logo("media/logo.png")  # Changed from st.logo to st.image
@@ -29,6 +29,8 @@ def main():
         sidebar_params = setup_sidebar()
         if sidebar_params is None:
             st.stop()
+
+   
 
         tabs = st.tabs(["Speckle", "NL-Means", "Image Comparison"])
         
@@ -48,9 +50,9 @@ def main():
         st.session_state.analysis_params = {
             "image_np": sidebar_params['image_np'],
             "show_per_pixel": sidebar_params['show_per_pixel'],
-            "max_pixels": sidebar_params['pixels_to_process'],  # Use pixels_to_process from sidebar_params
-            "image_height": details.image_height,  # Updated attribute name
-            "image_width": details.image_width,  # Updated attribute name
+            "max_pixels": sidebar_params['pixels_to_process'],
+            "image_height": details.image_height,
+            "image_width": details.image_width,
             **processing_params
         }
         
@@ -62,6 +64,7 @@ def main():
         setup_and_run_analysis_techniques(st.session_state.analysis_params)
         comparison_images = prepare_comparison_images()
         handle_image_comparison(tabs[2], st.session_state.cmap, comparison_images)
+
 
     except Exception as e:
         st.error("An unexpected error occurred. Please try reloading the application.")
