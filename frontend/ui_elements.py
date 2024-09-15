@@ -17,80 +17,75 @@ PRELOADED_IMAGES = {
     "logo.jpg": "media/logo.jpg"
 }
 
-def load_image():
-    st.sidebar.markdown("### 📷 Image Source")
-    image_source = st.sidebar.radio("Select Image Source", ("Preloaded Images", "Upload Image"))
+def create_sidebar_section(title: str, content_func):
+    with st.sidebar:
+        st.markdown(f"### {title}")
+        return content_func()
+
+def create_image_source_ui():
+    image_source = st.radio("Select Image Source", ("Preloaded Images", "Upload Image"))
     
     try:
         if image_source == "Preloaded Images":
-            selected_image = st.sidebar.selectbox("Select Image", list(PRELOADED_IMAGES))
+            selected_image = st.selectbox("Select Image", list(PRELOADED_IMAGES))
             image = Image.open(PRELOADED_IMAGES[selected_image]).convert('L')
         else:
-            uploaded_file = st.sidebar.file_uploader("Upload Image")
+            uploaded_file = st.file_uploader("Upload Image")
             image = Image.open(uploaded_file).convert('L') if uploaded_file else None
 
         if image is None:
-            st.sidebar.warning('Please select or upload an image.')
+            st.warning('Please select or upload an image.')
             return None
 
-        st.sidebar.image(image, "Input Image", use_column_width=True)
+        st.image(image, "Input Image", use_column_width=True)
         return image
     except Exception as e:
-        st.sidebar.error(f"Failed to load the image: {str(e)}")
+        st.error(f"Failed to load the image: {str(e)}")
         return None
 
-def setup_color_map():
-    st.sidebar.markdown("### 🎨 Color Map")
+def create_color_map_ui():
     cmap = st.session_state.get('cmap', COLOR_MAPS[0])
-    cmap = st.sidebar.selectbox("Select Color Map", COLOR_MAPS, index=COLOR_MAPS.index(cmap))
+    cmap = st.selectbox("Select Color Map", COLOR_MAPS, index=COLOR_MAPS.index(cmap))
     st.session_state.cmap = cmap
     return cmap
 
-def get_display_options(image, kernel_size):
-    try:
-        col1, col2 = st.columns(2)
-        show_per_pixel = col1.toggle("Show Per-Pixel Processing Steps", value=False)
-        max_pixels = (image.width - kernel_size + 1) * (image.height - kernel_size + 1)
-        
-        pixels_to_process = max_pixels
-        if show_per_pixel:
-            percentage = col2.slider("Percentage of Pixels to Process", 
-                                     min_value=1, max_value=100, value=100, step=1,
-                                     key=f"percentage_slider_{kernel_size}")  # Add kernel_size to the key
-            st.session_state.percentage = percentage
-            pixels_to_process = int(max_pixels * percentage / 100)
+def create_display_options_ui(image, kernel_size):
+    col1, col2 = st.columns(2)
+    show_per_pixel = col1.toggle("Show Per-Pixel Processing Steps", value=False)
+    max_pixels = (image.width - kernel_size + 1) * (image.height - kernel_size + 1)
+    
+    pixels_to_process = max_pixels
+    if show_per_pixel:
+        percentage = col2.slider("Percentage of Pixels to Process", 
+                                 min_value=1, max_value=100, value=100, step=1,
+                                 key=f"percentage_slider_{kernel_size}")
+        st.session_state.percentage = percentage
+        pixels_to_process = int(max_pixels * percentage / 100)
 
-        return {"show_per_pixel": show_per_pixel, "max_pixels": max_pixels, "pixels_to_process": pixels_to_process}
-    except Exception as e:
-        st.error(f"Failed to set display options: {str(e)}")
-        return {"show_per_pixel": False, "max_pixels": max_pixels, "pixels_to_process": max_pixels}
+    return {"show_per_pixel": show_per_pixel, "max_pixels": max_pixels, "pixels_to_process": pixels_to_process}
 
-def get_advanced_options(image):
-    try:
-        with st.sidebar.expander("🔬 Advanced Options"):
-            add_noise = st.checkbox("Add Gaussian Noise", value=False,
-                                    help="Add Gaussian noise to the image")
-            if add_noise:
-                noise_mean = st.number_input("Noise Mean", min_value=0.0, max_value=1.0, value=0.0, step=0.01, format="%.2f")
-                noise_std = st.number_input("Noise Std", min_value=0.0, max_value=1.0, value=0.1, step=0.01, format="%.2f")
-                image_np = np.clip(np.array(image) / 255.0 + np.random.normal(noise_mean, noise_std, np.array(image).shape), 0, 1)
-            else:
-                image_np = np.array(image) / 255.0
-        return {"image_np": image_np, "add_noise": add_noise}
-    except Exception as e:
-        st.sidebar.error(f"Failed to set advanced options: {str(e)}")
-        return {"image_np": np.array(image) / 255.0, "add_noise": False}
+def create_advanced_options_ui(image):
+    with st.expander("🔬 Advanced Options"):
+        add_noise = st.checkbox("Add Gaussian Noise", value=False,
+                                help="Add Gaussian noise to the image")
+        if add_noise:
+            noise_mean = st.number_input("Noise Mean", min_value=0.0, max_value=1.0, value=0.0, step=0.01, format="%.2f")
+            noise_std = st.number_input("Noise Std", min_value=0.0, max_value=1.0, value=0.1, step=0.01, format="%.2f")
+            image_np = np.clip(np.array(image) / 255.0 + np.random.normal(noise_mean, noise_std, np.array(image).shape), 0, 1)
+        else:
+            image_np = np.array(image) / 255.0
+    return {"image_np": image_np, "add_noise": add_noise}
 
 def setup_sidebar():
     try:
         st.sidebar.title("Image Processing Settings")
-        image = load_image()
+        image = create_sidebar_section("📷 Image Source", create_image_source_ui)
         if image is None:
             return None
 
-        cmap = setup_color_map()
-        display_options = get_display_options(image, 7)  # Use default kernel_size of 7
-        advanced_options = get_advanced_options(image)
+        cmap = create_sidebar_section("🎨 Color Map", create_color_map_ui)
+        display_options = create_display_options_ui(image, 7)  # Use default kernel_size of 7
+        advanced_options = create_advanced_options_ui(image)
 
         return {
             "image": image,
@@ -178,7 +173,7 @@ def extract_kernel_from_image(image_np, end_x, end_y, kernel_size):
 def update_session_state(technique: str, pixels_to_process: int, results: Any):
     st.session_state.processed_pixels = pixels_to_process
     st.session_state[f"{technique}_results"] = results
-    print(f"NLM results stored in session state: {st.session_state.get('nlm_results')}")
+ 
 
 def prepare_comparison_images():
     speckle_results = st.session_state.get("speckle_results")

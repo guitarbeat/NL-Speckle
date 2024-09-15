@@ -57,7 +57,7 @@ def generate_cache_key(session_id: str, function_name: str, *args, **kwargs) -> 
 
 # ===== CACHING DECORATOR =====
 def cached_db(func):
-    @st.cache_data(persist=True)
+    @st.cache_data(persist=True, show_spinner="Fetching data...")
     @wraps(func)
     def wrapper(*args, **kwargs):
         if redis_client is None:
@@ -70,9 +70,11 @@ def cached_db(func):
             # Check if result exists in Redis
             cached_result = redis_client.get(cache_key)
             if cached_result:
+                logger.info(f"Cache hit for {func.__name__}")
                 return json.loads(cached_result, object_hook=json_decoder)
             
             # If not in cache, compute the result
+            logger.info(f"Cache miss for {func.__name__}, computing result")
             result = func(*args, **kwargs)
             
             # Store the result in Redis

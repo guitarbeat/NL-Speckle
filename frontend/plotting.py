@@ -4,6 +4,7 @@ import numpy as np
 from typing import Optional, Tuple, Dict, Any
 from matplotlib.collections import LineCollection
 
+
 from analysis.speckle import process_speckle, SpeckleResult
 from analysis.nlm import process_nlm, NLMResult
 from frontend.ui_elements import (
@@ -17,15 +18,17 @@ SEARCH_WINDOW_COLOR = 'blue'
 PIXEL_VALUE_COLOR = 'red'
 ZOOMED_IMAGE_SIZE = (8, 8)
 
+
 def process_image(params: Dict[str, Any]) -> Tuple[Dict[str, Any], Any]:
     try:
         image_np = params['image_np']
         technique = params['technique']
         analysis_params = params['analysis_params']
+        
+        # Use the updated pixels_to_process value
         pixels_to_process = analysis_params['pixels_to_process']
         
         results = run_analysis_technique(image_np, technique, analysis_params)
-        
         if params.get('return_processed_only', False):
             return params, results
         
@@ -36,8 +39,7 @@ def process_image(params: Dict[str, Any]) -> Tuple[Dict[str, Any], Any]:
             update_session_state(technique, pixels_to_process, results)
         
         return params, results
-    except Exception as e:
-        st.error(f"Error in process_image: {str(e)}")
+    except Exception:
         return params, None
 
 def run_analysis_technique(image_np: np.ndarray, technique: str, analysis_params: Dict[str, Any]) -> Any:
@@ -49,14 +51,23 @@ def run_analysis_technique(image_np: np.ndarray, technique: str, analysis_params
     else:
         raise ValueError(f"Unknown technique: {technique}")
 
+def setup_and_run_analysis_techniques(analysis_params: Dict[str, Any]):
+    for technique in ["speckle", "nlm"]:
+        tab_index = 0 if technique == "speckle" else 1
+        tab = st.session_state.tabs[tab_index]
+        with tab:
+            technique_params = st.session_state.get(f"{technique}_params", {})
+            placeholders = create_technique_ui_elements(technique, tab, analysis_params['show_per_pixel'])
+            st.session_state[f"{technique}_placeholders"] = placeholders
+
+            params = create_process_params(analysis_params, technique, technique_params)
+            _, results = process_image(params)
+            st.session_state[f"{technique}_results"] = results
+
 def prepare_filter_options_and_parameters(results, end_processed_pixel):
     end_x, end_y = end_processed_pixel
     
-    st.error(f"Debug: Results type: {type(results)}")
-    st.error(f"Debug: Results attributes: {dir(results)}")
-    
     if isinstance(results, NLMResult):
-        st.error("Debug: Processing NLMResult")
         filter_options = {
             "NL-Means Image": results.denoised_image,
             "Weight Map": results.weight_map_for_end_pixel,
@@ -70,7 +81,6 @@ def prepare_filter_options_and_parameters(results, end_processed_pixel):
             'nlm_value': results.denoised_image[end_y, end_x] if results.denoised_image is not None else None
         }
     elif isinstance(results, SpeckleResult):
-        st.error("Debug: Processing SpeckleResult")
         filter_options = {
             "Mean Filter": results.mean_filter,
             "Std Dev Filter": results.std_dev_filter,
@@ -84,32 +94,63 @@ def prepare_filter_options_and_parameters(results, end_processed_pixel):
             'sc': results.speckle_contrast_filter[end_y, end_x] if results.speckle_contrast_filter is not None else None,
         }
     else:
-        st.error(f"Debug: Unknown result type: {type(results)}")
         filter_options = {}
         specific_params = {}
     
-    st.error(f"Debug: Filter options before filtering: {filter_options}")
     filter_options = {k: v for k, v in filter_options.items() if v is not None}
-    st.error(f"Debug: Filter options after filtering: {filter_options}")
     
     if isinstance(results, SpeckleResult) or hasattr(results, 'kernel_size'):
         specific_params['total_pixels'] = results.kernel_size ** 2
     
-    st.error(f"Debug: Specific params: {specific_params}")
     return filter_options, {k: v for k, v in specific_params.items() if v is not None}
 
+def visualize_results(image_np: np.ndarray, technique: str, analysis_params: Dict[str, Any], results: Any, show_per_pixel: bool):
+    from utils import calculate_processing_details
+
+    details = calculate_processing_details(image_np, analysis_params['kernel_size'], analysis_params['max_pixels'])
+    
+    if isinstance(results, NLMResult):
+        end_x, end_y = results.processing_end_coord
+    elif isinstance(results, SpeckleResult):
+        end_x, end_y = results.processing_start_coord
+    else:
+        end_x, end_y = details.end_x, details.end_y
+    
+    kernel_matrix, original_value = extract_kernel_from_image(
+        image_np, end_x, end_y, analysis_params['kernel_size']
+    )
+    
+    placeholders = st.session_state.get(f'{technique}_placeholders', {})
+    
+    visualization_params = {
+        'image_np': image_np,
+        'results': results,
+        'placeholders': placeholders,
+        'params': {
+            'analysis_params': analysis_params,
+            'show_per_pixel': show_per_pixel
+        },
+        'end_processed_pixel': (end_x, end_y),
+        'kernel_size': analysis_params['kernel_size'],
+        'kernel_matrix': kernel_matrix,
+        'original_value': original_value,
+        'analysis_type': technique
+    }
+    
+    visualize_analysis_results(**visualization_params)
+    
 def visualize_analysis_results(
     image_np: np.ndarray,
     results: Any,
     placeholders: Dict[str, Any],
     params: Dict[str, Any],
-    end_processed_pixel: Tuple[int, int],
+    end_processed_pixel: Tuple[int, int],  # Changed from last_processed_pixel
     kernel_size: int,
     kernel_matrix: np.ndarray,
     original_value: float,
     analysis_type: str
 ) -> None:
-    end_x, end_y = end_processed_pixel
+    end_x, end_y = end_processed_pixel  # Changed from last_x, last_y
     vmin, vmax = np.min(image_np), np.max(image_np)
     search_window_size = params['analysis_params'].get('search_window_size') if analysis_type == 'nlm' else None
     show_per_pixel = params['show_per_pixel']
@@ -137,53 +178,6 @@ def visualize_analysis_results(
             'kernel_size': kernel_size, 'kernel_matrix': kernel_matrix, 'original_value': original_value
         })
         display_analysis_formula(specific_params, placeholders, analysis_type)
-
-    st.error(f"Debug: Calling visualize_analysis_results with params: {specific_params}")
-    visualize_analysis_results(**specific_params)
-
-def visualize_results(image_np: np.ndarray, technique: str, analysis_params: Dict[str, Any], results: Any, show_per_pixel: bool):
-    from utils import calculate_processing_details
-
-    st.error(f"Debug: Visualizing results for technique: {technique}")
-    st.error(f"Debug: Analysis params: {analysis_params}")
-    st.error(f"Debug: Results type: {type(results)}")
-
-    details = calculate_processing_details(image_np, analysis_params['kernel_size'], analysis_params['max_pixels'])
-    
-    if isinstance(results, NLMResult):
-        end_x, end_y = results.processing_end_coord
-        st.error(f"Debug: NLMResult end coordinates: ({end_x}, {end_y})")
-    elif isinstance(results, SpeckleResult):
-        end_x, end_y = results.processing_start_coord
-        st.error(f"Debug: SpeckleResult start coordinates: ({end_x}, {end_y})")
-    else:
-        end_x, end_y = details.end_x, details.end_y
-        st.error(f"Debug: Using default end coordinates: ({end_x}, {end_y})")
-    
-    kernel_matrix, original_value = extract_kernel_from_image(
-        image_np, end_x, end_y, analysis_params['kernel_size']
-    )
-    
-    placeholders = st.session_state.get(f'{technique}_placeholders', {})
-    st.error(f"Debug: Placeholders: {placeholders.keys()}")
-    
-    visualization_params = {
-        'image_np': image_np,
-        'results': results,
-        'placeholders': placeholders,
-        'params': {
-            'analysis_params': analysis_params,
-            'show_per_pixel': show_per_pixel
-        },
-        'end_processed_pixel': (end_x, end_y),
-        'kernel_size': analysis_params['kernel_size'],
-        'kernel_matrix': kernel_matrix,
-        'original_value': original_value,
-        'analysis_type': technique
-    }
-    
-    st.error(f"Debug: Calling visualize_analysis_results with params: {visualization_params}")
-    visualize_analysis_results(**visualization_params)
 
 def visualize_filter_results(filter_options, placeholders, params, end_processed_pixel, kernel_size, analysis_type, search_window_size):
     show_per_pixel = params['show_per_pixel']
