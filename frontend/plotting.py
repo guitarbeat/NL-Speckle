@@ -3,17 +3,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 from typing import Optional, Tuple, Dict, Any
 from matplotlib.collections import LineCollection
-
 from analysis.speckle import process_speckle, SpeckleResult
 from analysis.nlm import process_nlm, NLMResult
-
 from streamlit_image_comparison import image_comparison
 from PIL import Image
 
-# ===== Constants =====
-KERNEL_COLOR = 'red'
-SEARCH_WINDOW_COLOR = 'blue'
-PIXEL_VALUE_COLOR = 'red'
+# Constants
+KERNEL_COLOR, SEARCH_WINDOW_COLOR, PIXEL_VALUE_COLOR = 'red', 'blue', 'red'
 ZOOMED_IMAGE_SIZE = (8, 8)
 FILTER_OPTIONS = {
     "speckle": ["Mean Filter", "Std Dev Filter", "Speckle Contrast"],
@@ -26,49 +22,32 @@ PRELOADED_IMAGES = {
     "logo.jpg": "media/logo.jpg"
 }
 
-# ===== Main UI Setup =====
+# Main UI Setup
 def setup_and_run_analysis_techniques(analysis_params: Dict[str, Any]) -> None:
     for technique in ["speckle", "nlm"]:
-        tab_index = 0 if technique == "speckle" else 1
-        tab = st.session_state.tabs[tab_index]
+        tab = st.session_state.tabs[0 if technique == "speckle" else 1]
         with tab:
             technique_params = st.session_state.get(f"{technique}_params", {})
             placeholders = create_technique_ui_elements(technique, tab, analysis_params['show_per_pixel'])
             st.session_state[f"{technique}_placeholders"] = placeholders
-
             params = create_process_params(analysis_params, technique, technique_params)
             _, results = process_image(params)
             st.session_state[f"{technique}_results"] = results
 
-# ===== Visualization Functions =====
+# Visualization Functions
 def visualize_results(image_np: np.ndarray, technique: str, analysis_params: Dict[str, Any], results: Any, show_per_pixel: bool) -> None:
     from utils import calculate_processing_details
-
     details = calculate_processing_details(image_np, analysis_params['kernel_size'], analysis_params['max_pixels'])
-
     end_x, end_y = get_end_processed_pixel(results, details)
-
-    kernel_matrix, original_value = extract_kernel_from_image(
-        image_np, end_x, end_y, analysis_params['kernel_size']
-    )
-
+    kernel_matrix, original_value = extract_kernel_from_image(image_np, end_x, end_y, analysis_params['kernel_size'])
     placeholders = st.session_state.get(f'{technique}_placeholders', {})
-
+    
     visualization_params = {
-        'image_np': image_np,
-        'results': results,
-        'placeholders': placeholders,
-        'params': {
-            'analysis_params': analysis_params,
-            'show_per_pixel': show_per_pixel
-        },
-        'end_processed_pixel': (end_x, end_y),
-        'kernel_size': analysis_params['kernel_size'],
-        'kernel_matrix': kernel_matrix,
-        'original_value': original_value,
-        'analysis_type': technique
+        'image_np': image_np, 'results': results, 'placeholders': placeholders,
+        'params': {'analysis_params': analysis_params, 'show_per_pixel': show_per_pixel},
+        'end_processed_pixel': (end_x, end_y), 'kernel_size': analysis_params['kernel_size'],
+        'kernel_matrix': kernel_matrix, 'original_value': original_value, 'analysis_type': technique
     }
-
     visualize_analysis_results(**visualization_params)
 
 def visualize_analysis_results(
@@ -203,89 +182,122 @@ def create_image_plot(
     fig.tight_layout(pad=2)
     return fig
 
-# ===== Sidebar UI Functions =====
+# Sidebar UI Functions
 def setup_sidebar() -> Dict[str, Any]:
-    """Set up the sidebar with image processing settings."""
-    try:
-        st.sidebar.title("Image Processing Settings")
-        
-        st.sidebar.markdown("### 📷 Image Source")
-        image = create_image_source_ui()
-        if image is None:
-            return None
-
-        st.sidebar.markdown("### 🎨 Color Map")
-        cmap = create_color_map_ui()
-        
-        display_options = create_display_options_ui(image, 7)  # Use default kernel_size of 7
-        advanced_options = create_advanced_options_ui(image)
-
-        return {
-            "image": image,
-            "cmap": cmap,
-            **display_options,
-            **advanced_options
-        }
-    except Exception:
+    st.sidebar.title("Image Processing Settings")
+    
+    # Image Source
+    st.sidebar.markdown("### 📷 Image Source")
+    image = create_image_source_ui()
+    if image is None:
         return None
+    
+    # Color Map
+    st.sidebar.markdown("### 🎨 Color Map")
+    cmap = st.session_state.get('cmap', COLOR_MAPS[0])
+    cmap = st.sidebar.selectbox("Select Color Map", COLOR_MAPS, index=COLOR_MAPS.index(cmap))
+    st.session_state.cmap = cmap
 
-def create_image_source_ui() -> Image.Image:
-    """Create the image source selection UI in the sidebar."""
-    image_source = st.radio("Select Image Source", ("Preloaded Images", "Upload Image"))
+    # Display Options
+    display_options = create_display_options_ui(image)
+    
+    # Advanced Options
+    advanced_options = create_advanced_options_ui(image)
+    
+    return {
+        "image": image,
+        "cmap": cmap,
+        **display_options,
+        **advanced_options
+    }
+
+def create_image_source_ui() -> Optional[Image.Image]:
+    image_source = st.sidebar.radio("Select Image Source", ("Preloaded Images", "Upload Image"))
     
     if image_source == "Preloaded Images":
-        selected_image = st.selectbox("Select Image", list(PRELOADED_IMAGES))
+        selected_image = st.sidebar.selectbox("Select Image", list(PRELOADED_IMAGES.keys()))
         image = load_image(PRELOADED_IMAGES[selected_image])
     else:
-        uploaded_file = st.file_uploader("Upload Image")
+        uploaded_file = st.sidebar.file_uploader("Upload Image", type=['png', 'jpg', 'jpeg', 'tif', 'tiff'])
         image = load_image(uploaded_file) if uploaded_file else None
 
     if image is None:
-        st.warning('Please select or upload an image.')
+        st.sidebar.warning('Please select or upload an image.')
         return None
 
-    st.image(image, "Input Image", use_column_width=True)
+    st.sidebar.image(image, caption="Input Image", use_column_width=True)
     return image
 
-def create_color_map_ui() -> str:
-    """Create the color map selection UI in the sidebar."""
-    cmap = st.session_state.get('cmap', COLOR_MAPS[0])
-    cmap = st.selectbox("Select Color Map", COLOR_MAPS, index=COLOR_MAPS.index(cmap))
-    st.session_state.cmap = cmap
-    return cmap
 
-def create_display_options_ui(image: Image.Image, kernel_size: int) -> Dict[str, Any]:
-    """Create the display options UI in the sidebar."""
-    col1, col2 = st.columns(2)
-    show_per_pixel = col1.toggle("Show Per-Pixel Processing Steps", value=False)
+
+def create_display_options_ui(image: Image.Image) -> Dict[str, Any]:
+    st.sidebar.markdown("### 🖥️ Display Options")
+    show_per_pixel = st.sidebar.checkbox("Show Per-Pixel Processing Steps", value=False)
+    
+    kernel_size = st.sidebar.slider('Kernel Size', min_value=3, max_value=21, value=7, step=2)
     max_pixels = (image.width - kernel_size + 1) * (image.height - kernel_size + 1)
     
     pixels_to_process = max_pixels
     if show_per_pixel:
-        percentage = col2.slider("Percentage of Pixels to Process", 
-                                 min_value=1, max_value=100, value=100, step=1,
-                                 key=f"percentage_slider_{kernel_size}")
-        st.session_state.percentage = percentage
-        pixels_to_process = int(max_pixels * percentage / 100)
+        col1, col2 = st.sidebar.columns(2)
+        
+        # Initialize session state variables if they don't exist
+        if 'percentage_slider' not in st.session_state:
+            st.session_state.percentage_slider = 100
+        if 'exact_pixel_input' not in st.session_state:
+            st.session_state.exact_pixel_input = max_pixels
 
-    return {"show_per_pixel": show_per_pixel, "max_pixels": max_pixels, "pixels_to_process": pixels_to_process}
+        def update_percentage():
+            if st.session_state.exact_pixel_input != max_pixels:
+                new_percentage = int((st.session_state.exact_pixel_input / max_pixels) * 100)
+                st.session_state.percentage_slider = new_percentage
+
+        def update_exact_pixel():
+            st.session_state.exact_pixel_input = int(max_pixels * st.session_state.percentage_slider / 100)
+
+        # Percentage slider
+        col1.slider("Percentage of Pixels", 
+                                 min_value=1, max_value=100, 
+                                 value=st.session_state.percentage_slider,
+                                 step=1,
+                                 key="percentage_slider",
+                                 on_change=update_exact_pixel)
+        
+        # Number input for exact pixel
+        col2.number_input("Exact Pixel", 
+                                        min_value=1, max_value=max_pixels, 
+                                        value=st.session_state.exact_pixel_input,
+                                        step=1,
+                                        key="exact_pixel_input",
+                                        on_change=update_percentage)
+        
+        pixels_to_process = st.session_state.exact_pixel_input
+        
+        st.sidebar.write(f"Processing {pixels_to_process:,} out of {max_pixels:,} pixels")
+
+    return {
+        "show_per_pixel": show_per_pixel,
+        "max_pixels": max_pixels,
+        "pixels_to_process": pixels_to_process,
+        "kernel_size": kernel_size
+    }
 
 def create_advanced_options_ui(image: Image.Image) -> Dict[str, Any]:
-    """Create the advanced options UI in the sidebar."""
-    with st.expander("🔬 Advanced Options"):
-        add_noise = st.checkbox("Add Gaussian Noise", value=False,
-                                help="Add Gaussian noise to the image")
-        if add_noise:
-            noise_mean = st.number_input("Noise Mean", min_value=0.0, max_value=1.0, value=0.0, step=0.01, format="%.2f")
-            noise_std = st.number_input("Noise Std", min_value=0.0, max_value=1.0, value=0.1, step=0.01, format="%.2f")
-            image_np = np.clip(np.array(image) / 255.0 + np.random.normal(noise_mean, noise_std, np.array(image).shape), 0, 1)
-        else:
-            image_np = np.array(image) / 255.0
+    st.sidebar.markdown("### 🔬 Advanced Options")
+    add_noise = st.sidebar.checkbox("Add Gaussian Noise", value=False,
+                                    help="Add Gaussian noise to the image")
+    
+    if add_noise:
+        noise_mean = st.sidebar.number_input("Noise Mean", min_value=0.0, max_value=1.0, value=0.0, step=0.01, format="%.2f")
+        noise_std = st.sidebar.number_input("Noise Std", min_value=0.0, max_value=1.0, value=0.1, step=0.01, format="%.2f")
+        image_np = np.clip(np.array(image) / 255.0 + np.random.normal(noise_mean, noise_std, np.array(image).shape), 0, 1)
+    else:
+        image_np = np.array(image) / 255.0
+    
     return {"image_np": image_np, "add_noise": add_noise}
 
-# ===== Image Comparison Functions =====
+# Image Comparison Functions
 def handle_image_comparison(tab, cmap_name: str, images: Dict[str, np.ndarray]):
-    """Handle the image comparison functionality."""
     with tab:
         st.header("Image Comparison")
         if not images:
@@ -294,7 +306,6 @@ def handle_image_comparison(tab, cmap_name: str, images: Dict[str, np.ndarray]):
 
         available_images = list(images.keys())
         
-        # Render UI for selecting images to compare
         col1, col2 = st.columns(2)
         image_choice_1 = col1.selectbox('Select first image to compare:', [''] + available_images, index=0)
         image_choice_2 = col2.selectbox('Select second image to compare:', [''] + available_images, index=0)
@@ -306,7 +317,6 @@ def handle_image_comparison(tab, cmap_name: str, images: Dict[str, np.ndarray]):
             st.info("Select two images to compare.")
 
 def prepare_comparison_images() -> Dict[str, np.ndarray]:
-    """Prepare the images for comparison."""
     speckle_results = st.session_state.get("speckle_results")
     nlm_results = st.session_state.get("nlm_results")
     analysis_params = st.session_state.analysis_params
@@ -325,9 +335,7 @@ def prepare_comparison_images() -> Dict[str, np.ndarray]:
         return None
 
 def display_comparison(img1: np.ndarray, img2: np.ndarray, label1: str, label2: str, cmap_name: str):
-    """Display the image comparison using streamlit-image-comparison."""
     if label1 != label2:
-        # Normalize and colorize the images
         def normalize_and_colorize(img):
             normalized = (img - np.min(img)) / (np.max(img) - np.min(img))
             colored = plt.get_cmap(cmap_name)(normalized)[:, :, :3]
@@ -342,28 +350,23 @@ def display_comparison(img1: np.ndarray, img2: np.ndarray, label1: str, label2: 
         st.error("Please select two different images for comparison.")
         st.image(np.abs(img1 - img2), caption="Difference Map", use_column_width=True)
 
-# ===== Image Processing Functions =====
+# Image Processing Functions
 def process_image(params: Dict[str, Any]) -> Tuple[Dict[str, Any], Any]:
-    try:
-        image_np = params['image_np']
-        technique = params['technique']
-        analysis_params = params['analysis_params']
+    image_np = params['image_np']
+    technique = params['technique']
+    analysis_params = params['analysis_params']
 
-        results = run_analysis_technique(image_np, technique, analysis_params)
-        if params.get('return_processed_only', False):
-            return params, results
-
-        if params['handle_visualization']:
-            visualize_results(image_np, technique, analysis_params, results, params.get('show_per_pixel', False))
-
-        if params['update_state']:
-            update_session_state(technique, analysis_params['pixels_to_process'], results)
-
+    results = run_analysis_technique(image_np, technique, analysis_params)
+    if params.get('return_processed_only', False):
         return params, results
-    except Exception as e:
-        error_message = f"An error occurred during image processing: {str(e)}"
-        st.error(error_message)
-        return params, None
+
+    if params['handle_visualization']:
+        visualize_results(image_np, technique, analysis_params, results, params.get('show_per_pixel', False))
+
+    if params['update_state']:
+        update_session_state(technique, analysis_params['pixels_to_process'], results)
+
+    return params, results
 
 def run_analysis_technique(image_np: np.ndarray, technique: str, analysis_params: Dict[str, Any]) -> Any:
     if technique == "speckle":
@@ -377,7 +380,6 @@ def run_analysis_technique(image_np: np.ndarray, technique: str, analysis_params
         raise ValueError(f"Unknown technique: {technique}")
 
 def extract_kernel_from_image(image_np: np.ndarray, end_x: int, end_y: int, kernel_size: int) -> tuple[np.ndarray, float]:
-    """Extract the kernel from the image around the specified pixel."""
     half_kernel = kernel_size // 2
     height, width = image_np.shape
 
@@ -399,12 +401,11 @@ def extract_kernel_from_image(image_np: np.ndarray, end_x: int, end_y: int, kern
     return kernel_values.astype(float), float(image_np[end_y, end_x])
 
 def update_session_state(technique: str, pixels_to_process: int, results: Any):
-    """Update the session state with the processed pixels and results."""
     st.session_state.processed_pixels = pixels_to_process
     st.session_state[f"{technique}_results"] = results
  
 
-# ===== Filter Options and Parameters Functions =====
+# Filter Options and Parameters Functions
 def prepare_filter_options_and_parameters(results: Any, end_processed_pixel: Tuple[int, int]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     end_x, end_y = end_processed_pixel
 
@@ -455,10 +456,10 @@ def get_speckle_filter_options_and_params(results: SpeckleResult, end_x: int, en
     }
     return filter_options, specific_params
 
-# ===== Technique Parameter Functions =====
+# Technique Parameter Functions
 def get_technique_params(technique: str, analysis_params: Dict[str, Any]) -> Dict[str, Any]:
     """Get the technique-specific parameters based on the selected technique."""
-    kernel_size = st.slider('Kernel Size', min_value=3, max_value=21, value=7, step=2, key=f'kernel_size_{technique}')
+    kernel_size = analysis_params['kernel_size']  # Use the kernel size from display options
     
     image_height, image_width = analysis_params['image_np'].shape[:2]
     max_pixels = (image_width - kernel_size + 1) * (image_height - kernel_size + 1)
@@ -468,8 +469,6 @@ def get_technique_params(technique: str, analysis_params: Dict[str, Any]) -> Dic
         percentage = st.session_state.get('percentage', 100)
         pixels_to_process = int(max_pixels * percentage / 100)
     
-    st.write(f"Processing {pixels_to_process:,} out of {max_pixels:,} pixels")
-
     technique_params = {
         'kernel_size': kernel_size,
         'max_pixels': max_pixels,
@@ -499,7 +498,6 @@ def get_nlm_specific_params(kernel_size: int) -> Dict[str, Any]:
     return params
 
 def create_process_params(analysis_params: Dict[str, Any], technique: str, technique_params: Dict[str, Any]) -> Dict[str, Any]:
-    """Create the parameters for the image processing function."""
     return {
         'image_np': analysis_params['image_np'],
         'technique': technique,
@@ -510,9 +508,8 @@ def create_process_params(analysis_params: Dict[str, Any], technique: str, techn
         'show_per_pixel': analysis_params['show_per_pixel']
     }
 
-# ===== UI Element Creation Functions =====
+# UI Element Creation Functions
 def create_technique_ui_elements(technique, tab, show_per_pixel: bool) -> Dict[str,Any]:
-    """Create UI elements for a specific technique."""
     with tab:
         placeholders = {'formula': st.empty(), 'original_image': st.empty()}
         filter_options = FILTER_OPTIONS[technique]
@@ -532,16 +529,10 @@ def create_technique_ui_elements(technique, tab, show_per_pixel: bool) -> Dict[s
         
     return placeholders
 
-# ===== Utility Functions =====
-def load_image(image_path: str) -> Image.Image:
-    """Load an image from the given path and convert it to grayscale."""
-    try:
-        image = Image.open(image_path).convert('L')
-        return image
-    except Exception as e:
-        st.error(f"Failed to load the image: {str(e)}")
-        return None
-    
+# Utility Functions
+def load_image(image_path: str) -> Optional[Image.Image]:
+    return Image.open(image_path).convert('L')
+
 def get_end_processed_pixel(results: Any, details: Any) -> Tuple[int, int]:
     if isinstance(results, NLMResult):
         return results.processing_end_coord
