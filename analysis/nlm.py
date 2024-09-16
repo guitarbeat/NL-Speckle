@@ -2,7 +2,7 @@ import numpy as np
 from numba import njit, prange
 from utils import calculate_processing_details
 from dataclasses import dataclass
-import streamlit as st
+
 #------------------------------------------------------------------------------
 # NLM Formula Configuration
 #------------------------------------------------------------------------------
@@ -111,7 +111,7 @@ def process_pixel(center_row, center_col, image, denoised_image, weight_map, ker
 @njit
 def get_search_range(center, dimension, search_window_size):
     """Calculate the search range for a given dimension."""
-    if search_window_size is None:
+    if search_window_size is None or search_window_size >= dimension:
         return 0, dimension
     else:
         start = max(0, center - search_window_size // 2)
@@ -159,14 +159,16 @@ def process_nlm(image, kernel_size, max_pixels, search_window_size, filter_stren
         filter_strength=filter_strength
     )
 
+
 @njit(parallel=True)
 def apply_nlm(image, denoised_image, weight_map, kernel_size, search_window_size, filter_strength, pixels_to_process, height, width, start_x, start_y):
     """Apply Non-Local Means denoising to the image."""
     valid_width = width - kernel_size + 1
-    for pixel in range(pixels_to_process):
+    for pixel in prange(pixels_to_process):  # Use prange for parallelization
         row = start_y + pixel // valid_width
         col = start_x + pixel % valid_width
         process_pixel(row, col, image, denoised_image, weight_map, kernel_size, search_window_size, filter_strength, height, width)
+
 
 @dataclass
 class NLMResult:

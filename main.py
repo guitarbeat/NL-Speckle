@@ -1,9 +1,8 @@
 import streamlit as st
 import streamlit_nested_layout  # noqa: F401
-from frontend.plotting import setup_and_run_analysis_techniques
 from utils import calculate_processing_details
-from frontend.ui_elements import (handle_image_comparison, prepare_comparison_images,
-                                  setup_sidebar, get_technique_params)
+from frontend.plotting import (handle_image_comparison, prepare_comparison_images,
+                                  setup_sidebar, get_technique_params,setup_and_run_analysis_techniques)
 import hashlib
 import time
 # Add this import
