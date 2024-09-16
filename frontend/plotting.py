@@ -10,7 +10,6 @@ from analysis.nlm import process_nlm, NLMResult
 from streamlit_image_comparison import image_comparison
 from PIL import Image
 
-
 # ===== Constants =====
 KERNEL_COLOR = 'red'
 SEARCH_WINDOW_COLOR = 'blue'
@@ -227,8 +226,7 @@ def setup_sidebar() -> Dict[str, Any]:
             **display_options,
             **advanced_options
         }
-    except Exception as e:
-        st.sidebar.error(f"An error occurred while setting up the sidebar: {str(e)}")
+    except Exception:
         return None
 
 def create_image_source_ui() -> Image.Image:
@@ -325,7 +323,6 @@ def prepare_comparison_images() -> Dict[str, np.ndarray]:
         }
     else:
         return None
-
 
 def display_comparison(img1: np.ndarray, img2: np.ndarray, label1: str, label2: str, cmap_name: str):
     """Display the image comparison using streamlit-image-comparison."""
