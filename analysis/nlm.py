@@ -198,12 +198,10 @@ def process_nlm(image, kernel_size, pixels_to_process, search_window_size, filte
         start_x, start_y = processing_info.start_x, processing_info.start_y
         end_x, end_y = processing_info.end_x, processing_info.end_y
         normalized_weight_map = end_pixel_weight_map / np.max(end_pixel_weight_map) if np.max(end_pixel_weight_map) > 0 else end_pixel_weight_map
-        difference_map = np.abs(denoised_image - image.astype(np.float32))
 
         return NLMResult(
             denoised_image=denoised_image,
             weight_map_for_end_pixel=normalized_weight_map,
-            difference_map=difference_map,
             processing_coord=(start_x, start_y),
             processing_end_coord=(end_x, end_y),
             kernel_size=kernel_size,
@@ -253,17 +251,15 @@ def apply_nlm(image, denoised_image, kernel_size, search_window_size, filter_str
 class NLMResult(FilterResult):
     denoised_image: np.ndarray
     weight_map_for_end_pixel: np.ndarray
-    difference_map: np.ndarray
     search_window_size: int
     filter_strength: float
 
     @classmethod
     def get_filter_options(cls) -> List[str]:
-        return ["NL-Means Image", "Weight Distribution", "Difference Image"]
+        return ["NL-Means Image", "Weight Distribution"]
 
     def get_filter_data(self) -> dict:
         return {
             "NL-Means Image": self.denoised_image,
-            "Weight Distribution": self.weight_map_for_end_pixel,
-            "Difference Image": self.difference_map
+            "Weight Distribution": self.weight_map_for_end_pixel
         }

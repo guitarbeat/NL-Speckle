@@ -18,9 +18,13 @@ PRELOADED_IMAGE_PATHS = {
     "logo.jpg": "media/logo.jpg"
 }
 
+
 DEFAULT_KERNEL_SIZE = 3
 DEFAULT_SEARCH_WINDOW_SIZE = 51
 DEFAULT_FILTER_STRENGTH = 0.1
+DEFAULT_COLOR_MAP = 'gray'
+
+
 
 # Type aliases
 ImageArray = np.ndarray
@@ -57,6 +61,7 @@ class SidebarUI:
             "image_array": np.array(image), 
             "cmap": color_map,
             "kernel_size": display_options['kernel_size'],
+            "normalization_option": advanced_options['normalization_option'],  # Add this line
             **display_options,
             **advanced_options
         }
