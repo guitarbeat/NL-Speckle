@@ -134,11 +134,11 @@ class ImageProcessingUI:
                       step=1, key="percentage_slider", on_change=update_exact_pixel_count)
 
         with col2:
-            pixel_count = st.number_input("Exact Pixels", min_value=0, max_value=total_pixels,
-                                           value=st.session_state.get('exact_pixel_count', total_pixels),
-                                           step=1, key="exact_pixel_count", on_change=update_percentage)
+            st.number_input("Exact Pixels", min_value=0, max_value=total_pixels,
+                            value=st.session_state.get('exact_pixel_count', total_pixels),
+                            step=1, key="exact_pixel_count", on_change=update_percentage)
 
-        return pixel_count
+        return st.session_state['exact_pixel_count']
 
     @staticmethod
     def create_advanced_options_ui(image):

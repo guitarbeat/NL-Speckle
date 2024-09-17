@@ -3,6 +3,9 @@ from numba import njit, prange
 from dataclasses import dataclass
 from typing import List 
 from shared_types import FilterResult, calculate_processing_details
+import logging
+
+logger = logging.getLogger(__name__)
 
 #------------------------------------------------------------------------------
 # NLM Formula Configuration
@@ -64,16 +67,78 @@ NLM_FORMULA_CONFIG = {
     ]
 }
 
+#------------------------------------------------------------------------------
 # Core NLM Functions
+#------------------------------------------------------------------------------
 
 @njit
 def calculate_weight(center_patch, comparison_patch, filter_strength):
+    """
+    Calculate the weight between two patches based on their similarity.
+    
+    Args:
+        center_patch: The patch centered on the pixel being denoised
+        comparison_patch: Another patch being compared to the center patch
+        filter_strength: Controls the decay of the exponential function
+    
+    Returns:
+        The calculated weight (higher for more similar patches)
+    """
     distance = np.sum((center_patch - comparison_patch)**2)
     return np.exp(-distance / (filter_strength ** 2))
 
 @njit
+def get_search_range(center, dimension, search_window_size):
+    """
+    Determine the search range for a given dimension.
+    
+    Args:
+        center: The center coordinate
+        dimension: The size of the image in this dimension
+        search_window_size: The size of the search window
+    
+    Returns:
+        A tuple of (start, end) indices for the search range
+    """
+    if search_window_size is None or search_window_size >= dimension:
+        return 0, dimension
+    start = max(0, center - search_window_size // 2)
+    end = min(dimension, center + search_window_size // 2 + 1)
+    return start, end
+
+@njit
+def is_valid_pixel(i, j, half_kernel, height, width):
+    """
+    Check if a pixel is valid (i.e., not too close to the image border).
+    
+    Args:
+        i, j: Pixel coordinates
+        half_kernel: Half the size of the kernel
+        height, width: Image dimensions
+    
+    Returns:
+        Boolean indicating if the pixel is valid
+    """
+    return (half_kernel <= j < width - half_kernel) and (half_kernel <= i < height - half_kernel)
+
+@njit
 def process_pixel(center_row, center_col, image, denoised_image, kernel_size, search_window_size, 
                   filter_strength, height, width):
+    """
+    Process a single pixel using the NLM algorithm.
+    
+    Args:
+        center_row, center_col: Coordinates of the pixel being processed
+        image: Input image
+        denoised_image: Output denoised image
+        kernel_size: Size of the patch
+        search_window_size: Size of the search window
+        filter_strength: Strength of the filter
+        height, width: Image dimensions
+    
+    Returns:
+        Tuple of (denoised_value, pixel_weight_map)
+    """
     half_kernel = kernel_size // 2
     center_patch = image[center_row-half_kernel:center_row+half_kernel+1, center_col-half_kernel:center_col+half_kernel+1]
     
@@ -96,24 +161,28 @@ def process_pixel(center_row, center_col, image, denoised_image, kernel_size, se
             weight_sum += weight
             pixel_weight_map[i, j] = weight
 
-    denoised_image[center_row, center_col] = denoised_value / weight_sum if weight_sum > 0 else image[center_row, center_col]
-    return denoised_value / weight_sum if weight_sum > 0 else image[center_row, center_col], pixel_weight_map
+    denoised_value = denoised_value / weight_sum if weight_sum > 0 else image[center_row, center_col]
+    denoised_image[center_row, center_col] = denoised_value
+    return denoised_value, pixel_weight_map
 
-@njit
-def get_search_range(center, dimension, search_window_size):
-    if search_window_size is None or search_window_size >= dimension:
-        return 0, dimension
-    start = max(0, center - search_window_size // 2)
-    end = min(dimension, center + search_window_size // 2 + 1)
-    return start, end
-
-@njit
-def is_valid_pixel(i, j, half_kernel, height, width):
-    return (half_kernel <= j < width - half_kernel) and (half_kernel <= i < height - half_kernel)
-
+#------------------------------------------------------------------------------
 # Main NLM Processing Functions
+#------------------------------------------------------------------------------
 
 def process_nlm(image, kernel_size, pixels_to_process, search_window_size, filter_strength):
+    """
+    Main function to process an image using the NLM algorithm.
+    
+    Args:
+        image: Input image
+        kernel_size: Size of the patch
+        pixels_to_process: Number of pixels to process
+        search_window_size: Size of the search window
+        filter_strength: Strength of the filter
+    
+    Returns:
+        NLMResult object containing the denoised image and other metadata
+    """
     try:
         processing_info = calculate_processing_details(image, kernel_size, pixels_to_process)
         
@@ -137,7 +206,6 @@ def process_nlm(image, kernel_size, pixels_to_process, search_window_size, filte
             difference_map=difference_map,
             processing_coord=(start_x, start_y),
             processing_end_coord=(end_x, end_y),
-            end_pixel_max_weight=np.max(end_pixel_weight_map),
             kernel_size=kernel_size,
             pixels_processed=processing_info.pixels_to_process,
             image_dimensions=(height, width),
@@ -145,11 +213,27 @@ def process_nlm(image, kernel_size, pixels_to_process, search_window_size, filte
             filter_strength=filter_strength
         )
     except Exception as e:
-        print(f"Error in process_nlm: {str(e)}")
-        return None
+        logger.error(f"Error in process_nlm: {e}", exc_info=True)
+        raise
 
 @njit(parallel=True)
 def apply_nlm(image, denoised_image, kernel_size, search_window_size, filter_strength, pixels_to_process, height, width, start_x, start_y):
+    """
+    Apply the NLM algorithm to the image using parallel processing.
+    
+    Args:
+        image: Input image
+        denoised_image: Output denoised image
+        kernel_size: Size of the patch
+        search_window_size: Size of the search window
+        filter_strength: Strength of the filter
+        pixels_to_process: Number of pixels to process
+        height, width: Image dimensions
+        start_x, start_y: Starting coordinates for processing
+    
+    Returns:
+        Weight map for the last processed pixel
+    """
     valid_width = width - kernel_size + 1
     end_pixel_weight_map = np.zeros((height, width), dtype=np.float32)
     for pixel in prange(pixels_to_process):
@@ -161,12 +245,15 @@ def apply_nlm(image, denoised_image, kernel_size, search_window_size, filter_str
             end_pixel_weight_map = weight_map
     return end_pixel_weight_map
 
+#------------------------------------------------------------------------------
+# Result Class
+#------------------------------------------------------------------------------
+
 @dataclass
 class NLMResult(FilterResult):
     denoised_image: np.ndarray
     weight_map_for_end_pixel: np.ndarray
     difference_map: np.ndarray
-    end_pixel_max_weight: float
     search_window_size: int
     filter_strength: float
 
