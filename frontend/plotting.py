@@ -5,7 +5,7 @@ from matplotlib.collections import LineCollection
 from analysis.speckle import process_speckle, SpeckleResult
 from analysis.nlm import process_nlm, NLMResult
 from frontend.formula import display_analysis_formula
-from shared_types import ProcessingDetails, VisualizationConfig, FilterResult, VisualizationParams, ProcessParams, calculate_processing_details, ImageArray, PixelCoordinates
+from shared_types import VisualizationConfig, FilterResult, VisualizationParams, ProcessParams, calculate_processing_details, ImageArray, PixelCoordinates
 import logging
 
 # Constants 
@@ -47,7 +47,7 @@ def visualize_results(image_array: ImageArray, technique: str, analysis_params: 
         analysis_params.get('total_pixels', 0)  
     )
     try:
-        last_processed_x, last_processed_y = get_last_processed_pixel(results, processing_details)
+        last_processed_x, last_processed_y = results.processing_end_coord if isinstance(results, (NLMResult, SpeckleResult)) else (processing_details.end_x, processing_details.end_y)
         kernel_matrix, original_pixel_value, kernel_size = extract_kernel_from_image(image_array, last_processed_x, last_processed_y, analysis_params.get('kernel_size', 3))
 
         viz_params = VisualizationParams(
@@ -68,16 +68,6 @@ def visualize_results(image_array: ImageArray, technique: str, analysis_params: 
     except Exception as e:
         logger.error(f"Error while visualizing results: {e}", exc_info=True)
         st.error("An error occurred while visualizing the results. Please check the logs.")
-
-def get_last_processed_pixel(results: FilterResult, processing_details: ProcessingDetails) -> PixelCoordinates:
-    try:
-        if isinstance(results, (NLMResult, SpeckleResult)):
-            return results.processing_end_coord
-        else:
-            return processing_details.end_x, processing_details.end_y
-    except Exception as e:
-        logger.error(f"Error while getting last processed pixel: {e}", exc_info=True)
-        raise
 
 def visualize_analysis_results(viz_params: VisualizationParams):
     try:
@@ -113,7 +103,7 @@ def visualize_filter_and_zoomed(filter_name: str, filter_data: ImageArray, viz_p
             vmax=np.max(filter_data) if filter_name != 'Original Image' else None, 
             zoom=plot_type == 'zoomed',
             show_kernel=viz_params.show_per_pixel_processing if plot_type == 'main' else True,
-            show_per_pixel_processing=plot_type == 'zoomed',  # Changed from show_per_pixel to show_per_pixel_processing
+            show_per_pixel_processing=plot_type == 'zoomed', 
             search_window_size=viz_params.search_window_size if viz_params.analysis_type == "nlm" else None
         )
 
@@ -226,10 +216,7 @@ def process_image(params: ProcessParams):
     normalization_option = analysis_params.get('normalization_option', 'None')
 
     # Apply normalization if selected
-    if normalization_option == 'Percentile':
-        normalized_image = normalize_image(params.image_array)
-    else:
-        normalized_image = params.image_array
+    normalized_image = normalize_image(params.image_array) if normalization_option == 'Percentile' else params.image_array
 
     if technique == "nlm":
         search_window_size = analysis_params.get('search_window_size', 0)
@@ -366,34 +353,6 @@ def create_technique_ui_elements(technique: str, tab, show_per_pixel_processing:
             st.warning("No views selected. Please select at least one view to display.")
         if show_per_pixel_processing:
             ui_placeholders['zoomed_kernel'] = st.empty()
-
-        # Add Advanced Options expander
-        with st.expander("Advanced Options"):
-            col1, col2 = st.columns(2)
-            with col1:
-                add_noise = st.checkbox(
-                    "Add Gaussian Noise",
-                    value=False,
-                    key=f"{technique}_add_noise",
-                )
-                if add_noise:
-                    noise_mean = st.number_input("Noise Mean", min_value=0.0, max_value=1.0, value=0.1, step=0.01, format="%.2f", key=f"{technique}_noise_mean")
-                    noise_std = st.number_input("Noise Standard Deviation", min_value=0.0, max_value=1.0, value=0.1, step=0.01, format="%.2f", key=f"{technique}_noise_std")
-            with col2:
-                normalization_option = st.selectbox(
-                    "Normalization",
-                    options=['None', 'Percentile'],
-                    index=0,
-                    key=f"{technique}_normalization"
-                )
-
-        # Store the advanced options in session state
-        st.session_state[f'{technique}_advanced_options'] = {
-            "add_noise": add_noise,
-            "noise_mean": noise_mean if add_noise else None,
-            "noise_std": noise_std if add_noise else None,
-            "normalization_option": normalization_option
-        }
 
     return ui_placeholders
 
