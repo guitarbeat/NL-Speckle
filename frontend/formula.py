@@ -20,7 +20,7 @@ def display_analysis_formula(specific_params, placeholders, analysis_type, end_x
         kernel_matrix: The kernel matrix.
         original_value: The original value.
     """
-    specific_params |= {
+    variables = {
         'x': end_x,
         'y': end_y,
         'input_x': end_x,
@@ -28,11 +28,23 @@ def display_analysis_formula(specific_params, placeholders, analysis_type, end_x
         'kernel_size': kernel_size,
         'kernel_matrix': kernel_matrix,
         'original_value': original_value,
+        'total_pixels': kernel_size * kernel_size,
     }
+
+    # Add default values for potentially missing keys
+    default_values = {
+        'nlm_value': 0.0,
+        'std': 0.0,
+        'mean': 0.0,
+        'sc': 0.0,
+    }
+
+    variables |= default_values
+    variables |= specific_params
 
     formula_config = NLM_FORMULA_CONFIG if analysis_type == 'nlm' else SPECKLE_FORMULA_CONFIG
     if formula_placeholder := placeholders.get('formula'):
-        display_formula(formula_config, specific_params, formula_placeholder)
+        display_formula(formula_config, variables, formula_placeholder)
     else:
         st.warning("Formula placeholder not found.")
 
@@ -66,6 +78,11 @@ def prepare_variables(kwargs, analysis_type):
             "We search the entire image for similar pixels." if search_window_size == FULL_SEARCH
             else f"A search window of size {search_window_size}x{search_window_size} centered around the target pixel."
         )
+        variables['nlm_value'] = variables.get('nlm_value', 0.0)
+    else:  # speckle
+        variables['mean'] = variables.get('mean', 0.0)
+        variables['std'] = variables.get('std', 0.0)
+        variables['sc'] = variables.get('sc', 0.0)
     
     return variables
 
