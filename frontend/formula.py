@@ -6,7 +6,7 @@ FULL_SEARCH = 'full'
 
 # ----------------------------- Formula Display Functions ----------------------------- #
 
-def display_analysis_formula(specific_params, placeholders, analysis_type):
+def display_analysis_formula(specific_params, placeholders, analysis_type, end_x, end_y, kernel_size, kernel_matrix, original_value):
     """
     Display the analysis formula.
     
@@ -14,15 +14,27 @@ def display_analysis_formula(specific_params, placeholders, analysis_type):
         specific_params: A dictionary of specific parameters for the formula.
         placeholders: A dictionary of Streamlit placeholders.
         analysis_type: The type of analysis ('nlm' or 'speckle').
+        end_x: The x-coordinate of the end point.
+        end_y: The y-coordinate of the end point.
+        kernel_size: The size of the kernel.
+        kernel_matrix: The kernel matrix.
+        original_value: The original value.
     """
+    specific_params |= {
+        'x': end_x,
+        'y': end_y,
+        'input_x': end_x,
+        'input_y': end_y,
+        'kernel_size': kernel_size,
+        'kernel_matrix': kernel_matrix,
+        'original_value': original_value,
+    }
+
     formula_config = NLM_FORMULA_CONFIG if analysis_type == 'nlm' else SPECKLE_FORMULA_CONFIG
-    formula_placeholder = placeholders.get('formula')
-    if formula_placeholder:
+    if formula_placeholder := placeholders.get('formula'):
         display_formula(formula_config, specific_params, formula_placeholder)
     else:
         st.warning("Formula placeholder not found.")
-
-
 
 # Prepares and adjusts variables for formula display based on the analysis type
 def prepare_variables(kwargs, analysis_type):
