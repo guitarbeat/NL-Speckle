@@ -151,12 +151,14 @@ def generate_kernel_matrix(kernel_size, kernel_matrix):
         The LaTeX representation of the kernel matrix.
     """
     center = kernel_size // 2
-    center_value = kernel_matrix[center][center]
+    # center_value = kernel_matrix[center][center]
+    center_value = kernel_matrix[center, center]
     
     matrix_rows = [
         " & ".join(
             r"\mathbf{{{:.3f}}}".format(center_value) if i == center and j == center 
-            else r"{:.3f}".format(kernel_matrix[i][j])
+            # else r"{:.3f}".format(kernel_matrix[i][j])
+            else r"{:.3f}".format(kernel_matrix[i, j])
             for j in range(kernel_size)
         )
         for i in range(kernel_size)
