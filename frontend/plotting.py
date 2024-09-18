@@ -26,7 +26,7 @@ from logging import getLogger
 
 
 # Constants 
-KERNEL_OUTLINE_COLOR, SEARCH_WINDOW_OUTLINE_COLOR, PIXEL_VALUE_TEXT_COLOR = 'red', 'blue', 'white'
+KERNEL_OUTLINE_COLOR, SEARCH_WINDOW_OUTLINE_COLOR, PIXEL_VALUE_TEXT_COLOR = 'red', 'blue', 'red'
 ZOOMED_IMAGE_DIMENSIONS = (8, 8) 
 DEFAULT_SPECKLE_VIEW = ['Speckle Contrast','Original Image']
 DEFAULT_NLM_VIEW = ['Non-Local Means','Original Image']
@@ -509,7 +509,7 @@ def draw_pixel_value_annotations(ax: plt.Axes, image: np.ndarray) -> None:
     for i in range(image.shape[0]):
         for j in range(image.shape[1]):
             ax.text(j, i, f"{image[i, j]:.2f}", ha="center", va="center", 
-                    color=PIXEL_VALUE_TEXT_COLOR, fontsize=8)
+                    color=PIXEL_VALUE_TEXT_COLOR, fontsize=15)
 
 def get_zoomed_image_section(image: np.ndarray, center_x: int, center_y: int, zoom_size: int) -> Tuple[np.ndarray, int, int]:
     """
