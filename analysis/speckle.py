@@ -1,5 +1,5 @@
 import numpy as np
-from numba import njit
+from numba import njit, prange
 from dataclasses import dataclass
 from typing import List
 from shared_types import FilterResult, calculate_processing_details
@@ -60,7 +60,7 @@ def calculate_speckle_contrast(local_std, local_mean):
     """
     return local_std / local_mean if local_mean != 0 else 0
 
-@njit
+@njit(parallel=True)
 def apply_speckle_contrast(image, kernel_size, pixels_to_process, start_point):
     height, width = image.shape
     mean_filter = np.zeros((height, width), dtype=np.float32)
@@ -72,7 +72,7 @@ def apply_speckle_contrast(image, kernel_size, pixels_to_process, start_point):
     start_x, start_y = start_point
 
 
-    for pixel in range(pixels_to_process):
+    for pixel in prange(pixels_to_process):
         row = start_y + pixel // valid_width
         col = start_x + pixel % valid_width
         if row < height and col < width:
