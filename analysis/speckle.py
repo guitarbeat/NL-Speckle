@@ -35,12 +35,30 @@ SPECKLE_FORMULA_CONFIG = {
     ]
 }
 
+
 @njit
-def calculate_speckle_stats(local_window):
-    local_mean = np.mean(local_window)
-    local_std = np.std(local_window)
-    speckle_contrast = local_std / local_mean if local_mean != 0 else 0
-    return local_mean, local_std, speckle_contrast
+def calculate_mean(local_window):
+    """
+    Mean (μ) calculation: average intensity of all pixels in the kernel K centered at (x, y).
+    Formula: μ_{x,y} = (1 / N) * Σ_{i,j ∈ K_{x,y}} I_{i,j} = (1 / kernel_size^2) * Σ_{i,j ∈ K_{x,y}} I_{i,j}
+    """
+    return np.mean(local_window)
+
+@njit 
+def calculate_std_dev(local_window, local_mean):
+    """
+    Standard deviation (σ) calculation: measure of intensity spread around the mean for all pixels in the kernel K centered at (x, y).
+    Formula: σ_{x,y} = sqrt((1 / N) * Σ_{i,j ∈ K_{x,y}} (I_{i,j} - μ_{x,y})^2) = sqrt((1 / kernel_size^2) * Σ_{i,j ∈ K_{x,y}} (I_{i,j} - μ_{x,y})^2)
+    """
+    return np.std(local_window)
+
+@njit
+def calculate_speckle_contrast(local_std, local_mean):
+    """
+    Speckle Contrast (SC): ratio of standard deviation to mean intensity within the kernel centered at (x, y).
+    Formula: SC_{x,y} = σ_{x,y} / μ_{x,y}
+    """
+    return local_std / local_mean if local_mean != 0 else 0
 
 @njit
 def apply_speckle_contrast(image, kernel_size, pixels_to_process, height, width, start_x, start_y):
@@ -58,7 +76,11 @@ def apply_speckle_contrast(image, kernel_size, pixels_to_process, height, width,
         if row < height and col < width:
             local_window = image[max(0, row-half_kernel):min(height, row+half_kernel+1),
                                  max(0, col-half_kernel):min(width, col+half_kernel+1)]
-            mean_filter[row, col], std_dev_filter[row, col], sc_filter[row, col] = calculate_speckle_stats(local_window)
+            
+            mean_filter[row, col] = calculate_mean(local_window)
+            std_dev_filter[row, col] = calculate_std_dev(local_window, mean_filter[row, col]) 
+            sc_filter[row, col] = calculate_speckle_contrast(std_dev_filter[row, col], mean_filter[row, col])
+            
             last_processed_x, last_processed_y = col, row
 
     return mean_filter, std_dev_filter, sc_filter, last_processed_x, last_processed_y
@@ -98,7 +120,7 @@ class SpeckleResult(FilterResult):
     std_dev_filter: np.ndarray
     speckle_contrast_filter: np.ndarray
     start_pixel_mean: float
-    start_pixel_std_dev: float
+    start_pixel_std_dev: float 
     start_pixel_speckle_contrast: float
 
     @classmethod
@@ -107,7 +129,7 @@ class SpeckleResult(FilterResult):
 
     def get_filter_data(self) -> dict:
         return {
-            "Mean Filter": self.mean_filter,
+            "Mean Filter": self.mean_filter, 
             "Std Dev Filter": self.std_dev_filter,
             "Speckle Contrast": self.speckle_contrast_filter
         }

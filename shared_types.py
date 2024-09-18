@@ -1,7 +1,6 @@
 # Imports
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
@@ -18,11 +17,12 @@ PRELOADED_IMAGE_PATHS = {
     "logo.jpg": "media/logo.jpg"
 }
 
-
+DEFAULT_COLOR_MAP = 'gray'
 DEFAULT_KERNEL_SIZE = 3
+
+
 DEFAULT_SEARCH_WINDOW_SIZE = 51
 DEFAULT_FILTER_STRENGTH = 0.1
-DEFAULT_COLOR_MAP = 'gray'
 
 
 
@@ -30,21 +30,18 @@ DEFAULT_COLOR_MAP = 'gray'
 ImageArray = np.ndarray
 PixelCoordinates = Tuple[int, int]
 
-# Enums
-class ColorMap(Enum):
-    GRAY = 'gray'
 
 # Common error handling
 def handle_error(e: Exception, message: str):
     st.error(f"{message}. Please check the logs.")
 
-# UI classes
+#---------- Main ---------    #
 @dataclass
 class SidebarUI:
     @staticmethod
     def setup():
         st.sidebar.title("Image Processing Settings")
-        image = ImageProcessingUI.create_image_source_ui()
+        image = SidebarUI.create_image_source_ui()
 
         if image is None:
             return None
@@ -53,21 +50,19 @@ class SidebarUI:
         color_map = st.sidebar.selectbox("Select Color Map", AVAILABLE_COLOR_MAPS, index=AVAILABLE_COLOR_MAPS.index(st.session_state.get('color_map', 'gray')))
         st.session_state.color_map = color_map
 
-        display_options = ImageProcessingUI.create_display_options_ui(image)
-        advanced_options = ImageProcessingUI.create_advanced_options_ui(image)
+        display_options = SidebarUI.create_display_options_ui(image)
+        advanced_options = SidebarUI.create_advanced_options_ui(image)
 
         return {
             "image": image,
             "image_array": np.array(image), 
             "cmap": color_map,
             "kernel_size": display_options['kernel_size'],
-            "normalization_option": advanced_options['normalization_option'],  # Add this line
+            "normalization_option": advanced_options['normalization_option'],
             **display_options,
             **advanced_options
         }
 
-@dataclass
-class ImageProcessingUI:
     @staticmethod
     def create_image_source_ui():
         image_source_type = st.sidebar.radio("Select Image Source", ("Preloaded Images", "Upload Image"))
@@ -94,25 +89,22 @@ class ImageProcessingUI:
     def create_display_options_ui(image):
         st.sidebar.markdown("### 🖥️ Display Options")
         show_per_pixel_processing = st.sidebar.checkbox("Show Per-Pixel Processing Steps", value=False)
-        
-        
-        # Use session state to preserve kernel size
+
         if 'kernel_size' not in st.session_state:
             st.session_state.kernel_size = 3  # Default value
-        
+
         kernel_size = st.sidebar.slider("Kernel Size", min_value=3, max_value=21, value=st.session_state.kernel_size, step=2, key='kernel_size_slider')
         st.session_state.kernel_size = kernel_size  # Update session state
-        
-        
+
         total_pixels = (image.width - kernel_size + 1) * (image.height - kernel_size + 1)
         pixels_to_process = total_pixels
-        
+
         if show_per_pixel_processing:
             try:
-                pixels_to_process = ImageProcessingUI.handle_pixel_processing(total_pixels)
+                pixels_to_process = SidebarUI.handle_pixel_processing(total_pixels)
             except Exception as e:
                 handle_error(e, "Error while handling pixel processing")
-            
+
             st.sidebar.write(f"Processing {pixels_to_process:,} out of {total_pixels:,} pixels")
 
         return {
@@ -148,7 +140,7 @@ class ImageProcessingUI:
     @staticmethod
     def create_advanced_options_ui(image):
         st.sidebar.markdown("### 🔬 Advanced Options")
-        
+
         # Add normalization option
         normalization_option = st.sidebar.selectbox(
             "Normalization",
@@ -157,18 +149,18 @@ class ImageProcessingUI:
             key="normalization_option",
             help="Choose the normalization method for the image"
         )
-        
+
         add_noise = st.sidebar.checkbox("Add Gaussian Noise", value=False,
                                         help="Add Gaussian noise to the image")
 
         try:
             image_np = np.array(image) / 255.0
 
+            # If noise addition is selected, delegate the logic to the extracted method
             if add_noise:
                 noise_mean = st.sidebar.number_input("Noise Mean", min_value=0.0, max_value=1.0, value=0.1, step=0.01, format="%.2f", key="noise_mean")
                 noise_std = st.sidebar.number_input("Noise Standard Deviation", min_value=0.0, max_value=1.0, value=0.1, step=0.01, format="%.2f", key="noise_std")
-                noise = np.random.normal(noise_mean, noise_std, image_np.shape)
-                image_np = np.clip(image_np + noise, 0, 1)
+                image_np = SidebarUI.add_gaussian_noise(image_np, noise_mean, noise_std)
 
             # Apply normalization if selected
             if normalization_option == 'Percentile':
@@ -188,6 +180,12 @@ class ImageProcessingUI:
                 "add_noise": False,
                 "normalization_option": 'None'
             }
+
+    @staticmethod
+    def add_gaussian_noise(image_np, mean, std):
+        """Adds Gaussian noise to the image."""
+        noise = np.random.normal(mean, std, image_np.shape)
+        return np.clip(image_np + noise, 0, 1)
 
 @dataclass
 class ImageComparison:
@@ -242,22 +240,29 @@ class ImageComparison:
             colored_images.append((colored * 255).astype(np.uint8))
         return colored_images
 
-# Data classes
+# --------- Called in Analysis Module ---------    #
 @dataclass
-class VisualizationParams:
-    image_array: ImageArray
-    analysis_params: Dict[str, Any]
-    results: Any
-    ui_placeholders: Dict[str, Any]
-    last_processed_pixel: PixelCoordinates
+class FilterResult(ABC):
+    """
+    Abstract base class for various filtering techniques.
+    Defines common attributes and methods across different filters.
+    """
+    processing_coord: PixelCoordinates
+    processing_end_coord: PixelCoordinates
     kernel_size: int
-    kernel_matrix: ImageArray
-    original_pixel_value: float
-    analysis_type: str
-    show_per_pixel_processing: bool
-    search_window_size: Optional[int]
-    color_map: ColorMap
+    pixels_processed: int
+    image_dimensions: Tuple[int, int]
 
+    @abstractmethod
+    def get_filter_data(self) -> Dict[str, Any]:
+        pass
+
+    @classmethod
+    @abstractmethod
+    def get_filter_options(cls) -> List[str]:
+        pass
+
+#---------- Function ---------    #
 @dataclass(frozen=True)
 class ProcessingDetails:
     image_height: int
@@ -272,100 +277,43 @@ class ProcessingDetails:
     kernel_size: int
 
     def __post_init__(self):
+        self._validate_dimensions()
+        self._validate_coordinates()
+
+    def _validate_dimensions(self):
         if self.image_height <= 0 or self.image_width <= 0:
             raise ValueError("Image dimensions must be positive.")
-        if self.kernel_size <= 0 or self.kernel_size % 2 == 0:
-            raise ValueError("Kernel size must be a positive odd integer.")
         if self.valid_height <= 0 or self.valid_width <= 0:
             raise ValueError("Kernel size is too large for the given image dimensions.")
         if self.pixels_to_process < 0:
             raise ValueError("Number of pixels to process must be non-negative.")
-        if self.start_x < 0 or self.start_y < 0 or self.end_x >= self.image_width or self.end_y >= self.image_height:
+
+    def _validate_coordinates(self):
+        if (self.start_x < 0 or self.start_y < 0 or 
+            self.end_x >= self.image_width or self.end_y >= self.image_height):
             raise ValueError("Invalid processing coordinates.")
 
-@dataclass
-class TechniqueResult(ABC):
-    kernel_size: int
-    pixels_processed: int
-    image_dimensions: Tuple[int, int]
-    
-    @classmethod
-    @abstractmethod
-    def get_filter_options(cls) -> List[str]:
-        pass
-
-@dataclass
-class VisualizationConfig:
-    vmin: Optional[float]
-    vmax: Optional[float]
-    zoom: bool
-    show_kernel: bool
-    show_per_pixel_processing: bool  # Changed from show_per_pixel to show_per_pixel_processing
-    search_window_size: Optional[int]
-
-    def __post_init__(self):
-        if self.vmin is not None and self.vmax is not None and self.vmin > self.vmax:
-            raise ValueError("vmin cannot be greater than vmax.")
-        
-@dataclass
-class TechniqueParams:
-    kernel_size: int
-    max_pixels: int
-    pixels_to_process: int
-    color_map: ColorMap
-    filter_strength: float
-    search_window_size: int
-
-@dataclass
-class FilterResult(TechniqueResult):
-    processing_coord: PixelCoordinates
-    processing_end_coord: PixelCoordinates
-    kernel_size: int
-    pixels_processed: int
-    image_dimensions: Tuple[int, int]
-
-    @abstractmethod
-    def get_filter_data(self) -> Dict[str, Any]:
-        pass
-
-    def some_concrete_method(self):
-        # Implementation here
-        pass
-
-@dataclass
-class ProcessParams:
-    image_array: ImageArray
-    analysis_params: Dict[str, Any]
-    show_per_pixel_processing: bool
-    technique: str
-    update_state: bool
-    handle_visualization: bool
-
-# Functions
 def calculate_processing_details(image: ImageArray, kernel_size: int, max_pixels: Optional[int]) -> ProcessingDetails:
-    if kernel_size <= 0 or kernel_size % 2 == 0:
-        raise ValueError("Kernel size must be a positive odd integer.")
-    
     image_height, image_width = image.shape[:2]
     half_kernel = kernel_size // 2
     valid_height, valid_width = image_height - kernel_size + 1, image_width - kernel_size + 1
-    
+
     if valid_height <= 0 or valid_width <= 0:
         raise ValueError("Kernel size is too large for the given image dimensions.")
     
     pixels_to_process = min(valid_height * valid_width, max_pixels or float('inf'))
     end_y, end_x = divmod(pixels_to_process - 1, valid_width)
     end_y, end_x = end_y + half_kernel, end_x + half_kernel
-    
+
     return ProcessingDetails(
-        image_height=image_height, 
+        image_height=image_height,
         image_width=image_width,
-        start_x=half_kernel, 
+        start_x=half_kernel,
         start_y=half_kernel,
-        end_x=end_x, 
+        end_x=end_x,
         end_y=end_y,
         pixels_to_process=pixels_to_process,
-        valid_height=valid_height, 
+        valid_height=valid_height,
         valid_width=valid_width,
         kernel_size=kernel_size
     )
