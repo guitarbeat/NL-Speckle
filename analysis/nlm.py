@@ -33,7 +33,7 @@ NLM_FORMULA_CONFIG = {
     2. Weight Calculation: Based on the patch similarity, calculate a weight $w_{{{x},{y}}}(i,j)$ for each comparison.  
     3. Weighted Average: Use these weights to compute the NLM value $NLM_{{{x},{y}}}$, a weighted average of pixel intensities $I_{{i,j}}$.
     
-    This process transitions the original pixel intensity $I_{{{x},{y}}}$ to the denoised value $NLM_{{{x},{y}}}$.
+    This process transitions the original pixel intensity $I_{{{x},{y}}}$ to the non-local mean value $NLM_{{{x},{y}}}$.
     """,
     "additional_formulas": [
         {
@@ -74,9 +74,6 @@ NLM_FORMULA_CONFIG = {
     ]
 }
 
-#------------------------------------------------------------------------------
-# Core NLM Functions
-#------------------------------------------------------------------------------
 
 #------------------------------------------------------------------------------
 # Core NLM Functions
@@ -146,7 +143,7 @@ def apply_nlm(image: np.ndarray, kernel_size: int, search_window_size: int, filt
     """Apply the NLM algorithm to the image."""
     height, width = image.shape
     valid_width = width - kernel_size + 1
-    denoised_image = np.zeros_like(image)
+    nonlocal_means = np.zeros_like(image)
     total_weights = np.zeros_like(image)
     
     for pixel in prange(pixels_to_process):
@@ -155,10 +152,10 @@ def apply_nlm(image: np.ndarray, kernel_size: int, search_window_size: int, filt
         
         if row < height and col < width:
             nlm_value, weight = calculate_nlm_value(row, col, image, kernel_size, search_window_size, filter_strength)
-            denoised_image[row, col] = nlm_value 
+            nonlocal_means[row, col] = nlm_value 
             total_weights[row, col] = weight
     
-    return denoised_image, total_weights
+    return nonlocal_means, total_weights
 
 def process_nlm(image: np.ndarray, kernel_size: int, pixels_to_process: int, search_window_size: int = None, filter_strength: float = None) -> 'NLMResult':
     """Process the image using the NLM algorithm."""
@@ -169,13 +166,13 @@ def process_nlm(image: np.ndarray, kernel_size: int, pixels_to_process: int, sea
         processing_info = calculate_processing_details(image, kernel_size, pixels_to_process)
         height, width = image.shape
         
-        denoised_image, total_weights = apply_nlm(
+        nonlocal_means, total_weights = apply_nlm(
             image.astype(np.float32), kernel_size, search_window_size, filter_strength,
             processing_info.pixels_to_process, processing_info.start_x, processing_info.start_y
         )
         
         return NLMResult(
-            denoised_image=denoised_image,
+            nonlocal_means=nonlocal_means,
             normalization_factors=total_weights,
             processing_coord=(processing_info.start_x, processing_info.start_y),
             processing_end_coord=(processing_info.end_x, processing_info.end_y),
@@ -191,7 +188,7 @@ def process_nlm(image: np.ndarray, kernel_size: int, pixels_to_process: int, sea
 
 @dataclass
 class NLMResult(FilterResult):
-    denoised_image: np.ndarray
+    nonlocal_means: np.ndarray
     normalization_factors: np.ndarray
     search_window_size: int
     filter_strength: float
@@ -202,6 +199,6 @@ class NLMResult(FilterResult):
     
     def get_filter_data(self) -> dict:
         return {
-            "Non-Local Means": self.denoised_image,
+            "Non-Local Means": self.nonlocal_means,
             "Normalization Factors": self.normalization_factors
         }

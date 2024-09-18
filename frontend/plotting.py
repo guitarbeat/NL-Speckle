@@ -99,6 +99,10 @@ def visualize_filter_and_zoomed(filter_name: str, filter_data: np.ndarray, viz_p
             logger.error(f"Error while visualizing {filter_name} filter: {e}", exc_info=True)
             raise
 
+
+
+
+
 def visualize_results(image_array: ImageArray, technique: str, analysis_params: Dict[str, Any], results: Any, show_per_pixel_processing: bool):
     processing_details = calculate_processing_details(
         image_array,
