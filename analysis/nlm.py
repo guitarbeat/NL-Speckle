@@ -2,7 +2,7 @@ import numpy as np
 from numba import njit, prange
 from dataclasses import dataclass
 from typing import List, Tuple
-from shared_types import FilterResult, calculate_processing_details
+from shared_types import FilterResult, calculate_processing_details, ProcessingDetails, Point
 import logging
 
 logger = logging.getLogger(__name__)
@@ -10,9 +10,9 @@ logger = logging.getLogger(__name__)
 #------------------------------------------------------------------------------
 # Constants
 #------------------------------------------------------------------------------
+DEFAULT_SEARCH_WINDOW_SIZE = 51
+DEFAULT_FILTER_STRENGTH = 0.1
 
-DEFAULT_SEARCH_WINDOW_SIZE = 21
-DEFAULT_FILTER_STRENGTH = 10.0
 
 #------------------------------------------------------------------------------
 # NLM Formula Configuration
@@ -144,46 +144,37 @@ def calculate_nlm_value(row: int, col: int, image: np.ndarray, kernel_size: int,
     return nlm_value, total_weight
 
 @njit(parallel=True)
-def apply_nlm(image: np.ndarray, kernel_size: int, search_window_size: int, filter_strength: float, pixels_to_process: int, start_point: Tuple[int, int]) -> np.ndarray:
+def apply_nlm(image: np.ndarray, kernel_size: int, search_window_size: int, filter_strength: float, pixels_to_process: int, start_point: Point) -> np.ndarray:
     """Apply the NLM algorithm to the image."""
-
-    # Processing Information is pixels_to_process, start_x, start_y
-    # pixels_to_process is the number of pixels to process
-    # start_x is the starting x-coordinate for processing
-    # start_y is the starting y-coordinate for processing
-
     height, width = image.shape
-    valid_width = width - kernel_size + 1 # This is the width of the valid region after applying the kernel, since we don't use the edges to avoid out-of-bounds errors
+    valid_width = width - kernel_size + 1
     
-    nonlocal_means = np.zeros_like(image) # This will store the NLM values for each pixel
-    total_weights = np.zeros_like(image) # This will store the normalization factors for each pixel
-    start_x, start_y = start_point
+    nonlocal_means = np.zeros_like(image)
+    total_weights = np.zeros_like(image)
 
-    for pixel in prange(pixels_to_process): # This is parallelized to process multiple pixels simultaneously
-        row = start_y + pixel // valid_width # This is the row of the pixel in the valid region
-        col = start_x + pixel % valid_width # This is the column of the pixel in the valid region
+    for pixel in prange(pixels_to_process):
+        row = start_point.y + pixel // valid_width
+        col = start_point.x + pixel % valid_width
         
-        if row < height and col < width: # Ensure the pixel is within the image bounds
-            nlm_value, weight = calculate_nlm_value(row, col, image, kernel_size, search_window_size, filter_strength) # Calculate the NLM value and normalization factor for the pixel
-            nonlocal_means[row, col] = nlm_value # Store the NLM value for the pixel
-            total_weights[row, col] = weight # Store the normalization factor for the pixel
+        if row < height and col < width:
+            nlm_value, weight = calculate_nlm_value(row, col, image, kernel_size, search_window_size, filter_strength)
+            nonlocal_means[row, col] = nlm_value
+            total_weights[row, col] = weight
     
     return nonlocal_means, total_weights
 
 def process_nlm(image: np.ndarray, kernel_size: int, pixels_to_process: int, search_window_size: int = None, filter_strength: float = None) -> 'NLMResult':
     """Process the image using the NLM algorithm."""
-    search_window_size = search_window_size or min(DEFAULT_SEARCH_WINDOW_SIZE, min(image.shape)) # This is the size of the search window
-    filter_strength = filter_strength or DEFAULT_FILTER_STRENGTH # This is the smoothing parameter for the NLM algorithm
+    search_window_size = search_window_size or min(DEFAULT_SEARCH_WINDOW_SIZE, min(image.shape))
+    filter_strength = filter_strength or DEFAULT_FILTER_STRENGTH
     
     try:
-        processing_info = calculate_processing_details(image, kernel_size, pixels_to_process) # Calculate the processing details
+        processing_info: ProcessingDetails = calculate_processing_details(image, kernel_size, pixels_to_process)
 
-        height, width = image.shape # Get the image dimensions
-        
         nonlocal_means, total_weights = apply_nlm(
             image.astype(np.float32), kernel_size, search_window_size, filter_strength,
             processing_info.pixels_to_process, processing_info.start_point
-        ) # Apply the NLM algorithm to the image
+        )
         
         return NLMResult(
             nonlocal_means=nonlocal_means,
@@ -192,7 +183,7 @@ def process_nlm(image: np.ndarray, kernel_size: int, pixels_to_process: int, sea
             processing_end_coord=processing_info.end_point, 
             kernel_size=kernel_size,
             pixels_processed=processing_info.pixels_to_process,
-            image_dimensions=(height, width),
+            image_dimensions=processing_info.image_dimensions,
             search_window_size=search_window_size,
             filter_strength=filter_strength
         )

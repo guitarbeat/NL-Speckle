@@ -5,7 +5,8 @@ from shared_types import (
     SidebarUI,
     calculate_processing_details,
     DEFAULT_KERNEL_SIZE,
-    DEFAULT_COLOR_MAP
+    DEFAULT_COLOR_MAP,
+    ProcessingDetails
 )
 from frontend.plotting import (
     prepare_comparison_images,
@@ -51,7 +52,7 @@ def run_application():
     kernel_size = sidebar_params.get('kernel_size', DEFAULT_KERNEL_SIZE)
 
     # Calculate processing details based on user input
-    details = calculate_processing_details(
+    details: ProcessingDetails = calculate_processing_details(
         sidebar_params['image_array'],
         kernel_size,
         None if sidebar_params['show_per_pixel_processing'] else sidebar_params['pixels_to_process']
@@ -65,8 +66,7 @@ def run_application():
         "show_per_pixel_processing": sidebar_params['show_per_pixel_processing'],
         "total_pixels": sidebar_params['total_pixels'],
         "pixels_to_process": sidebar_params['pixels_to_process'],
-        "image_height": details.image_height,
-        "image_width": details.image_width,
+        "image_dimensions": details.image_dimensions,
         "kernel_size": kernel_size,
     }
 
