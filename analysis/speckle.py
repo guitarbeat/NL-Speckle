@@ -61,14 +61,16 @@ def calculate_speckle_contrast(local_std, local_mean):
     return local_std / local_mean if local_mean != 0 else 0
 
 @njit
-def apply_speckle_contrast(image, kernel_size, pixels_to_process, height, width, start_x, start_y):
+def apply_speckle_contrast(image, kernel_size, pixels_to_process, start_point):
+    height, width = image.shape
     mean_filter = np.zeros((height, width), dtype=np.float32)
     std_dev_filter = np.zeros((height, width), dtype=np.float32)
     sc_filter = np.zeros((height, width), dtype=np.float32)
     half_kernel = kernel_size // 2
     valid_width = width - kernel_size + 1
 
-    last_processed_x, last_processed_y = start_x, start_y
+    start_x, start_y = start_point
+
 
     for pixel in range(pixels_to_process):
         row = start_y + pixel // valid_width
@@ -81,21 +83,19 @@ def apply_speckle_contrast(image, kernel_size, pixels_to_process, height, width,
             std_dev_filter[row, col] = calculate_std_dev(local_window, mean_filter[row, col]) 
             sc_filter[row, col] = calculate_speckle_contrast(std_dev_filter[row, col], mean_filter[row, col])
             
-            last_processed_x, last_processed_y = col, row
 
-    return mean_filter, std_dev_filter, sc_filter, last_processed_x, last_processed_y
+    return mean_filter, std_dev_filter, sc_filter
 
 def process_speckle(image, kernel_size, pixels_to_process):
     try:
         processing_info = calculate_processing_details(image, kernel_size, pixels_to_process)
         
-        mean_filter, std_dev_filter, sc_filter, last_processed_x, last_processed_y = apply_speckle_contrast(
+        mean_filter, std_dev_filter, sc_filter = apply_speckle_contrast(
             image, kernel_size, processing_info.pixels_to_process, 
-            processing_info.image_height, processing_info.image_width, 
-            processing_info.start_x, processing_info.start_y
+            processing_info.start_point
         )
 
-        start_x, start_y = processing_info.start_x, processing_info.start_y
+        start_x, start_y = processing_info.start_point
 
         return SpeckleResult(
             mean_filter=mean_filter,
@@ -104,8 +104,8 @@ def process_speckle(image, kernel_size, pixels_to_process):
             start_pixel_mean=mean_filter[start_y, start_x],
             start_pixel_std_dev=std_dev_filter[start_y, start_x],
             start_pixel_speckle_contrast=sc_filter[start_y, start_x],
-            processing_coord=(start_x, start_y),
-            processing_end_coord=(last_processed_x, last_processed_y),
+            processing_coord=processing_info.start_point,  # Updated to use start_point tuple
+            processing_end_coord=processing_info.end_point, 
             kernel_size=kernel_size,
             pixels_processed=processing_info.pixels_to_process,
             image_dimensions=(processing_info.image_height, processing_info.image_width)
