@@ -21,10 +21,6 @@ DEFAULT_COLOR_MAP = 'gray'
 DEFAULT_KERNEL_SIZE = 3
 
 
-
-
-
-
 # Type aliases
 ImageArray = np.ndarray
 PixelCoordinates = Tuple[int, int]
@@ -36,69 +32,38 @@ def handle_error(e: Exception, message: str):
 
 #---------- Main ---------    #
 
-@dataclass
-class NLMParams:
-    search_window_size: int
-    filter_strength: float
 
-    @staticmethod
-    def create_ui_elements(st, image_shape: Tuple[int, int]):
-        max_search_window = min(101, min(image_shape))
-        default_search_window = min(21, max_search_window)
-
-        with st.expander("Non-Local Means Options"):
-            search_window_size = st.slider(
-                "Search Window Size", 
-                min_value=3, 
-                max_value=max_search_window, 
-                value=default_search_window, 
-                step=2, 
-                help="Size of the search window for NLM (must be odd)"
-            )
-            # Ensure the search window size is odd
-            search_window_size = search_window_size if search_window_size % 2 == 1 else search_window_size + 1
-            
-            filter_strength = st.slider(
-                "Filter Strength (h)", 
-                min_value=0.1, 
-                max_value=20.0, 
-                value=10.0, 
-                step=0.1, 
-                format="%.1f",
-                help="Filter strength for NLM (higher values result in more smoothing)"
-            )
-        return NLMParams(search_window_size, filter_strength)
 
 @dataclass
 class SidebarUI:
     @staticmethod
     def setup() -> Optional[Dict[str, Any]]:
         st.sidebar.title("Image Processing Settings")
-        image = SidebarUI.create_image_source_ui()
 
-        if image is None:
-            return None
+        with st.sidebar.expander("Image Selector",expanded=True):
+            image = SidebarUI._create_image_source_ui()
+            st.sidebar.markdown("### 🎨 Color Map")
+            color_map = SidebarUI._select_color_map()
+        
+        display_options = SidebarUI._create_display_options_ui(image)
 
-        st.sidebar.markdown("### 🎨 Color Map")
-        color_map = st.sidebar.selectbox("Select Color Map", AVAILABLE_COLOR_MAPS, index=AVAILABLE_COLOR_MAPS.index(st.session_state.get('color_map', 'gray')))
-        st.session_state.color_map = color_map
+        with st.sidebar.expander("NLM Parameters",expanded=True):
+            nlm_params = SidebarUI._create_nlm_options_ui(image)
 
-        display_options, nlm_params = SidebarUI.create_display_options_ui(image)
-        advanced_options = SidebarUI.create_advanced_options_ui(image)
+        with st.sidebar.expander("Advanced Options",expanded=True):
+            advanced_options = SidebarUI._create_advanced_options_ui(image)
 
         return {
             "image": image,
-            "image_array": np.array(image), 
+            "image_array": np.array(image),
             "cmap": color_map,
-            "kernel_size": display_options['kernel_size'],
-            "normalization_option": advanced_options['normalization_option'],
-            "nlm_params": nlm_params,
             **display_options,
+            **nlm_params,  # Remove .__dict__ as nlm_params is already a dictionary
             **advanced_options
         }
-
+    
     @staticmethod
-    def create_image_source_ui() -> Optional[Image.Image]:
+    def _create_image_source_ui() -> Optional[Image.Image]:
         image_source_type = st.sidebar.radio("Select Image Source", ("Preloaded Images", "Upload Image"))
 
         try:
@@ -116,128 +81,146 @@ class SidebarUI:
             st.sidebar.image(loaded_image, caption="Input Image", use_column_width=True)
             return loaded_image
         except Exception as e:
-            handle_error(e, "Error while creating image source UI")
+            st.error(f"Error while creating image source UI: {e}")
             return None
 
+    @staticmethod        
+    def _select_color_map():
+        return st.sidebar.selectbox(
+            "Select Color Map",
+            AVAILABLE_COLOR_MAPS, 
+            index=AVAILABLE_COLOR_MAPS.index(st.session_state.get('color_map', 'gray'))
+        )
+
     @staticmethod
-    def create_display_options_ui(image: Image.Image) -> Tuple[Dict[str, Any], Optional[NLMParams]]:
+    def _create_display_options_ui(image: Image.Image) -> Dict[str, Any]:
         st.sidebar.markdown("### 🖥️ Display Options")
         show_per_pixel_processing = st.sidebar.checkbox("Show Per-Pixel Processing Steps", value=False)
-
-        if 'kernel_size' not in st.session_state:
-            st.session_state.kernel_size = 3  # Default value
-
-        kernel_size = st.sidebar.slider("Kernel Size", min_value=3, max_value=21, value=st.session_state.kernel_size, step=2, key='kernel_size_slider')
-        st.session_state.kernel_size = kernel_size  # Update session state
+        kernel_size = SidebarUI._select_kernel_size()
 
         total_pixels = (image.width - kernel_size + 1) * (image.height - kernel_size + 1)
-        pixels_to_process = total_pixels
-
-        nlm_params = NLMParams.create_ui_elements(st.sidebar, image.size[::-1])  # Reverse size for (height, width)
-
-        if show_per_pixel_processing:
-            try:
-                pixels_to_process = SidebarUI.handle_pixel_processing(total_pixels)
-            except Exception as e:
-                handle_error(e, "Error while handling pixel processing")
-
-            st.sidebar.write(f"Processing {pixels_to_process:,} out of {total_pixels:,} pixels")
-
+        pixels_to_process = SidebarUI._handle_pixel_processing(total_pixels) if show_per_pixel_processing else total_pixels
 
         return {
             "show_per_pixel_processing": show_per_pixel_processing,
             "total_pixels": total_pixels,
             "pixels_to_process": pixels_to_process,
             "kernel_size": kernel_size
-        }, nlm_params
-    
+        }
+
     @staticmethod
-    def handle_pixel_processing(total_pixels: int) -> int:
+    def _select_kernel_size():
+        if 'kernel_size' not in st.session_state:
+            st.session_state.kernel_size = 3
+        return st.sidebar.slider("Kernel Size", min_value=3, max_value=21, value=st.session_state.kernel_size, step=2)
+
+    @staticmethod
+    def _handle_pixel_processing(total_pixels: int) -> int:
         col1, col2 = st.sidebar.columns(2)
 
-        def update_exact_pixel_count():
-            if 'percentage_slider' in st.session_state:
-                st.session_state.exact_pixel_count = int(total_pixels * st.session_state.percentage_slider / 100)
-
-        def update_percentage():
-            if 'exact_pixel_count' in st.session_state:
-                st.session_state.percentage_slider = int((st.session_state.exact_pixel_count / total_pixels) * 100)
-
-        # Initialize session state variables if not present
         if 'exact_pixel_count' not in st.session_state:
             st.session_state.exact_pixel_count = total_pixels
         if 'percentage_slider' not in st.session_state:
             st.session_state.percentage_slider = 100
 
-        # Ensure proper update without conflicts
         with col1:
-            st.slider(
-                "Percentage", 
-                min_value=1, max_value=100,
-                value=st.session_state.percentage_slider, 
-                step=1, 
-                key="percentage_slider",
-                on_change=update_exact_pixel_count
-            )
+            percentage = st.slider("Percentage", min_value=1, max_value=100, value=st.session_state.percentage_slider, step=1)
+            st.session_state.exact_pixel_count = int(total_pixels * percentage / 100)
 
         with col2:
-            st.number_input(
-                "Exact Pixels", 
-                min_value=0, max_value=total_pixels,
-                value=st.session_state.exact_pixel_count,
-                step=1, 
-                key="exact_pixel_count",
-                on_change=update_percentage
-            )
+            exact_count = st.number_input("Exact Pixels", min_value=0, max_value=total_pixels, value=st.session_state.exact_pixel_count, step=1)
+            st.session_state.percentage_slider = int((exact_count / total_pixels) * 100)
 
         return st.session_state.exact_pixel_count
 
     @staticmethod
-    def create_advanced_options_ui(image: Image.Image) -> Dict[str, Any]:
-        st.sidebar.markdown("### 🔬 Advanced Options")
+    def _create_nlm_options_ui(image: Image.Image) -> Dict[str, Any]:
+        try:
+            image_shape = image.size
+            max_search_window = min(101, min(image_shape))
+            default_search_window = min(21, max_search_window)
+            search_window_size = st.slider(
+                "Search Window Size",
+                min_value=3,
+                max_value=max_search_window,
+                value=default_search_window,
+                step=2,
+                help="Size of the search window for NLM (must be odd)"
+            )
+            search_window_size = search_window_size if search_window_size % 2 == 1 else search_window_size + 1
+        
+            filter_strength = st.slider(
+                "Filter Strength (h)",
+                min_value=0.1,
+                max_value=20.0,
+                value=10.0,
+                step=0.1,
+                format="%.1f",
+                help="Filter strength for NLM (higher values result in more smoothing)"
+                )
+                
+            return {
+                "search_window_size": search_window_size,
+                "filter_strength": filter_strength
+            }
+        except Exception as e:
+            st.sidebar.error(f"Error creating NLM options: {e}")
+            return {"search_window_size": 21, "filter_strength": 10.0}  # Default values
+        
 
-        normalization_option = st.sidebar.selectbox(
+    @staticmethod
+    def _create_advanced_options_ui(image: Image.Image) -> Dict[str, Any]:
+
+        normalization_option = SidebarUI._select_normalization_option()
+        add_noise, noise_params = SidebarUI._add_gaussian_noise_option()
+
+       
+        image_np = np.array(image) / 255.0
+        
+        if add_noise:
+            image_np = SidebarUI._apply_gaussian_noise(image_np, **noise_params)
+            
+        if normalization_option == 'Percentile':
+            image_np = SidebarUI._normalize_percentile(image_np)
+
+        return {
+            "image_np": image_np,
+            "add_noise": add_noise,
+            "normalization_option": normalization_option
+        }
+    
+
+    @staticmethod
+    def _select_normalization_option():
+        return st.sidebar.selectbox(
             "Normalization",
             options=['None', 'Percentile'],
             index=0,
-            key="normalization_option",
             help="Choose the normalization method for the image"
         )
 
-        add_noise = st.sidebar.checkbox("Add Gaussian Noise", value=False,
-                                        help="Add Gaussian noise to the image")
-
-        try:
-            image_np = np.array(image) / 255.0
-
-            if add_noise:
-                noise_mean = st.sidebar.number_input("Noise Mean", min_value=0.0, max_value=1.0, value=0.1, step=0.01, format="%.2f", key="noise_mean")
-                noise_std = st.sidebar.number_input("Noise Standard Deviation", min_value=0.0, max_value=1.0, value=0.1, step=0.01, format="%.2f", key="noise_std")
-                image_np = SidebarUI.add_gaussian_noise(image_np, noise_mean, noise_std)
-
-            if normalization_option == 'Percentile':
-                p_low, p_high = np.percentile(image_np, [2, 98])
-                image_np = np.clip(image_np, p_low, p_high)
-                image_np = (image_np - p_low) / (p_high - p_low)
-
-            return {
-                "image_np": image_np, 
-                "add_noise": add_noise,
-                "normalization_option": normalization_option
-            }
-        except Exception as e:
-            handle_error(e, "Error while creating advanced options UI")
-            return {
-                "image_np": np.array([]), 
-                "add_noise": False,
-                "normalization_option": 'None'
-            }
-        
     @staticmethod
-    def add_gaussian_noise(image_np: np.ndarray, mean: float, std: float) -> np.ndarray:
-        """Adds Gaussian noise to the image."""
+    def _add_gaussian_noise_option():
+        add_noise = st.sidebar.checkbox("Add Gaussian Noise", value=False, help="Add Gaussian noise to the image")
+        noise_params = {}
+
+        if add_noise:
+            noise_params['mean'] = st.sidebar.number_input("Noise Mean", min_value=0.0, max_value=1.0, value=0.1, step=0.01, format="%.2f")
+            noise_params['std'] = st.sidebar.number_input("Noise Standard Deviation", min_value=0.0, max_value=1.0, value=0.1, step=0.01, format="%.2f")
+
+        return add_noise, noise_params    
+
+    @staticmethod
+    def _apply_gaussian_noise(image_np: np.ndarray, mean: float, std: float) -> np.ndarray:
         noise = np.random.normal(mean, std, image_np.shape)
         return np.clip(image_np + noise, 0, 1)
+
+    @staticmethod
+    def _normalize_percentile(image_np: np.ndarray) -> np.ndarray:
+        p_low, p_high = np.percentile(image_np, [2, 98])
+        image_np = np.clip(image_np, p_low, p_high)
+        image_np = (image_np - p_low) / (p_high - p_low)
+        return image_np
 
 #--------- Called in SidebarUI ---------    #
 @dataclass
