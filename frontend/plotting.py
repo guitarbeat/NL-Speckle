@@ -11,6 +11,8 @@ import logging
 # Constants 
 KERNEL_OUTLINE_COLOR, SEARCH_WINDOW_OUTLINE_COLOR, PIXEL_VALUE_TEXT_COLOR = 'red', 'blue', 'red'
 ZOOMED_IMAGE_DIMENSIONS = (8, 8) 
+DEFAULT_SPECKLE_VIEW = ["Speckle Contrast"]
+DEFAULT_NLM_VIEW = ["NL-Means Image"]
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -34,6 +36,8 @@ def process_image(params: ProcessParams):
                process_speckle(normalized_image, kernel_size, analysis_params['pixels_to_process']) 
                if technique == "speckle" else 
                None)
+    
+    
     
     if results is None:
         raise ValueError(f"Unknown technique: {technique}")
@@ -71,11 +75,24 @@ def extract_kernel_from_image(image_array: ImageArray, end_x: int, end_y: int, k
 def create_technique_ui_elements(technique: str, tab, show_per_pixel_processing: bool):
     with tab:
         ui_placeholders = {'formula': st.empty(), 'original_image': st.empty()}
-        all_filter_options = ['Original Image'] + (SpeckleResult.get_filter_options() if technique == "speckle" else NLMResult.get_filter_options() if technique == "nlm" else [])
+        all_filter_options = (SpeckleResult.get_filter_options() if technique == "speckle" else 
+                              NLMResult.get_filter_options() if technique == "nlm" else [])
+        
+        # Add 'Original Image' as an option, but don't automatically include it
+        all_filter_options = ['Original Image'] + all_filter_options
+        
+        # Use the constants for default views
+        if technique == "speckle":
+            default_selection = DEFAULT_SPECKLE_VIEW
+        elif technique == "nlm":
+            default_selection = DEFAULT_NLM_VIEW
+        else:
+            default_selection = []
+        
         selected_filters = st.multiselect(
             "Select views to display",
             all_filter_options,
-            default=all_filter_options,
+            default=default_selection,
             key=f"{technique}_filter_selection"
         )
         st.session_state[f'{technique}_selected_filters'] = selected_filters
@@ -160,8 +177,11 @@ def visualize_analysis_results(viz_params: VisualizationParams):
         filter_options, specific_params = prepare_filter_options_and_parameters(viz_params.results, (last_processed_x, last_processed_y))
         filter_options['Original Image'] = viz_params.image_array
 
-        for filter_name, filter_data in filter_options.items():
-            visualize_filter_and_zoomed(filter_name, filter_data, viz_params)
+        selected_filters = st.session_state.get(f'{viz_params.analysis_type}_selected_filters', [])
+        for filter_name in selected_filters:
+            if filter_name in filter_options:
+                filter_data = filter_options[filter_name]
+                visualize_filter_and_zoomed(filter_name, filter_data, viz_params)
 
         if viz_params.show_per_pixel_processing:
             display_analysis_formula(specific_params, viz_params.ui_placeholders, viz_params.analysis_type, last_processed_x, last_processed_y, viz_params.kernel_size, viz_params.kernel_matrix, viz_params.original_pixel_value)
