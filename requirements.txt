@@ -12,3 +12,4 @@ typing-extensions
 redis
 memory_profiler
 psutil
+scikit-learn
