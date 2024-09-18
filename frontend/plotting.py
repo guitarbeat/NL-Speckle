@@ -10,6 +10,21 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple, List
 from logging import getLogger
 
+# In the VisualizationConfig dataclass, you can simplify the __post_init__ method by using the @validator decorator from the pydantic library:
+
+# pythonCopyfrom pydantic import validator
+
+# @dataclass
+# class VisualizationConfig:
+#     ...
+
+#     @validator('vmin', 'vmax')
+#     def validate_vmin_vmax(cls, v, values):
+#         if 'vmin' in values and 'vmax' in values and values['vmin'] > values['vmax']:
+#             raise ValueError("vmin cannot be greater than vmax.")
+#         return v
+
+
 # Constants 
 KERNEL_OUTLINE_COLOR, SEARCH_WINDOW_OUTLINE_COLOR, PIXEL_VALUE_TEXT_COLOR = 'red', 'blue', 'white'
 ZOOMED_IMAGE_DIMENSIONS = (8, 8) 
