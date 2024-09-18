@@ -2,7 +2,7 @@ import numpy as np
 from numba import njit, prange
 from dataclasses import dataclass
 from typing import List
-from shared_types import FilterResult, calculate_processing_details
+from shared_types import FilterResult, calculate_processing_details, ProcessingDetails, Point
 
 SPECKLE_FORMULA_CONFIG = {
     "title": "Speckle Contrast Calculation",
@@ -61,7 +61,7 @@ def calculate_speckle_contrast(local_std, local_mean):
     return local_std / local_mean if local_mean != 0 else 0
 
 @njit(parallel=True)
-def apply_speckle_contrast(image, kernel_size, pixels_to_process, start_point):
+def apply_speckle_contrast(image, kernel_size, pixels_to_process, start_point: Point):
     height, width = image.shape
     mean_filter = np.zeros((height, width), dtype=np.float32)
     std_dev_filter = np.zeros((height, width), dtype=np.float32)
@@ -69,12 +69,10 @@ def apply_speckle_contrast(image, kernel_size, pixels_to_process, start_point):
     half_kernel = kernel_size // 2
     valid_width = width - kernel_size + 1
 
-    start_x, start_y = start_point
-
 
     for pixel in prange(pixels_to_process):
-        row = start_y + pixel // valid_width
-        col = start_x + pixel % valid_width
+        row = start_point.y + pixel // valid_width
+        col = start_point.x + pixel % valid_width
         if row < height and col < width:
             local_window = image[max(0, row-half_kernel):min(height, row+half_kernel+1),
                                  max(0, col-half_kernel):min(width, col+half_kernel+1)]
@@ -83,32 +81,30 @@ def apply_speckle_contrast(image, kernel_size, pixels_to_process, start_point):
             std_dev_filter[row, col] = calculate_std_dev(local_window, mean_filter[row, col]) 
             sc_filter[row, col] = calculate_speckle_contrast(std_dev_filter[row, col], mean_filter[row, col])
             
-
     return mean_filter, std_dev_filter, sc_filter
+
 
 def process_speckle(image, kernel_size, pixels_to_process):
     try:
-        processing_info = calculate_processing_details(image, kernel_size, pixels_to_process)
+        processing_info: ProcessingDetails = calculate_processing_details(image, kernel_size, pixels_to_process)
         
         mean_filter, std_dev_filter, sc_filter = apply_speckle_contrast(
             image, kernel_size, processing_info.pixels_to_process, 
             processing_info.start_point
         )
 
-        start_x, start_y = processing_info.start_point
-
         return SpeckleResult(
             mean_filter=mean_filter,
             std_dev_filter=std_dev_filter,
             speckle_contrast_filter=sc_filter,
-            start_pixel_mean=mean_filter[start_y, start_x],
-            start_pixel_std_dev=std_dev_filter[start_y, start_x],
-            start_pixel_speckle_contrast=sc_filter[start_y, start_x],
-            processing_coord=processing_info.start_point,  # Updated to use start_point tuple
+            start_pixel_mean=mean_filter[processing_info.start_point.y, processing_info.start_point.x],
+            start_pixel_std_dev=std_dev_filter[processing_info.start_point.y, processing_info.start_point.x],
+            start_pixel_speckle_contrast=sc_filter[processing_info.start_point.y, processing_info.start_point.x],
+            processing_coord=processing_info.start_point,
             processing_end_coord=processing_info.end_point, 
             kernel_size=kernel_size,
             pixels_processed=processing_info.pixels_to_process,
-            image_dimensions=(processing_info.image_height, processing_info.image_width)
+            image_dimensions=processing_info.image_dimensions
         )
     except Exception as e:
         print(f"Error in process_speckle: {str(e)}")

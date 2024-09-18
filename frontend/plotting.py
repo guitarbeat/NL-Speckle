@@ -15,6 +15,9 @@ KERNEL_OUTLINE_COLOR, SEARCH_WINDOW_OUTLINE_COLOR, PIXEL_VALUE_TEXT_COLOR = 'red
 ZOOMED_IMAGE_DIMENSIONS = (8, 8) 
 DEFAULT_SPECKLE_VIEW = ['Speckle Contrast','Original Image']
 DEFAULT_NLM_VIEW = ['Non-Local Means','Original Image']
+DEFAULT_SEARCH_WINDOW_SIZE = 21
+DEFAULT_FILTER_STRENGTH = 10.0
+
 
 # Set up logging
 logger = getLogger(__name__)
@@ -99,10 +102,6 @@ def visualize_filter_and_zoomed(filter_name: str, filter_data: np.ndarray, viz_p
             logger.error(f"Error while visualizing {filter_name} filter: {e}", exc_info=True)
             raise
 
-
-
-
-
 def visualize_results(image_array: ImageArray, technique: str, analysis_params: Dict[str, Any], results: Any, show_per_pixel_processing: bool):
     processing_details = calculate_processing_details(
         image_array,
@@ -183,8 +182,13 @@ def process_image(params):
         normalized_image = params.image_array
     
     if technique == "nlm":
-        search_window_size = analysis_params.get('search_window_size', 0)
-        filter_strength = analysis_params.get('filter_strength', 0.1)
+        nlm_params = analysis_params.get('nlm_params')
+        if nlm_params:
+            search_window_size = nlm_params.search_window_size
+            filter_strength = nlm_params.filter_strength
+        else:
+            search_window_size = DEFAULT_SEARCH_WINDOW_SIZE
+            filter_strength = DEFAULT_FILTER_STRENGTH
         results = process_nlm(normalized_image, kernel_size, pixels_to_process, search_window_size, filter_strength)
     elif technique == "speckle":
         results = process_speckle(normalized_image, kernel_size, pixels_to_process)
@@ -262,6 +266,53 @@ def create_technique_ui_elements(technique, tab, show_per_pixel_processing):
 
 # --------- Visualization Functions ----------#
 
+def visualize_image(image: np.ndarray, placeholder, pixel_x: int, pixel_y: int, 
+                    kernel_size: int, title: str, technique: str, config: VisualizationConfig) -> None:
+    """
+    Visualize an image with optional zooming and overlays.
+    
+    Args:
+        image (np.ndarray): The image to visualize.
+        placeholder (st.empty): Streamlit placeholder for rendering.
+        pixel_x (int): X-coordinate of the center pixel.
+        pixel_y (int): Y-coordinate of the center pixel.
+        kernel_size (int): Size of the kernel.
+        title (str): Title of the plot.
+        technique (str): Analysis technique (e.g., "nlm" or "speckle").
+        config (VisualizationConfig): Configuration parameters.
+    """
+    try:
+        if config.zoom:
+            image, pixel_x, pixel_y = get_zoomed_image_section(image, pixel_x, pixel_y, kernel_size)
+        fig = create_image_plot(image, pixel_x, pixel_y, kernel_size, title, technique, config)
+
+        placeholder.pyplot(fig)
+        plt.close(fig)  # Close the figure after displaying
+    except Exception as e:
+        logger.error(f"Error while visualizing image: {e}", exc_info=True)
+        raise
+
+def add_overlays(ax: plt.Axes, plot_image: np.ndarray, center_x: int, center_y: int, 
+                 plot_kernel_size: int, technique: str, config: VisualizationConfig) -> None:
+    """
+    Add overlays to the plot based on the technique and configuration.
+    
+    Args:
+        ax (plt.Axes): The axes to add overlays to.
+        plot_image (np.ndarray): The image being plotted.
+        center_x (int): X-coordinate of the center pixel.
+        center_y (int): Y-coordinate of the center pixel.
+        plot_kernel_size (int): Size of the kernel to plot.
+        technique (str): Analysis technique.
+        config (VisualizationConfig): Configuration parameters.
+    """
+    if config.show_kernel:
+        draw_kernel_overlay(ax, center_x, center_y, plot_kernel_size)
+    if technique == "nlm" and config.search_window_size is not None and config.show_kernel:
+        draw_search_window_overlay(ax, plot_image, center_x, center_y, config.search_window_size)
+    if config.zoom and config.show_per_pixel_processing:  
+        draw_pixel_value_annotations(ax, plot_image)
+
 def visualize_analysis_results(viz_params: Dict[str, Any]) -> None:
     """
     Visualize analysis results based on the provided parameters.
@@ -294,35 +345,9 @@ def visualize_analysis_results(viz_params: Dict[str, Any]) -> None:
         logger.error(f"Error while visualizing analysis results: {e}", exc_info=True)
         raise
 
-def visualize_image(image: np.ndarray, placeholder, pixel_x: int, pixel_y: int, 
-                    kernel_size: int, title: str, technique: str, config: Dict[str, Any]) -> None:
-    """
-    Visualize an image with optional zooming and overlays.
-    
-    Args:
-        image (np.ndarray): The image to visualize.
-        placeholder (st.empty): Streamlit placeholder for rendering.
-        pixel_x (int): X-coordinate of the center pixel.
-        pixel_y (int): Y-coordinate of the center pixel.
-        kernel_size (int): Size of the kernel.
-        title (str): Title of the plot.
-        technique (str): Analysis technique (e.g., "nlm" or "speckle").
-        config (Dict[str, Any]): Configuration parameters.
-    """
-    try:
-        if config.zoom:
-            image, pixel_x, pixel_y = get_zoomed_image_section(image, pixel_x, pixel_y, kernel_size)
-        fig = create_image_plot(image, pixel_x, pixel_y, kernel_size, title, technique, config)
-
-        placeholder.pyplot(fig)
-        plt.close(fig)  # Close the figure after displaying
-    except Exception as e:
-        logger.error(f"Error while visualizing image: {e}", exc_info=True)
-        raise
-
 def create_image_plot(plot_image: np.ndarray, center_x: int, center_y: int, 
                       plot_kernel_size: int, title: str, technique: str, 
-                      config: Dict[str, Any]) -> plt.Figure:
+                      config: VisualizationConfig) -> plt.Figure:
     """
     Create a plot of the image with optional overlays.
     
@@ -333,7 +358,7 @@ def create_image_plot(plot_image: np.ndarray, center_x: int, center_y: int,
         plot_kernel_size (int): Size of the kernel to plot.
         title (str): Title of the plot.
         technique (str): Analysis technique.
-        config (Dict[str, Any]): Configuration parameters.
+        config (VisualizationConfig): Configuration parameters.
     
     Returns:
         plt.Figure: The created figure.
@@ -350,27 +375,6 @@ def create_image_plot(plot_image: np.ndarray, center_x: int, center_y: int,
     except Exception as e:
         logger.error(f"Error while creating image plot: {e}", exc_info=True)
         raise
-
-def add_overlays(ax: plt.Axes, plot_image: np.ndarray, center_x: int, center_y: int, 
-                 plot_kernel_size: int, technique: str, config: Dict[str, Any]) -> None:
-    """
-    Add overlays to the plot based on the technique and configuration.
-    
-    Args:
-        ax (plt.Axes): The axes to add overlays to.
-        plot_image (np.ndarray): The image being plotted.
-        center_x (int): X-coordinate of the center pixel.
-        center_y (int): Y-coordinate of the center pixel.
-        plot_kernel_size (int): Size of the kernel to plot.
-        technique (str): Analysis technique.
-        config (Dict[str, Any]): Configuration parameters.
-    """
-    if config.show_kernel:
-        draw_kernel_overlay(ax, center_x, center_y, plot_kernel_size)
-    if technique == "nlm" and config.search_window_size is not None and config.show_kernel:
-        draw_search_window_overlay(ax, plot_image, center_x, center_y, config.search_window_size)
-    if config.zoom and config.show_per_pixel_processing:  
-        draw_pixel_value_annotations(ax, plot_image)
 
 def prepare_filter_options_and_parameters(results: Any, last_processed_pixel: Tuple[int, int]) -> Tuple[Dict[str, np.ndarray], Dict[str, Any]]:
     """

@@ -21,8 +21,7 @@ DEFAULT_COLOR_MAP = 'gray'
 DEFAULT_KERNEL_SIZE = 3
 
 
-DEFAULT_SEARCH_WINDOW_SIZE = 51
-DEFAULT_FILTER_STRENGTH = 0.1
+
 
 
 
@@ -36,10 +35,44 @@ def handle_error(e: Exception, message: str):
     st.error(f"{message}. Please check the logs.")
 
 #---------- Main ---------    #
+
+@dataclass
+class NLMParams:
+    search_window_size: int
+    filter_strength: float
+
+    @staticmethod
+    def create_ui_elements(st, image_shape: Tuple[int, int]):
+        max_search_window = min(101, min(image_shape))
+        default_search_window = min(21, max_search_window)
+
+        with st.expander("Non-Local Means Options"):
+            search_window_size = st.slider(
+                "Search Window Size", 
+                min_value=3, 
+                max_value=max_search_window, 
+                value=default_search_window, 
+                step=2, 
+                help="Size of the search window for NLM (must be odd)"
+            )
+            # Ensure the search window size is odd
+            search_window_size = search_window_size if search_window_size % 2 == 1 else search_window_size + 1
+            
+            filter_strength = st.slider(
+                "Filter Strength (h)", 
+                min_value=0.1, 
+                max_value=20.0, 
+                value=10.0, 
+                step=0.1, 
+                format="%.1f",
+                help="Filter strength for NLM (higher values result in more smoothing)"
+            )
+        return NLMParams(search_window_size, filter_strength)
+
 @dataclass
 class SidebarUI:
     @staticmethod
-    def setup():
+    def setup() -> Optional[Dict[str, Any]]:
         st.sidebar.title("Image Processing Settings")
         image = SidebarUI.create_image_source_ui()
 
@@ -50,7 +83,7 @@ class SidebarUI:
         color_map = st.sidebar.selectbox("Select Color Map", AVAILABLE_COLOR_MAPS, index=AVAILABLE_COLOR_MAPS.index(st.session_state.get('color_map', 'gray')))
         st.session_state.color_map = color_map
 
-        display_options = SidebarUI.create_display_options_ui(image)
+        display_options, nlm_params = SidebarUI.create_display_options_ui(image)
         advanced_options = SidebarUI.create_advanced_options_ui(image)
 
         return {
@@ -59,12 +92,13 @@ class SidebarUI:
             "cmap": color_map,
             "kernel_size": display_options['kernel_size'],
             "normalization_option": advanced_options['normalization_option'],
+            "nlm_params": nlm_params,
             **display_options,
             **advanced_options
         }
 
     @staticmethod
-    def create_image_source_ui():
+    def create_image_source_ui() -> Optional[Image.Image]:
         image_source_type = st.sidebar.radio("Select Image Source", ("Preloaded Images", "Upload Image"))
 
         try:
@@ -86,7 +120,7 @@ class SidebarUI:
             return None
 
     @staticmethod
-    def create_display_options_ui(image):
+    def create_display_options_ui(image: Image.Image) -> Tuple[Dict[str, Any], Optional[NLMParams]]:
         st.sidebar.markdown("### 🖥️ Display Options")
         show_per_pixel_processing = st.sidebar.checkbox("Show Per-Pixel Processing Steps", value=False)
 
@@ -99,6 +133,8 @@ class SidebarUI:
         total_pixels = (image.width - kernel_size + 1) * (image.height - kernel_size + 1)
         pixels_to_process = total_pixels
 
+        nlm_params = NLMParams.create_ui_elements(st.sidebar, image.size[::-1])  # Reverse size for (height, width)
+
         if show_per_pixel_processing:
             try:
                 pixels_to_process = SidebarUI.handle_pixel_processing(total_pixels)
@@ -107,15 +143,16 @@ class SidebarUI:
 
             st.sidebar.write(f"Processing {pixels_to_process:,} out of {total_pixels:,} pixels")
 
+
         return {
             "show_per_pixel_processing": show_per_pixel_processing,
             "total_pixels": total_pixels,
             "pixels_to_process": pixels_to_process,
             "kernel_size": kernel_size
-        }
-
+        }, nlm_params
+    
     @staticmethod
-    def handle_pixel_processing(total_pixels):
+    def handle_pixel_processing(total_pixels: int) -> int:
         col1, col2 = st.sidebar.columns(2)
 
         def update_exact_pixel_count():
@@ -155,12 +192,10 @@ class SidebarUI:
 
         return st.session_state.exact_pixel_count
 
-
     @staticmethod
-    def create_advanced_options_ui(image):
+    def create_advanced_options_ui(image: Image.Image) -> Dict[str, Any]:
         st.sidebar.markdown("### 🔬 Advanced Options")
 
-        # Add normalization option
         normalization_option = st.sidebar.selectbox(
             "Normalization",
             options=['None', 'Percentile'],
@@ -175,13 +210,11 @@ class SidebarUI:
         try:
             image_np = np.array(image) / 255.0
 
-            # If noise addition is selected, delegate the logic to the extracted method
             if add_noise:
                 noise_mean = st.sidebar.number_input("Noise Mean", min_value=0.0, max_value=1.0, value=0.1, step=0.01, format="%.2f", key="noise_mean")
                 noise_std = st.sidebar.number_input("Noise Standard Deviation", min_value=0.0, max_value=1.0, value=0.1, step=0.01, format="%.2f", key="noise_std")
                 image_np = SidebarUI.add_gaussian_noise(image_np, noise_mean, noise_std)
 
-            # Apply normalization if selected
             if normalization_option == 'Percentile':
                 p_low, p_high = np.percentile(image_np, [2, 98])
                 image_np = np.clip(image_np, p_low, p_high)
@@ -199,13 +232,14 @@ class SidebarUI:
                 "add_noise": False,
                 "normalization_option": 'None'
             }
-
+        
     @staticmethod
-    def add_gaussian_noise(image_np, mean, std):
+    def add_gaussian_noise(image_np: np.ndarray, mean: float, std: float) -> np.ndarray:
         """Adds Gaussian noise to the image."""
         noise = np.random.normal(mean, std, image_np.shape)
         return np.clip(image_np + noise, 0, 1)
 
+#--------- Called in SidebarUI ---------    #
 @dataclass
 class ImageComparison:
     @staticmethod
