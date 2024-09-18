@@ -284,16 +284,16 @@ class FilterResult(ABC):
 #---------- Function ---------    #
 @dataclass(frozen=True)
 class ProcessingDetails:
-    image_height: int
-    image_width: int
-    start_x: int
-    start_y: int
-    end_x: int
-    end_y: int
-    pixels_to_process: int
-    valid_height: int
-    valid_width: int
-    kernel_size: int
+    """A dataclass to store image processing details and enforce immutability."""
+    image_height: int  # Total height of the image
+    image_width: int   # Total width of the image
+    start_point: Tuple[int, int]  # (start_x, start_y) tuple representing the starting point
+    end_point: Tuple[int, int]    # (end_x, end_y) tuple representing the end point
+    pixels_to_process: int  # Total number of pixels that will be processed
+    valid_height: int  # Height of the image region valid for kernel processing
+    valid_width: int   # Width of the image region valid for kernel processing
+    kernel_size: int   # Size of the kernel (assumed square)
+
 
     def __post_init__(self):
         self._validate_dimensions()
@@ -308,9 +308,17 @@ class ProcessingDetails:
             raise ValueError("Number of pixels to process must be non-negative.")
 
     def _validate_coordinates(self):
-        if (self.start_x < 0 or self.start_y < 0 or 
-            self.end_x >= self.image_width or self.end_y >= self.image_height):
-            raise ValueError("Invalid processing coordinates.")
+        """Ensure the processing coordinates are valid and within image bounds."""
+        start_x, start_y = self.start_point
+        end_x, end_y = self.end_point
+
+        # Start coordinates should be within the image boundaries.
+        if start_x < 0 or start_y < 0:
+            raise ValueError("Start coordinates must be non-negative.")
+
+        # End coordinates should not exceed the image dimensions.
+        if end_x >= self.image_width or end_y >= self.image_height:
+            raise ValueError("End coordinates exceed image boundaries.")
 
 def calculate_processing_details(image: ImageArray, kernel_size: int, max_pixels: Optional[int]) -> ProcessingDetails:
     image_height, image_width = image.shape[:2]
@@ -327,10 +335,8 @@ def calculate_processing_details(image: ImageArray, kernel_size: int, max_pixels
     return ProcessingDetails(
         image_height=image_height,
         image_width=image_width,
-        start_x=half_kernel,
-        start_y=half_kernel,
-        end_x=end_x,
-        end_y=end_y,
+        start_point=(half_kernel, half_kernel),  # Use a tuple for the start point
+        end_point=(end_x, end_y),                # Use a tuple for the end point
         pixels_to_process=pixels_to_process,
         valid_height=valid_height,
         valid_width=valid_width,
