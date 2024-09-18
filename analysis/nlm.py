@@ -78,15 +78,29 @@ NLM_FORMULA_CONFIG = {
 # Core NLM Functions
 #------------------------------------------------------------------------------
 
+#------------------------------------------------------------------------------
+# Core NLM Functions
+#------------------------------------------------------------------------------
+
 @njit
-def calculate_weight(center_patch: np.ndarray, comparison_patch: np.ndarray, filter_strength: float) -> float:
-    """Calculate the weight between two patches based on their similarity."""
-    patch_diff = np.sum((center_patch - comparison_patch) ** 2)
-    return np.exp(-patch_diff / (filter_strength ** 2))
+def calculate_patch_difference(center_patch: np.ndarray, comparison_patch: np.ndarray) -> float:
+    """
+    Calculate the squared difference between two patches.
+    Formula: ||P_{(x,y)} - P_{(i,j)}||^2 
+    """
+    return np.sum((center_patch - comparison_patch) ** 2)
+
+@njit
+def calculate_weight(patch_difference: float, filter_strength: float) -> float:
+    """
+    Calculate the weight between two patches based on their squared difference.
+    Formula: w_{(x,y)}(i,j) = exp(-||P_{(x,y)} - P_{(i,j)}||^2 / h^2)
+    """
+    return np.exp(-patch_difference / (filter_strength ** 2))
 
 @njit
 def get_patch(image: np.ndarray, row: int, col: int, half_kernel: int) -> np.ndarray:
-    """Extract a patch from the image centered at the given coordinates."""
+    """Extract a patch P_{(x,y)} from the image centered at the given coordinates (x, y)."""
     height, width = image.shape
     patch = np.zeros((2 * half_kernel + 1, 2 * half_kernel + 1), dtype=np.float32)
     
@@ -98,8 +112,11 @@ def get_patch(image: np.ndarray, row: int, col: int, half_kernel: int) -> np.nda
     return patch
 
 @njit
-def process_pixel(row: int, col: int, image: np.ndarray, kernel_size: int, search_window_size: int, filter_strength: float) -> Tuple[float, float]:
-    """Process a single pixel using the NLM algorithm."""
+def calculate_nlm_value(row: int, col: int, image: np.ndarray, kernel_size: int, search_window_size: int, filter_strength: float) -> Tuple[float, float]:
+    """
+    Calculate the NLM value for a single pixel (x, y).
+    Formula: NLM_{(x,y)} = (1 / W_{(x,y)}) * Σ_{i,j ∈ Ω_{(x,y)}} I_{i,j} * w_{(x,y)}(i,j)
+    """
     height, width = image.shape
     half_kernel = kernel_size // 2
     half_search = search_window_size // 2
@@ -114,14 +131,15 @@ def process_pixel(row: int, col: int, image: np.ndarray, kernel_size: int, searc
             if i == row and j == col:
                 continue
             
-            current_patch = get_patch(image, i, j, half_kernel)
-            weight = calculate_weight(center_patch, current_patch, filter_strength)
+            comparison_patch = get_patch(image, i, j, half_kernel)
+            patch_difference = calculate_patch_difference(center_patch, comparison_patch)
+            weight = calculate_weight(patch_difference, filter_strength)
             
             total_weight += weight
             weighted_sum += weight * image[i, j]
     
-    denoised_value = weighted_sum / total_weight if total_weight > 0 else image[row, col]
-    return denoised_value, total_weight
+    nlm_value = weighted_sum / total_weight if total_weight > 0 else image[row, col]
+    return nlm_value, total_weight
 
 @njit(parallel=True)
 def apply_nlm(image: np.ndarray, kernel_size: int, search_window_size: int, filter_strength: float, pixels_to_process: int, start_x: int, start_y: int) -> np.ndarray:
@@ -136,8 +154,8 @@ def apply_nlm(image: np.ndarray, kernel_size: int, search_window_size: int, filt
         col = start_x + pixel % valid_width
         
         if row < height and col < width:
-            denoised_value, weight = process_pixel(row, col, image, kernel_size, search_window_size, filter_strength)
-            denoised_image[row, col] = denoised_value
+            nlm_value, weight = calculate_nlm_value(row, col, image, kernel_size, search_window_size, filter_strength)
+            denoised_image[row, col] = nlm_value 
             total_weights[row, col] = weight
     
     return denoised_image, total_weights
@@ -158,7 +176,7 @@ def process_nlm(image: np.ndarray, kernel_size: int, pixels_to_process: int, sea
         
         return NLMResult(
             denoised_image=denoised_image,
-            total_weights=total_weights,
+            normalization_factors=total_weights,
             processing_coord=(processing_info.start_x, processing_info.start_y),
             processing_end_coord=(processing_info.end_x, processing_info.end_y),
             kernel_size=kernel_size,
@@ -174,16 +192,16 @@ def process_nlm(image: np.ndarray, kernel_size: int, pixels_to_process: int, sea
 @dataclass
 class NLMResult(FilterResult):
     denoised_image: np.ndarray
-    total_weights: np.ndarray
+    normalization_factors: np.ndarray
     search_window_size: int
     filter_strength: float
 
     @classmethod
     def get_filter_options(cls) -> List[str]:
-        return ["Non-Local Means", "NLM Weights"]
+        return ["Non-Local Means", "Normalization Factors"]
     
     def get_filter_data(self) -> dict:
         return {
             "Non-Local Means": self.denoised_image,
-            "NLM Weights": self.total_weights
+            "Normalization Factors": self.normalization_factors
         }

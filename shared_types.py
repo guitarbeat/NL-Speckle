@@ -119,23 +119,42 @@ class SidebarUI:
         col1, col2 = st.sidebar.columns(2)
 
         def update_exact_pixel_count():
-            st.session_state['exact_pixel_count'] = int(total_pixels * st.session_state['percentage_slider'] / 100)
+            if 'percentage_slider' in st.session_state:
+                st.session_state.exact_pixel_count = int(total_pixels * st.session_state.percentage_slider / 100)
 
         def update_percentage():
             if 'exact_pixel_count' in st.session_state:
-                st.session_state['percentage_slider'] = int((st.session_state['exact_pixel_count'] / total_pixels) * 100)
+                st.session_state.percentage_slider = int((st.session_state.exact_pixel_count / total_pixels) * 100)
 
+        # Initialize session state variables if not present
+        if 'exact_pixel_count' not in st.session_state:
+            st.session_state.exact_pixel_count = total_pixels
+        if 'percentage_slider' not in st.session_state:
+            st.session_state.percentage_slider = 100
+
+        # Ensure proper update without conflicts
         with col1:
-            st.slider("Percentage", min_value=0, max_value=100,
-                      value=st.session_state.get('percentage_slider', 100),
-                      step=1, key="percentage_slider", on_change=update_exact_pixel_count)
+            st.slider(
+                "Percentage", 
+                min_value=1, max_value=100,
+                value=st.session_state.percentage_slider, 
+                step=1, 
+                key="percentage_slider",
+                on_change=update_exact_pixel_count
+            )
 
         with col2:
-            st.number_input("Exact Pixels", min_value=0, max_value=total_pixels,
-                            value=st.session_state.get('exact_pixel_count', total_pixels),
-                            step=1, key="exact_pixel_count", on_change=update_percentage)
+            st.number_input(
+                "Exact Pixels", 
+                min_value=0, max_value=total_pixels,
+                value=st.session_state.exact_pixel_count,
+                step=1, 
+                key="exact_pixel_count",
+                on_change=update_percentage
+            )
 
-        return st.session_state['exact_pixel_count']
+        return st.session_state.exact_pixel_count
+
 
     @staticmethod
     def create_advanced_options_ui(image):
