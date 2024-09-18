@@ -1,7 +1,7 @@
 # Imports
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple,NamedTuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -282,42 +282,41 @@ class FilterResult(ABC):
         pass
 
 #---------- Function ---------    #
+class Point(NamedTuple):
+    x: int
+    y: int
+
+class Dimensions(NamedTuple):
+    width: int
+    height: int
+
 @dataclass(frozen=True)
 class ProcessingDetails:
     """A dataclass to store image processing details and enforce immutability."""
-    image_height: int  # Total height of the image
-    image_width: int   # Total width of the image
-    start_point: Tuple[int, int]  # (start_x, start_y) tuple representing the starting point
-    end_point: Tuple[int, int]    # (end_x, end_y) tuple representing the end point
-    pixels_to_process: int  # Total number of pixels that will be processed
-    valid_height: int  # Height of the image region valid for kernel processing
-    valid_width: int   # Width of the image region valid for kernel processing
-    kernel_size: int   # Size of the kernel (assumed square)
-
+    image_dimensions: Dimensions
+    valid_dimensions: Dimensions
+    start_point: Point
+    end_point: Point
+    pixels_to_process: int
+    kernel_size: int
 
     def __post_init__(self):
         self._validate_dimensions()
         self._validate_coordinates()
 
     def _validate_dimensions(self):
-        if self.image_height <= 0 or self.image_width <= 0:
+        if self.image_dimensions.width <= 0 or self.image_dimensions.height <= 0:
             raise ValueError("Image dimensions must be positive.")
-        if self.valid_height <= 0 or self.valid_width <= 0:
+        if self.valid_dimensions.width <= 0 or self.valid_dimensions.height <= 0:
             raise ValueError("Kernel size is too large for the given image dimensions.")
         if self.pixels_to_process < 0:
             raise ValueError("Number of pixels to process must be non-negative.")
 
     def _validate_coordinates(self):
         """Ensure the processing coordinates are valid and within image bounds."""
-        start_x, start_y = self.start_point
-        end_x, end_y = self.end_point
-
-        # Start coordinates should be within the image boundaries.
-        if start_x < 0 or start_y < 0:
+        if self.start_point.x < 0 or self.start_point.y < 0:
             raise ValueError("Start coordinates must be non-negative.")
-
-        # End coordinates should not exceed the image dimensions.
-        if end_x >= self.image_width or end_y >= self.image_height:
+        if self.end_point.x >= self.image_dimensions.width or self.end_point.y >= self.image_dimensions.height:
             raise ValueError("End coordinates exceed image boundaries.")
 
 def calculate_processing_details(image: ImageArray, kernel_size: int, max_pixels: Optional[int]) -> ProcessingDetails:
@@ -333,12 +332,10 @@ def calculate_processing_details(image: ImageArray, kernel_size: int, max_pixels
     end_y, end_x = end_y + half_kernel, end_x + half_kernel
 
     return ProcessingDetails(
-        image_height=image_height,
-        image_width=image_width,
-        start_point=(half_kernel, half_kernel),  # Use a tuple for the start point
-        end_point=(end_x, end_y),                # Use a tuple for the end point
+        image_dimensions=Dimensions(width=image_width, height=image_height),
+        valid_dimensions=Dimensions(width=valid_width, height=valid_height),
+        start_point=Point(x=half_kernel, y=half_kernel),
+        end_point=Point(x=end_x, y=end_y),
         pixels_to_process=pixels_to_process,
-        valid_height=valid_height,
-        valid_width=valid_width,
         kernel_size=kernel_size
     )
