@@ -1,6 +1,6 @@
 import streamlit as st
-from analysis.nlm import NLM_FORMULA_CONFIG
-from analysis.speckle import SPECKLE_FORMULA_CONFIG
+from src.nlm import NLM_FORMULA_CONFIG
+from src.speckle import SPECKLE_FORMULA_CONFIG
 
 FULL_SEARCH = 'full'
 

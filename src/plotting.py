@@ -2,10 +2,10 @@ import streamlit as st
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.collections import LineCollection
-from analysis.speckle import process_speckle, SpeckleResult
-from analysis.nlm import process_nlm, NLMResult
-from frontend.formula import display_analysis_formula
-from shared_types import (calculate_processing_details)
+from src.speckle import process_speckle, SpeckleResult
+from src.nlm import process_nlm, NLMResult
+from src.formula import display_analysis_formula
+from src.utils import (calculate_processing_details)
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple, List
 from logging import getLogger
@@ -59,9 +59,8 @@ class VisualizationConfig(BaseModel):
     @field_validator('vmin', 'vmax')
     @classmethod
     def validate_vmin_vmax(cls, v, info):
-        if info.data.get('vmin') is not None and info.data.get('vmax') is not None:
-            if info.data['vmin'] > info.data['vmax']:
-                raise ValueError("vmin cannot be greater than vmax.")
+        if info.data.get('vmin') is not None and info.data.get('vmax') is not None and info.data['vmin'] > info.data['vmax']:
+            raise ValueError("vmin cannot be greater than vmax.")
         return v
     
 # --------- Classes ----------#
@@ -202,17 +201,17 @@ def prepare_filter_options_and_parameters(results: Any, last_processed_pixel: Tu
     for filter_name, filter_data in filter_options.items():
         if isinstance(filter_data, np.ndarray) and filter_data.size > 0:
             specific_params[filter_name.lower().replace(" ", "_")] = filter_data[end_y, end_x]
-    
+
     if hasattr(results, 'filter_strength'):
         specific_params['filter_strength'] = results.filter_strength
         specific_params['search_window_size'] = results.search_window_size
     elif hasattr(results, 'start_pixel_mean'):
-        specific_params.update({
+        specific_params |= {
             'start_pixel_mean': results.start_pixel_mean,
             'start_pixel_std_dev': results.start_pixel_std_dev,
             'start_pixel_speckle_contrast': results.start_pixel_speckle_contrast,
-        })
-    
+        }
+
     return filter_options, specific_params
 
 def prepare_comparison_images() -> Dict[str, np.ndarray]:
@@ -229,7 +228,7 @@ def prepare_comparison_images() -> Dict[str, np.ndarray]:
     for result_key in ['speckle_results', 'nlm_results']:
         results = st.session_state.get(result_key)
         if results is not None:
-            comparison_images.update(results.get_filter_data())
+            comparison_images |= results.get_filter_data()
 
     return comparison_images if len(comparison_images) > 1 else None
 
@@ -505,15 +504,15 @@ def create_technique_ui_elements(technique: str, tab: Any, show_per_pixel_proces
     """Create UI elements for a specific image processing technique."""
     with tab:
         ui_placeholders = {'formula': st.empty(), 'original_image': st.empty()}
-        
+
         filter_options = get_filter_options(technique)
-        selected_filters = create_filter_selection(technique, filter_options)
-        
-        if selected_filters:
+        if selected_filters := create_filter_selection(
+            technique, filter_options
+        ):
             create_filter_views(selected_filters, ui_placeholders, show_per_pixel_processing)
         else:
             st.warning("No views selected. Please select at least one view to display.")
-        
+
         if show_per_pixel_processing:
             ui_placeholders['zoomed_kernel'] = st.empty()
 

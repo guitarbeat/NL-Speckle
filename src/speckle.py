@@ -2,7 +2,7 @@ import numpy as np
 from numba import njit, prange
 from dataclasses import dataclass
 from typing import List
-from shared_types import FilterResult, calculate_processing_details, ProcessingDetails, Point
+from src.utils import FilterResult, calculate_processing_details, ProcessingDetails, Point
 
 SPECKLE_FORMULA_CONFIG = {
     "title": "Speckle Contrast Calculation",
