@@ -1,6 +1,6 @@
 import streamlit as st
 import streamlit_nested_layout  # noqa: F401
-from shared_types import (
+from src.utils import (
     ImageComparison,
     SidebarUI,
     calculate_processing_details,
@@ -8,7 +8,7 @@ from shared_types import (
     DEFAULT_COLOR_MAP,
     ProcessingDetails
 )
-from frontend.plotting import (
+from src.plotting import (
     prepare_comparison_images,
     setup_and_run_analysis_techniques
 )

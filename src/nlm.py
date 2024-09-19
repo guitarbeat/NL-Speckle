@@ -2,7 +2,7 @@ import numpy as np
 from numba import njit, prange
 from dataclasses import dataclass
 from typing import List, Tuple
-from shared_types import FilterResult, calculate_processing_details, ProcessingDetails, Point
+from src.utils import FilterResult, calculate_processing_details, ProcessingDetails, Point
 import logging
 
 logger = logging.getLogger(__name__)
