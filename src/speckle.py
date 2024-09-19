@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import List
 from src.utils import FilterResult, calculate_processing_details, ProcessingDetails, Point
 
-
+# --- Mean Calculation ---
 @njit
 def calculate_mean(local_window):
     """
@@ -13,6 +13,7 @@ def calculate_mean(local_window):
     """
     return np.mean(local_window)
 
+# --- Standard Deviation Calculation ---
 @njit 
 def calculate_std_dev(local_window, local_mean):
     """
@@ -21,6 +22,7 @@ def calculate_std_dev(local_window, local_mean):
     """
     return np.std(local_window)
 
+# --- Speckle Contrast Calculation ---
 @njit
 def calculate_speckle_contrast(local_std, local_mean):
     """
@@ -29,6 +31,7 @@ def calculate_speckle_contrast(local_std, local_mean):
     """
     return local_std / local_mean if local_mean != 0 else 0
 
+# --- Apply Speckle Contrast ---
 @njit(parallel=True)
 def apply_speckle_contrast(image, kernel_size, pixels_to_process, start_point: Point):
     height, width = image.shape
@@ -38,7 +41,7 @@ def apply_speckle_contrast(image, kernel_size, pixels_to_process, start_point: P
     half_kernel = kernel_size // 2
     valid_width = width - kernel_size + 1
 
-
+    # Process each pixel in parallel
     for pixel in prange(pixels_to_process):
         row = start_point.y + pixel // valid_width
         col = start_point.x + pixel % valid_width
@@ -46,22 +49,26 @@ def apply_speckle_contrast(image, kernel_size, pixels_to_process, start_point: P
             local_window = image[max(0, row-half_kernel):min(height, row+half_kernel+1),
                                  max(0, col-half_kernel):min(width, col+half_kernel+1)]
             
+            # Calculate mean, std deviation, and speckle contrast
             mean_filter[row, col] = calculate_mean(local_window)
             std_dev_filter[row, col] = calculate_std_dev(local_window, mean_filter[row, col]) 
             sc_filter[row, col] = calculate_speckle_contrast(std_dev_filter[row, col], mean_filter[row, col])
             
     return mean_filter, std_dev_filter, sc_filter
 
-
+# --- Main Processing Function ---
 def process_speckle(image, kernel_size, pixels_to_process):
     try:
+        # Get processing details
         processing_info: ProcessingDetails = calculate_processing_details(image, kernel_size, pixels_to_process)
         
+        # Apply speckle contrast calculations
         mean_filter, std_dev_filter, sc_filter = apply_speckle_contrast(
             image, kernel_size, processing_info.pixels_to_process, 
             processing_info.start_point
         )
 
+        # Return results encapsulated in SpeckleResult
         return SpeckleResult(
             mean_filter=mean_filter,
             std_dev_filter=std_dev_filter,
@@ -79,6 +86,7 @@ def process_speckle(image, kernel_size, pixels_to_process):
         print(f"Error in process_speckle: {str(e)}")
         return None
 
+# --- Data Class for Results ---
 @dataclass
 class SpeckleResult(FilterResult):
     mean_filter: np.ndarray
