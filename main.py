@@ -2,15 +2,15 @@ import streamlit as st
 import streamlit_nested_layout  # noqa: F401
 from src.utils import (
     ImageComparison,
-    SidebarUI,
     calculate_processing_details,
-    DEFAULT_KERNEL_SIZE,
-    DEFAULT_COLOR_MAP,
     ProcessingDetails
 )
 from src.plotting import (
+    SidebarUI,
     prepare_comparison_images,
-    setup_and_run_analysis_techniques
+    setup_and_run_analysis_techniques,
+    DEFAULT_KERNEL_SIZE,
+    DEFAULT_COLOR_MAP,
 )
 import hashlib
 import time
@@ -24,6 +24,7 @@ APP_CONFIG = {
 }
 
 def main():
+    """Main function to run the Streamlit application."""
     st.set_page_config(**APP_CONFIG)
     st.logo("media/logo.png")
 
@@ -32,23 +33,25 @@ def main():
         st.session_state.session_id = hashlib.md5(str(time.time()).encode()).hexdigest()
 
     try:
+        # Run the main application logic
         run_application()
     except Exception as e:
         st.error("An unexpected error occurred. Please try reloading the application.")
         st.exception(e)
 
 def run_application():
+    """Run the main application logic."""
     # Set up the sidebar and create tabs
     sidebar_params = SidebarUI.setup()
-    tabs = create_tabs()
+    tabs = st.tabs(["Speckle", "NL-Means", "Image Comparison"])
 
-    # Initialize color_map in session state if it doesn't exist
+    # Initialize session state variables for color map and techniques
     if 'color_map' not in st.session_state:
         st.session_state.color_map = DEFAULT_COLOR_MAP
     if 'techniques' not in st.session_state:
         st.session_state.techniques = ['speckle', 'nlm']  # Add or remove techniques as needed
 
-    # Use the user-selected kernel size from sidebar_params, defaulting to DEFAULT_KERNEL_SIZE
+    # Use the user-selected kernel size from sidebar_params
     kernel_size = sidebar_params.get('kernel_size', DEFAULT_KERNEL_SIZE)
 
     # Calculate processing details based on user input
@@ -77,10 +80,6 @@ def run_application():
     with tabs[2]:
         comparison_images = prepare_comparison_images()
         ImageComparison.handle(tabs[2], st.session_state.color_map, comparison_images)
-
-def create_tabs():
-    """Create and return the main application tabs"""
-    return st.tabs(["Speckle", "NL-Means", "Image Comparison"])
 
 if __name__ == "__main__":
     main()
