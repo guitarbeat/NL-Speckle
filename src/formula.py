@@ -1,8 +1,92 @@
 import streamlit as st
-from src.nlm import NLM_FORMULA_CONFIG
-from src.speckle import SPECKLE_FORMULA_CONFIG
 
-FULL_SEARCH = 'full'
+
+NLM_FORMULA_CONFIG = {
+    "title": "Non-Local Means (NLM) Denoising",
+    "variables": {
+        "h": "{filter_strength}",
+        "patch_size": "{kernel_size}",
+        "search_size": "{search_window_size}"
+    },
+    "main_formula": r"I_{{{x},{y}}} = {original_value:.3f} \quad \rightarrow \quad NLM_{{{x},{y}}} = \frac{{1}}{{W_{{{x},{y}}}}} \sum_{{i,j \in \Omega_{{{x},{y}}}}} I_{{i,j}} \cdot w_{{{x},{y}}}(i,j) = {nlm_value:.3f}",
+    "explanation": r"""
+    The Non-Local Means (NLM) algorithm denoises each pixel by replacing it with a weighted average of pixels from the entire image (or a large search window). The weights are determined by the similarity of small patches around each pixel:
+    
+    1. Patch Comparison: For each pixel $(x,y)$, compare the patch $P_{{{x},{y}}}$ to patches $P_{{i,j}}$ around other pixels $(i,j)$.
+    2. Weight Calculation: Based on the patch similarity, calculate a weight $w_{{{x},{y}}}(i,j)$ for each comparison.  
+    3. Weighted Average: Use these weights to compute the NLM value $NLM_{{{x},{y}}}$, a weighted average of pixel intensities $I_{{i,j}}$.
+    
+    This process transitions the original pixel intensity $I_{{{x},{y}}}$ to the non-local mean value $NLM_{{{x},{y}}}$.
+    """,
+    "additional_formulas": [
+        {
+            "title": "Neighborhood Analysis",
+            "formula": r"\text{{Patch Size: }} {patch_size} \times {patch_size}"
+                       r"\quad\quad\text{{Centered at: }}({x}, {y})" 
+                       r"\\\\"
+                       "{kernel_matrix}", 
+            "explanation": r"Analysis of a ${patch_size}\times{patch_size}$ patch $P_{{{x},{y}}}$ centered at $(x,y)$ for patch comparison. Matrix shows pixel values, with the central value (bold) being the denoised pixel."
+        },
+        {
+            "title": "Weight Calculation", # Maybe change this to "Patch Similarity"? 
+            "formula": r"w_{{{x},{y}}}(i,j) = e^{{-\frac{{\|P_{{{x},{y}}} - P_{{i,j}}\|^2}}{{h^2}}}}",
+            "explanation": r"""
+            Weight calculation for pixel $(i,j)$ when denoising $(x,y)$ based on patch similarity, using a Gaussian weighting function:
+            - $w_{{({x},{y})}}(i,j)$: Weight for pixel $(i,j)$
+            - $P_{{({x},{y})}}$, $P_{{(i,j)}}$: Patches centered at $(x,y)$ and $(i,j)$
+            - $\|P_{{({x},{y})}} - P_{{(i,j)}}\|^2$: Squared difference between patches
+            - $h = {h}$: Smoothing parameter
+            - Similar patches yield higher weights
+            """
+        },
+        {
+            "title": "Normalization Factor",
+            "formula": r"W_{{{x},{y}}} = \sum_{{i,j \in \Omega_{{{x},{y}}}}} w_{{{x},{y}}}(i,j)", 
+            "explanation": r"Sum of all weights for pixel $(x,y)$, ensuring the final weighted average preserves overall image brightness."
+        },
+        {
+            "title": "Search Window",
+            "formula": r"\Omega_{{{x},{y}}} = \begin{{cases}} \text{{Full Image}} & \text{{if search\_size = 'full'}} \\ {search_window_size} \times {search_window_size} \text{{ window}} & \text{{otherwise}} \end{{cases}}",
+            "explanation": r"Search window $\Omega_{{({x},{y})}}$ for finding similar patches. {search_window_description}"
+        },
+        {   
+            "title": "NLM Calculation",
+            "formula": r"NLM_{{{x},{y}}} = \frac{{1}}{{W_{{{x},{y}}}}} \sum_{{i,j \in \Omega_{{{x},{y}}}}} I_{{i,j}} \cdot w_{{{x},{y}}}(i,j) = {nlm_value:.3f}",
+            "explanation": r"Final NLM value for pixel $(x,y)$: weighted average of pixel intensities $I_{{i,j}}$ in the search window, normalized by the sum of weights $W_{{{x},{y}}}$."
+        }
+    ]
+}
+
+SPECKLE_FORMULA_CONFIG = {
+    "title": "Speckle Contrast Calculation",
+    "main_formula": r"I_{{{x},{y}}} = {original_value:.3f} \quad \rightarrow \quad SC_{{{x},{y}}} = \frac{{\sigma_{{{x},{y}}}}}{{\mu_{{{x},{y}}}}} = \frac{{{std:.3f}}}{{{mean:.3f}}} = {sc:.3f}",
+    "explanation": r"This formula shows the transition from the original pixel intensity $I_{{{x},{y}}}$ to the Speckle Contrast (SC) for the same pixel position.",
+    "additional_formulas": [
+        {
+            "title": "Neighborhood Analysis",
+            "formula": r"\text{{Kernel Size: }} {kernel_size} \times {kernel_size}"
+                       r"\quad\quad\text{{Centered at pixel: }}({x}, {y})"
+                       r"\\\\"
+                       "{kernel_matrix}",
+            "explanation": r"Analysis of a ${kernel_size}\times{kernel_size}$ neighborhood centered at pixel $({x},{y})$. The matrix shows pixel values, with the central value (in bold) being the processed pixel."
+        },
+        {
+            "title": "Mean Calculation", 
+            "formula": r"\mu_{{{x},{y}}} = \frac{{1}}{{N}} \sum_{{i,j \in K_{{{x},{y}}}}} I_{{i,j}} = \frac{{1}}{{{kernel_size}^2}} \sum_{{i,j \in K_{{{x},{y}}}}} I_{{i,j}} = {mean:.3f}",
+            "explanation": r"Mean ($\mu$) calculation: average intensity of all pixels in the kernel $K$ centered at $({x},{y})$. $N = {kernel_size}^2 = {total_pixels}$."
+        },
+        {
+            "title": "Standard Deviation Calculation",
+            "formula": r"\sigma_{{{x},{y}}} = \sqrt{{\frac{{1}}{{N}} \sum_{{i,j \in K_{{{x},{y}}}}} (I_{{i,j}} - \mu_{{{x},{y}}})^2}} = \sqrt{{\frac{{1}}{{{kernel_size}^2}} \sum_{{i,j \in K_{{{x},{y}}}}} (I_{{i,j}} - {mean:.3f})^2}} = {std:.3f}",
+            "explanation": r"Standard deviation ($\sigma$) calculation: measure of intensity spread around the mean for all pixels in the kernel $K$ centered at $({x},{y})$."
+        },
+        {
+            "title": "Speckle Contrast Calculation",
+            "formula": r"SC_{{{x},{y}}} = \frac{{\sigma_{{{x},{y}}}}}{{\mu_{{{x},{y}}}}} = \frac{{{std:.3f}}}{{{mean:.3f}}} = {sc:.3f}",
+            "explanation": r"Speckle Contrast (SC): ratio of standard deviation to mean intensity within the kernel centered at $({x},{y})$."
+        }
+    ]
+}
 
 # ----------------------------- Formula Display Functions ----------------------------- #
 
@@ -75,7 +159,7 @@ def prepare_variables(kwargs, analysis_type):
         variables['h'] = variables.get('filter_strength', 1.0)
         search_window_size = variables.get('search_window_size')
         variables['search_window_description'] = (
-            "We search the entire image for similar pixels." if search_window_size == FULL_SEARCH
+            "We search the entire image for similar pixels." if search_window_size == 'full'
             else f"A search window of size {search_window_size}x{search_window_size} centered around the target pixel."
         )
         variables['nlm_value'] = variables.get('nlm_value', 0.0)

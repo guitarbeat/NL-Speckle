@@ -12,26 +12,34 @@ from logging import getLogger
 from pydantic import BaseModel, field_validator
 
 
-# Constants
+# Constants for Annotations and Overlays
 KERNEL_OUTLINE_COLOR = 'red'
 SEARCH_WINDOW_OUTLINE_COLOR = 'blue'
 PIXEL_VALUE_TEXT_COLOR = 'red'
 GRID_LINE_COLOR = 'red'
 CENTER_PIXEL_COLOR = 'green'
-
 KERNEL_OUTLINE_WIDTH = 1
 SEARCH_WINDOW_OUTLINE_WIDTH = 2.0
 GRID_LINE_WIDTH = 1
 CENTER_PIXEL_OUTLINE_WIDTH = 1
-
 PIXEL_VALUE_FONT_SIZE = 15
 GRID_LINE_STYLE = ':'
+DEFAULT_COLOR_MAP = 'gray'
 
+# Constants for Image Visualization
 ZOOMED_IMAGE_DIMENSIONS = (8, 8)
 DEFAULT_SPECKLE_VIEW = ['Speckle Contrast', 'Original Image']
 DEFAULT_NLM_VIEW = ['Non-Local Means', 'Original Image']
+AVAILABLE_COLOR_MAPS = ["gray", "viridis", "plasma", "inferno", "magma", "cividis", "pink"]
+PRELOADED_IMAGE_PATHS = {
+    "image50.png": "media/image50.png", 
+    "spatial.tif": "media/spatial.tif",
+    "logo.jpg": "media/logo.jpg"
+}
 DEFAULT_SEARCH_WINDOW_SIZE = 21
 DEFAULT_FILTER_STRENGTH = 10.0
+DEFAULT_KERNEL_SIZE = 3
+
 
 
 # Set up logging

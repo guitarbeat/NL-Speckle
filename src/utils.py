@@ -2,23 +2,13 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple,NamedTuple
-
+from src.plotting import AVAILABLE_COLOR_MAPS, PRELOADED_IMAGE_PATHS
 import matplotlib.pyplot as plt
 import numpy as np
 import streamlit as st
 from PIL import Image
 from streamlit_image_comparison import image_comparison
 
-# Constants and Global Variables
-AVAILABLE_COLOR_MAPS = ["gray", "viridis", "plasma", "inferno", "magma", "cividis", "pink"]
-PRELOADED_IMAGE_PATHS = {
-    "image50.png": "media/image50.png", 
-    "spatial.tif": "media/spatial.tif",
-    "logo.jpg": "media/logo.jpg"
-}
-
-DEFAULT_COLOR_MAP = 'gray'
-DEFAULT_KERNEL_SIZE = 3
 
 
 # Type aliases
@@ -31,9 +21,6 @@ def handle_error(e: Exception, message: str):
     st.error(f"{message}. Please check the logs.")
 
 #---------- Main ---------    #
-
-
-
 @dataclass
 class SidebarUI:
     @staticmethod

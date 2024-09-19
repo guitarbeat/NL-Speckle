@@ -1,3 +1,4 @@
+import itertools
 import numpy as np
 from numba import njit, prange
 from dataclasses import dataclass
@@ -17,62 +18,6 @@ DEFAULT_FILTER_STRENGTH = 0.1
 #------------------------------------------------------------------------------
 # NLM Formula Configuration
 #------------------------------------------------------------------------------
-
-NLM_FORMULA_CONFIG = {
-    "title": "Non-Local Means (NLM) Denoising",
-    "variables": {
-        "h": "{filter_strength}",
-        "patch_size": "{kernel_size}",
-        "search_size": "{search_window_size}"
-    },
-    "main_formula": r"I_{{{x},{y}}} = {original_value:.3f} \quad \rightarrow \quad NLM_{{{x},{y}}} = \frac{{1}}{{W_{{{x},{y}}}}} \sum_{{i,j \in \Omega_{{{x},{y}}}}} I_{{i,j}} \cdot w_{{{x},{y}}}(i,j) = {nlm_value:.3f}",
-    "explanation": r"""
-    The Non-Local Means (NLM) algorithm denoises each pixel by replacing it with a weighted average of pixels from the entire image (or a large search window). The weights are determined by the similarity of small patches around each pixel:
-    
-    1. Patch Comparison: For each pixel $(x,y)$, compare the patch $P_{{{x},{y}}}$ to patches $P_{{i,j}}$ around other pixels $(i,j)$.
-    2. Weight Calculation: Based on the patch similarity, calculate a weight $w_{{{x},{y}}}(i,j)$ for each comparison.  
-    3. Weighted Average: Use these weights to compute the NLM value $NLM_{{{x},{y}}}$, a weighted average of pixel intensities $I_{{i,j}}$.
-    
-    This process transitions the original pixel intensity $I_{{{x},{y}}}$ to the non-local mean value $NLM_{{{x},{y}}}$.
-    """,
-    "additional_formulas": [
-        {
-            "title": "Neighborhood Analysis",
-            "formula": r"\text{{Patch Size: }} {patch_size} \times {patch_size}"
-                       r"\quad\quad\text{{Centered at: }}({x}, {y})" 
-                       r"\\\\"
-                       "{kernel_matrix}", 
-            "explanation": r"Analysis of a ${patch_size}\times{patch_size}$ patch $P_{{{x},{y}}}$ centered at $(x,y)$ for patch comparison. Matrix shows pixel values, with the central value (bold) being the denoised pixel."
-        },
-        {
-            "title": "Weight Calculation", # Maybe change this to "Patch Similarity"? 
-            "formula": r"w_{{{x},{y}}}(i,j) = e^{{-\frac{{\|P_{{{x},{y}}} - P_{{i,j}}\|^2}}{{h^2}}}}",
-            "explanation": r"""
-            Weight calculation for pixel $(i,j)$ when denoising $(x,y)$ based on patch similarity, using a Gaussian weighting function:
-            - $w_{{({x},{y})}}(i,j)$: Weight for pixel $(i,j)$
-            - $P_{{({x},{y})}}$, $P_{{(i,j)}}$: Patches centered at $(x,y)$ and $(i,j)$
-            - $\|P_{{({x},{y})}} - P_{{(i,j)}}\|^2$: Squared difference between patches
-            - $h = {h}$: Smoothing parameter
-            - Similar patches yield higher weights
-            """
-        },
-        {
-            "title": "Normalization Factor",
-            "formula": r"W_{{{x},{y}}} = \sum_{{i,j \in \Omega_{{{x},{y}}}}} w_{{{x},{y}}}(i,j)", 
-            "explanation": r"Sum of all weights for pixel $(x,y)$, ensuring the final weighted average preserves overall image brightness."
-        },
-        {
-            "title": "Search Window",
-            "formula": r"\Omega_{{{x},{y}}} = \begin{{cases}} \text{{Full Image}} & \text{{if search\_size = 'full'}} \\ {search_window_size} \times {search_window_size} \text{{ window}} & \text{{otherwise}} \end{{cases}}",
-            "explanation": r"Search window $\Omega_{{({x},{y})}}$ for finding similar patches. {search_window_description}"
-        },
-        {   
-            "title": "NLM Calculation",
-            "formula": r"NLM_{{{x},{y}}} = \frac{{1}}{{W_{{{x},{y}}}}} \sum_{{i,j \in \Omega_{{{x},{y}}}}} I_{{i,j}} \cdot w_{{{x},{y}}}(i,j) = {nlm_value:.3f}",
-            "explanation": r"Final NLM value for pixel $(x,y)$: weighted average of pixel intensities $I_{{i,j}}$ in the search window, normalized by the sum of weights $W_{{{x},{y}}}$."
-        }
-    ]
-}
 
 
 #------------------------------------------------------------------------------
@@ -104,12 +49,11 @@ def get_patch(image: np.ndarray, row: int, col: int, half_kernel: int) -> np.nda
     """Extract a patch P_{(x,y)} from the image centered at the given coordinates (x, y)."""
     height, width = image.shape
     patch = np.zeros((2 * half_kernel + 1, 2 * half_kernel + 1), dtype=np.float32)
-    
-    for i in range(-half_kernel, half_kernel + 1):
-        for j in range(-half_kernel, half_kernel + 1):
-            if 0 <= row + i < height and 0 <= col + j < width:
-                patch[i + half_kernel, j + half_kernel] = image[row + i, col + j]
-    
+
+    for i, j in itertools.product(range(-half_kernel, half_kernel + 1), range(-half_kernel, half_kernel + 1)):
+        if 0 <= row + i < height and 0 <= col + j < width:
+            patch[i + half_kernel, j + half_kernel] = image[row + i, col + j]
+
     return patch
 
 @njit
@@ -121,24 +65,23 @@ def calculate_nlm_value(row: int, col: int, image: np.ndarray, kernel_size: int,
     height, width = image.shape
     half_kernel = kernel_size // 2
     half_search = search_window_size // 2
-    
+
     center_patch = get_patch(image, row, col, half_kernel)
-    
+
     total_weight = 0.0
     weighted_sum = 0.0
-    
-    for i in range(max(0, row - half_search), min(height, row + half_search + 1)): # This is saying for every pixel in the search window
-        for j in range(max(0, col - half_search), min(width, col + half_search + 1)): # This is saying for every pixel in the search window
-            if i == row and j == col: # Skip the center pixel
-                continue
-            
-            comparison_patch = get_patch(image, i, j, half_kernel) # This is the patch centered at the pixel in the search window
-            patch_difference = calculate_patch_difference(center_patch, comparison_patch) # This is the squared difference between the two patches
-            weight = calculate_weight(patch_difference, filter_strength) # This is the weight based on the squared difference, similarity score
-            
-            total_weight += weight # This is the sum of all weights for the pixel (x, y) as a normalization factor
-            weighted_sum += weight * image[i, j] # This is the weighted sum of pixel intensities for the pixel (x, y)
-    
+
+    for i, j in itertools.product(range(max(0, row - half_search), min(height, row + half_search + 1)), range(max(0, col - half_search), min(width, col + half_search + 1))):
+        if i == row and j == col: # Skip the center pixel
+            continue
+
+        comparison_patch = get_patch(image, i, j, half_kernel) # This is the patch centered at the pixel in the search window
+        patch_difference = calculate_patch_difference(center_patch, comparison_patch) # This is the squared difference between the two patches
+        weight = calculate_weight(patch_difference, filter_strength) # This is the weight based on the squared difference, similarity score
+
+        total_weight += weight # This is the sum of all weights for the pixel (x, y) as a normalization factor
+        weighted_sum += weight * image[i, j] # This is the weighted sum of pixel intensities for the pixel (x, y)
+
     nlm_value = weighted_sum / total_weight if total_weight > 0 else image[row, col] # This is the final NLM value for the pixel (x, y)
 
     return nlm_value, total_weight
