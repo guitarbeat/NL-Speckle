@@ -8,7 +8,12 @@ NLM_FORMULA_CONFIG = {
         "patch_size": "{kernel_size}",
         "search_size": "{search_window_size}"
     },
-    "main_formula": r"I_{{{x},{y}}} = {original_value:.3f} \quad \rightarrow \quad NLM_{{{x},{y}}} = \frac{{1}}{{W_{{{x},{y}}}}} \sum_{{i,j \in \Omega_{{{x},{y}}}}} I_{{i,j}} \cdot w_{{{x},{y}}}(i,j) = {nlm_value:.3f}",
+    "main_formula": (
+        r"I_{{{x},{y}}} = {original_value:.3f} \quad \rightarrow \quad "
+        r"NLM_{{{x},{y}}} = \frac{{1}}{{W_{{{x},{y}}}}} "
+        r"\sum_{{i,j \in \Omega_{{{x},{y}}}}} "
+        r"I_{{i,j}} \cdot w_{{{x},{y}}}(i,j) = {nlm_value:.3f}"
+    ),
     "explanation": r"""
     The Non-Local Means (NLM) algorithm denoises each pixel by replacing it with a weighted average of pixels from the entire image (or a large search window). The weights are determined by the similarity of small patches around each pixel:
     
