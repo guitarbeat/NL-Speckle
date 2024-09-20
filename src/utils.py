@@ -84,7 +84,27 @@ class ImageComparison:
                                         (colored * 255).astype(np.uint8)
                                     )
                                 return colored_images
-                            img1_uint8, img2_uint8 = normalize_and_colorize([img1, img2], [cmap_name] * 2)
+
+                            def process_normalized_images(normalized_images):
+                                if not isinstance(normalized_images, list):
+                                    st.error("Expected a list of normalized images.")
+                                    return None, None
+
+                                if len(normalized_images) != 2:
+                                    st.error(
+                                        f"Got {len(normalized_images)}."
+                                    )
+                                    return None, None
+
+                                return normalized_images[0], normalized_images[1]
+
+                            normalized_images = normalize_and_colorize(
+                                [img1, img2], [cmap_name] * 2
+                            )
+                            img1_uint8, img2_uint8 = process_normalized_images(
+                                normalized_images
+                            )
+
                             image_comparison(
                                 img1=img1_uint8,
                                 img2=img2_uint8,

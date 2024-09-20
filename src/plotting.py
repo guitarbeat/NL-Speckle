@@ -2,20 +2,22 @@
 This module provides plotting functionalities using Matplotlib and Streamlit.
 """
 
+import functools
 import itertools
-import streamlit as st
+import json  # Add this import for structured logging
+import logging
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional, Tuple, Union
+
 import matplotlib.pyplot as plt
 import numpy as np
+import streamlit as st
 from matplotlib.collections import LineCollection
-from src.speckle import process_speckle, SpeckleResult
-from src.nlm import process_nlm, NLMResult
+
 from src.formula import display_analysis_formula
+from src.nlm import NLMResult, process_nlm
+from src.speckle import SpeckleResult, process_speckle
 from src.utils import calculate_processing_details
-from dataclasses import dataclass, field
-from typing import Any, Dict, Tuple, List, Optional, Union
-import logging
-import json  # Add this import for structured logging
-import functools
 
 
 # Configure logging with structured format
@@ -386,7 +388,7 @@ def visualize_analysis_results(viz_params: VisualizationConfig) -> None:
                 viz_params.kernel_matrix,
                 viz_params.original_pixel_value,
             )
-    except Exception as e:
+    except ValueError as e:
         logging.error(
             json.dumps({"action": "visualize_analysis_results", "error": str(e)})
         )
@@ -399,7 +401,7 @@ def create_image_plot(
     plot_image: np.ndarray, config: VisualizationConfig
 ) -> plt.Figure:
     try:
-        return create_plot(config, plot_image)
+        return create_image_plot_internal(config, plot_image)
     except Exception as e:
         logging.error(
             json.dumps(
@@ -409,8 +411,7 @@ def create_image_plot(
         raise
 
 
-# TODO Rename this here and in `create_image_plot`
-def create_plot(config, plot_image):
+def create_image_plot_internal(config, plot_image):
     fig, ax = plt.subplots(1, 1, figsize=config.figure_size)
     ax.imshow(plot_image, vmin=config.vmin, vmax=config.vmax, cmap=config.color_map)
     ax.set_title(config.title)
@@ -772,51 +773,17 @@ def process_image(params: ProcessParams):
             }
         )
 
-        # Normalize image if necessary
-        normalized_image = (
-            normalize_image(params.image_array)
-            if analysis_params.get("normalization_option") == "Percentile"
-            else params.image_array
-        )
-
-        # Process image based on the specified technique
+        # Add your processing logic here
+        # For example:
         results = apply_technique(
             technique,
-            normalized_image,
+            params.image_array.data,
             kernel_size,
             pixels_to_process,
             search_window_size,
             filter_strength,
         )
 
-        # Handle visualization and state updates
-        if params.handle_visualization:
-            visualize_results(
-                normalized_image,
-                technique,
-                analysis_params,
-                results,
-                params.show_per_pixel_processing,
-            )
-
-        if params.update_state:
-            update_session_state(technique, pixels_to_process, results)
-        logging.info(
-            json.dumps(
-                {
-                    "action": "process_image",
-                    "results": {
-                        "processing_coord": results.processing_coord,
-                        "processing_end_coord": results.processing_end_coord,
-                        "kernel_size": results.kernel_size,
-                        "pixels_processed": results.pixels_processed,
-                        "image_dimensions": results.image_dimensions,
-                        "nonlocal_means_shape": results.nonlocal_means.shape,
-                        "normalization_factors_shape": results.normalization_factors.shape,
-                    },
-                }
-            )
-        )
         return params, results
 
     except Exception as e:
@@ -855,7 +822,7 @@ def apply_technique(
     kernel_size: int,
     pixels_to_process: int,
     search_window_size: int,
-    filter_strength: int,
+    filter_strength: float,
 ):
     """
     Apply the specified technique to the image.
@@ -866,7 +833,7 @@ def apply_technique(
         kernel_size (int): The size of the kernel.
         pixels_to_process (int): Number of pixels to process.
         search_window_size (int): The size of the search window (for NLM).
-        filter_strength (int): The strength of the filter.
+        filter_strength (float): The strength of the filter.
 
     Returns:
         The results of the image processing.
@@ -975,24 +942,20 @@ def visualize_image(
     try:
         # Optional zooming on the image
         if config.zoom:
-            image, pixel_x, pixel_y = get_zoomed_image_section(
+            image = get_zoomed_image_section(
                 image,
                 config.last_processed_pixel.x,
                 config.last_processed_pixel.y,
                 config.kernel_size,
             )
         else:
-            pixel_x, pixel_y = (
-                config.last_processed_pixel.x,
-                config.last_processed_pixel.y,
-            )
 
-        fig = create_image_plot(image, pixel_x, pixel_y, config)
-        placeholder.pyplot(fig)  # Display plot
-        plt.close(fig)  # Ensure figure is closed after rendering to free up memory
-    except Exception:
+            fig = create_image_plot(image, config)
+            placeholder.pyplot(fig)  # Display plot
+            plt.close(fig)  # Ensure figure is closed after rendering to free up memory
+    except (ValueError, TypeError, KeyError) as e:
         placeholder.error(
-            "An error occurred while visualizing the image. Please check the logs for details."
+            f"An error occurred while visualizing the image: {e}. Please check the logs for details."
         )
 
 
@@ -1169,15 +1132,18 @@ def visualize_results(
                 viz_config.kernel_matrix,
                 viz_config.original_pixel_value,
             )
-    except Exception:
+    except (ValueError, TypeError, KeyError) as e:
         st.error(
-            f"An error occurred while visualizing the results for {technique}. Please check the logs."
+            f"An error occurred while visualizing the results for {technique}: {str(e)}."
         )
 
 
 # --------- Helpers ----------#
 @log_action("run_technique")
 def run_technique(technique: str, tab: Any, analysis_params: Dict[str, Any]) -> None:
+    """
+    Execute a specific image processing technique and update the UI with the results.
+    """
     technique_params = st.session_state.get(f"{technique}_params", {})
     show_per_pixel_processing = analysis_params.get("show_per_pixel_processing", False)
 
@@ -1192,10 +1158,8 @@ def run_technique(technique: str, tab: Any, analysis_params: Dict[str, Any]) -> 
         configure_process_params(technique, process_params, technique_params)
         _, results = process_image(process_params)
         st.session_state[f"{technique}_results"] = results
-    except Exception:
-        st.error(
-            f"An error occurred while processing the image for {technique}. Please check the logs for details."
-        )
+    except (ValueError, TypeError, KeyError) as e:
+        st.error(f"Error for {technique}: {str(e)}. Please check the logs for details.")
 
 
 @log_action("configure_process_params")

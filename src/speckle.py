@@ -4,7 +4,8 @@ This module provides functions for calculating speckle contrast in images.
 Functions:
 - calculate_mean(local_window): Calculate the mean intensity within a local window.
 - calculate_speckle_contrast(local_std, local_mean): Calculate the speckle contrast.
-- apply_speckle_contrast(image, kernel_size, pixels_to_process, start_point): Apply speckle contrast to an image.
+- apply_speckle_contrast(image, kernel_size, pixels_to_process, start_point):
+    Apply speckle contrast to an image.
 """
 
 from dataclasses import dataclass
@@ -26,7 +27,9 @@ from src.utils import (
 def calculate_mean(local_window):
     """
     Mean (μ) calculation: average intensity of all pixels in the kernel K centered at (x, y).
-    Formula: μ_{x,y} = (1 / N) * Σ_{i,j ∈ K_{x,y}} I_{i,j} = (1 / kernel_size^2) * Σ_{i,j ∈ K_{x,y}} I_{i,j}
+    Formula: μ_{x,y} = 
+    (1 / N) * Σ_{i,j ∈ K_{x,y}} I_{i,j} = 
+    (1 / kernel_size^2) * Σ_{i,j ∈ K_{x,y}} I_{i,j}
     """
     return np.mean(local_window)
 
@@ -38,7 +41,8 @@ def calculate_mean(local_window):
 @njit
 def calculate_speckle_contrast(local_std, local_mean):
     """
-    Speckle Contrast (SC): ratio of standard deviation to mean intensity within the kernel centered at (x, y).
+    Speckle Contrast (SC): 
+    ratio of standard deviation to mean intensity within the kernel centered at (x, y).
     Formula: SC_{x,y} = σ_{x,y} / μ_{x,y}
     """
     return local_std / local_mean if local_mean != 0 else 0

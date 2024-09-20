@@ -1,6 +1,22 @@
-# import itertools
+"""
+This module implements Non-Local Means (NLM) denoising algorithm functions.
+
+Functions:
+- calculate_patch_difference: Computes the difference between two image patches.
+- calculate_weight: Calculates the weight based on patch difference and filter strength.
+- get_patch: Extracts a patch from the image given a center point and kernel size.
+
+Dependencies:
+- numpy
+- numba
+- dataclasses
+- typing
+- src.utils (FilterResult, calculate_processing_details, ProcessingDetails, Point)
+- logging
+"""
+
 import numpy as np
-from numba import njit, prange
+from numba import njit
 from dataclasses import dataclass
 from typing import List, Tuple
 from src.utils import FilterResult, calculate_processing_details, ProcessingDetails, Point
@@ -75,7 +91,7 @@ def apply_nlm(image: np.ndarray, kernel_size: int, search_window_size: int, filt
     nonlocal_means = np.zeros_like(image)
     total_weights = np.zeros_like(image)
 
-    for pixel in prange(pixels_to_process):
+    for pixel in range(pixels_to_process):
         row = start_point.y + pixel // valid_width
         col = start_point.x + pixel % valid_width
         
@@ -110,7 +126,7 @@ def process_nlm(image: np.ndarray, kernel_size: int, pixels_to_process: int,
             filter_strength=filter_strength
         )
     except Exception as e:
-        logger.error(f"Error in process_nlm: {type(e).__name__}: {e}", exc_info=True)
+        logger.error("Error in process_nlm: %s: %s", type(e).__name__, e, exc_info=True)
         raise
 
 # --- Data Class for NLM Results ---
