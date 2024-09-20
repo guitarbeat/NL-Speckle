@@ -1,1 +1,1 @@
-web: sh setup.sh && streamlit run app.py
+web: sh setup.sh && streamlit run main.py --server.enableCORS=true --server.enableXsrfProtection=true

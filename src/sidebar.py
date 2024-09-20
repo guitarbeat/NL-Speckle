@@ -3,6 +3,7 @@ from typing import Any, Dict, Optional, Tuple
 from PIL import Image
 import numpy as np
 import streamlit as st
+from src.plotting import VisualizationConfig  # Import the VisualizationConfig class
 
 AVAILABLE_COLOR_MAPS = ["gray", "viridis", "plasma", "inferno", "magma", "cividis", "pink"]
 PRELOADED_IMAGE_PATHS = {
@@ -61,11 +62,13 @@ class SidebarUI:
     @staticmethod        
     def _select_color_map() -> str:
         """Select color map for image display."""
+        # Use VisualizationConfig to get the default color map
+        config = VisualizationConfig()
         return st.sidebar.selectbox(
             "Select Color Map",
             AVAILABLE_COLOR_MAPS, 
             index=AVAILABLE_COLOR_MAPS.index(
-                st.session_state.get('color_map', 'gray'))
+                st.session_state.get('color_map', config.color_map))  # Use config.color_map
         )
     @staticmethod
     def _setup_display_options(image: Image.Image) -> Dict[str, Any]:  
