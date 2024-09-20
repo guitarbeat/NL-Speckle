@@ -106,3 +106,4 @@ class SpeckleResult(FilterResult):
             "Std Dev Filter": self.std_dev_filter,
             "Speckle Contrast": self.speckle_contrast_filter
         }
+    

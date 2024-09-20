@@ -12,6 +12,8 @@ ImageArray = np.ndarray
 PixelCoordinates = Tuple[int, int]
 
 # --- Common Error Handling ---
+
+
 def handle_error(e: Exception, message: str):
     st.error(f"{message}. Please check the logs.")
 
@@ -91,6 +93,11 @@ class FilterResult(ABC):
     def get_filter_options(cls) -> List[str]:
         pass
 
+    def get_last_processed_coordinates(self) -> PixelCoordinates:
+        return self.processing_end_coord
+    
+
+    
 # --- Named Tuples for Coordinates and Dimensions ---
 class Point(NamedTuple):
     x: int
