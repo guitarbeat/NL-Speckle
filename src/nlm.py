@@ -91,18 +91,6 @@ def apply_nlm(image: np.ndarray, kernel_size: int, search_window_size: int, filt
 def process_nlm(image: np.ndarray, kernel_size: int, pixels_to_process: int, 
                 search_window_size: int = 7, filter_strength: float = 0.1) -> 'NLMResult':
     try:
-        print(f"Received search_window_size: {search_window_size}")
-        print(f"Received filter_strength: {filter_strength}")
-        
-        # Input validation
-        if kernel_size is None or kernel_size <= 0:
-            raise ValueError(f"kernel_size must be a positive integer. Received: {kernel_size} (type: {type(kernel_size).__name__})")
-        if search_window_size is None or search_window_size <= 0:
-            raise ValueError(f"search_window_size must be a positive integer. Received: {search_window_size} (type: {type(search_window_size).__name__})")
-        if filter_strength <= 0:
-            raise ValueError(f"filter_strength must be a positive float. Received: {filter_strength} (type: {type(filter_strength).__name__})")
-
-
         processing_info: ProcessingDetails = calculate_processing_details(image, kernel_size, pixels_to_process)
 
         nonlocal_means, total_weights = apply_nlm(

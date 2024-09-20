@@ -6,12 +6,12 @@ from src.utils import (
     # ProcessingDetails
 )
 from src.plotting import (
-    SidebarUI,
     prepare_comparison_images,
     setup_and_run_analysis_techniques,
     DEFAULT_KERNEL_SIZE,
     DEFAULT_COLOR_MAP,
 )
+from src.sidebar import SidebarUI
 import hashlib
 import time
 
@@ -79,7 +79,8 @@ def get_analysis_params():
         "kernel_size": kernel_size,
         "search_window_size": sidebar_params.get('search_window_size'),
         "filter_strength": sidebar_params.get('filter_strength'),
-        "processing_details": details
+        "processing_details": details,
+        "use_full_image": sidebar_params.get('use_full_image', False)
     }
 
 def run_analysis(params):
