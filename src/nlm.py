@@ -1,4 +1,4 @@
-import itertools
+# import itertools
 import numpy as np
 from numba import njit, prange
 from dataclasses import dataclass
@@ -21,19 +21,23 @@ def calculate_weight(patch_difference: float, filter_strength: float) -> float:
 
 @njit
 def get_patch(image: np.ndarray, row: int, col: int, half_kernel: int) -> np.ndarray:
+    # sourcery skip: use-itertools-product
     height, width = image.shape
-    patch = np.zeros((2 * half_kernel + 1, 2 * half_kernel + 1), dtype=np.float32)
+    patch = np.zeros((2 * half_kernel + 1, 2 * half_kernel + 1), dtype=image.dtype)
 
-    for i, j in itertools.product(range(-half_kernel, half_kernel + 1), range(-half_kernel, half_kernel + 1)):
-        if 0 <= row + i < height and 0 <= col + j < width:
-            patch[i + half_kernel, j + half_kernel] = image[row + i, col + j]
+    for i in range(-half_kernel, half_kernel + 1):
+        for j in range(-half_kernel, half_kernel + 1):
+            patch_row = row + i
+            patch_col = col + j
+            if 0 <= patch_row < height and 0 <= patch_col < width:
+                patch[i + half_kernel, j + half_kernel] = image[patch_row, patch_col]
 
     return patch
 
 # --- NLM Calculation Function ---
-
 @njit
 def calculate_nlm_value(row: int, col: int, image: np.ndarray, kernel_size: int, search_window_size: int, filter_strength: float) -> Tuple[float, float]:
+    # sourcery skip: use-itertools-product
     if kernel_size is None:
         raise ValueError("kernel_size cannot be None")
     
@@ -46,22 +50,21 @@ def calculate_nlm_value(row: int, col: int, image: np.ndarray, kernel_size: int,
     total_weight = 0.0
     weighted_sum = 0.0
 
-    for i, j in itertools.product(range(max(0, row - half_search), min(height, row + half_search + 1)), 
-                                  range(max(0, col - half_search), min(width, col + half_search + 1))):
-        if i == row and j == col:
-            continue
+    for i in range(max(0, row - half_search), min(height, row + half_search + 1)):
+        for j in range(max(0, col - half_search), min(width, col + half_search + 1)):
+            if i == row and j == col:
+                continue
 
-        comparison_patch = get_patch(image, i, j, half_kernel)
-        patch_difference = calculate_patch_difference(center_patch, comparison_patch)
-        weight = calculate_weight(patch_difference, filter_strength)
+            comparison_patch = get_patch(image, i, j, half_kernel)
+            patch_difference = calculate_patch_difference(center_patch, comparison_patch)
+            weight = calculate_weight(patch_difference, filter_strength)
 
-        total_weight += weight
-        weighted_sum += weight * image[i, j]
+            total_weight += weight
+            weighted_sum += weight * image[i, j]
 
     nlm_value = weighted_sum / total_weight if total_weight > 0 else image[row, col]
 
     return nlm_value, total_weight
-
 # --- NLM Application Function ---
 
 @njit(parallel=True)
@@ -88,6 +91,18 @@ def apply_nlm(image: np.ndarray, kernel_size: int, search_window_size: int, filt
 def process_nlm(image: np.ndarray, kernel_size: int, pixels_to_process: int, 
                 search_window_size: int = 7, filter_strength: float = 0.1) -> 'NLMResult':
     try:
+        print(f"Received search_window_size: {search_window_size}")
+        print(f"Received filter_strength: {filter_strength}")
+        
+        # Input validation
+        if kernel_size is None or kernel_size <= 0:
+            raise ValueError(f"kernel_size must be a positive integer. Received: {kernel_size} (type: {type(kernel_size).__name__})")
+        if search_window_size is None or search_window_size <= 0:
+            raise ValueError(f"search_window_size must be a positive integer. Received: {search_window_size} (type: {type(search_window_size).__name__})")
+        if filter_strength <= 0:
+            raise ValueError(f"filter_strength must be a positive float. Received: {filter_strength} (type: {type(filter_strength).__name__})")
+
+
         processing_info: ProcessingDetails = calculate_processing_details(image, kernel_size, pixels_to_process)
 
         nonlocal_means, total_weights = apply_nlm(

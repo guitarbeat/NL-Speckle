@@ -9,6 +9,7 @@ from src.utils import (calculate_processing_details)
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple, List
 from logging import getLogger
+import logging
 from pydantic import BaseModel, field_validator
 from PIL import Image
 
@@ -42,10 +43,10 @@ DEFAULT_KERNEL_SIZE = 3
 
 
 
-# Set up logging
+
+   # Set up logging
+logging.basicConfig(level=logging.INFO)  # Set the logging level to DEBUG
 logger = getLogger(__name__)
-
-
 
 # --- Sidebar UI Class ---
 @dataclass
@@ -95,7 +96,7 @@ class SidebarUI:
             st.sidebar.image(loaded_image, caption="Input Image", use_column_width=True)
             return loaded_image
         except Exception as e:
-            st.error(f"Error while creating image source UI: {e}")
+            print(f"Error while creating image source UI: {e}")
             return None
 
     @staticmethod        
@@ -162,6 +163,8 @@ class SidebarUI:
                 help="Size of the search window for NLM (must be odd)"
             )
             search_window_size = search_window_size if search_window_size % 2 == 1 else search_window_size + 1
+            
+            print(f"Selected Search Window Size: {search_window_size}")
         
             filter_strength = st.slider(
                 "Filter Strength (h)",
@@ -172,15 +175,19 @@ class SidebarUI:
                 format="%.1f",
                 help="Filter strength for NLM (higher values result in more smoothing)"
             )
+            
+            print(f"Selected Filter Strength: {filter_strength}")
                 
-            return {
+            nlm_params = {
                 "search_window_size": search_window_size,
                 "filter_strength": filter_strength
             }
+            print(f"NLM Params: {nlm_params}")
+            
+            return nlm_params
         except Exception as e:
-            st.sidebar.error(f"Error creating NLM options: {e}")
+            print(f"Error creating NLM options: {e}")
             return {"search_window_size": 21, "filter_strength": 10.0}  # Default values
-        
 
     @staticmethod
     def _create_advanced_options_ui(image: Image.Image) -> Dict[str, Any]:
@@ -287,31 +294,6 @@ class ProcessParams:
 
 # --------- Visualization Functions ----------#
 
-def visualize_image(image: np.ndarray, placeholder, pixel_x: int, pixel_y: int, 
-                    kernel_size: int, title: str, technique: str, config: VisualizationConfig) -> None:
-    """
-    Visualize an image with optional zooming and overlays.
-    
-    Args:
-        image (np.ndarray): The image to visualize.
-        placeholder (st.empty): Streamlit placeholder for rendering.
-        pixel_x (int): X-coordinate of the center pixel.
-        pixel_y (int): Y-coordinate of the center pixel.
-        kernel_size (int): Size of the kernel.
-        title (str): Title of the plot.
-        technique (str): Analysis technique (e.g., "nlm" or "speckle").
-        config (VisualizationConfig): Configuration parameters.
-    """
-    try:
-        if config.zoom:
-            image, pixel_x, pixel_y = get_zoomed_image_section(image, pixel_x, pixel_y, kernel_size)
-        fig = create_image_plot(image, pixel_x, pixel_y, kernel_size, title, technique, config)
-
-        placeholder.pyplot(fig)
-        plt.close(fig)  # Close the figure after displaying
-    except Exception as e:
-        logger.error(f"Error while visualizing image: {e}", exc_info=True)
-        raise
 
 def visualize_analysis_results(viz_params: Dict[str, Any]) -> None:
     """
@@ -610,17 +592,35 @@ def process_image(params: ProcessParams):
     # Extract common parameters
     kernel_size = st.session_state.get('kernel_size', 3)
     pixels_to_process = analysis_params.get('pixels_to_process', 0)
-    analysis_params.update({'kernel_size': kernel_size, 'pixels_to_process': pixels_to_process})
     
+    # Ensure search_window_size and filter_strength are set
+    search_window_size = analysis_params.get('search_window_size', DEFAULT_SEARCH_WINDOW_SIZE)
+    filter_strength = analysis_params.get('filter_strength', DEFAULT_FILTER_STRENGTH)
+
+    # Debugging statements for search_window_size and filter_strength
+    logger.debug(f"[process_image] Search Window Size: {search_window_size} (Type: {type(search_window_size)})")
+    logger.debug(f"[process_image] Filter Strength: {filter_strength} (Type: {type(filter_strength)})")
+
+    # Update analysis_params with the retrieved values
+    analysis_params.update({
+        'kernel_size': kernel_size,
+        'pixels_to_process': pixels_to_process,
+        'search_window_size': search_window_size,
+        'filter_strength': filter_strength
+    })
+
     # Normalize image if needed
     normalized_image = normalize_image(params.image_array) if analysis_params.get('normalization_option') == 'Percentile' else params.image_array
     
     # Process image based on technique
     if technique == "nlm":
-        nlm_params = analysis_params.get('nlm_params', {})
-        search_window_size = nlm_params.get('search_window_size')
-        filter_strength = nlm_params.get('filter_strength')
-        results = process_nlm(normalized_image, kernel_size, pixels_to_process, search_window_size, filter_strength)
+        results = process_nlm(
+            image=normalized_image, 
+            kernel_size=kernel_size, 
+            pixels_to_process=pixels_to_process, 
+            search_window_size=search_window_size, 
+            filter_strength=filter_strength
+        )
     elif technique == "speckle":
         results = process_speckle(normalized_image, kernel_size, pixels_to_process)
     else:
@@ -671,28 +671,6 @@ def visualize_results(image_array: ImageArray, technique: str, analysis_params: 
         st.error("An error occurred while visualizing the results. Please check the logs.")
 # --------- UI Setup Functions ----------#
 
-def setup_and_run_analysis_techniques(analysis_params: Dict[str, Any]) -> None:
-    """Set up and run analysis techniques based on the provided parameters."""
-    techniques: List[str] = st.session_state.get('techniques', [])
-    tabs: List[Any] = st.session_state.get('tabs', [])
-
-    for technique, tab in zip(techniques, tabs):
-        if tab is not None:
-            with tab:
-                run_technique(technique, tab, analysis_params)
-
-def run_technique(technique: str, tab: Any, analysis_params: Dict[str, Any]) -> None:
-    """Run a specific analysis technique."""
-    technique_params = st.session_state.get(f"{technique}_params", {})
-    show_per_pixel_processing = analysis_params.get('show_per_pixel_processing', False)
-    
-    ui_placeholders = create_technique_ui_elements(technique, tab, show_per_pixel_processing)
-    st.session_state[f"{technique}_placeholders"] = ui_placeholders
-    
-    process_params = create_process_params(analysis_params, technique, technique_params)
-    _, results = process_image(process_params)
-    st.session_state[f"{technique}_results"] = results
-
 def create_technique_ui_elements(technique: str, tab: Any, show_per_pixel_processing: bool) -> Dict[str, Any]:
     """Create UI elements for a specific image processing technique."""
     with tab:
@@ -712,6 +690,25 @@ def create_technique_ui_elements(technique: str, tab: Any, show_per_pixel_proces
     return ui_placeholders
 
 # --------- Utility Functions ----------#
+
+def visualize_image(image: np.ndarray, placeholder, pixel_x: int, pixel_y: int, 
+                    kernel_size: int, title: str, technique: str, config: VisualizationConfig) -> None:
+    """
+    Visualize an image with optional zooming and overlays.
+    """
+    logger.info(f"Visualizing image for technique: {technique}")
+    try:
+        if config.zoom:
+            image, pixel_x, pixel_y = get_zoomed_image_section(image, pixel_x, pixel_y, kernel_size)
+        
+        fig = create_image_plot(image, pixel_x, pixel_y, kernel_size, title, technique, config)
+        placeholder.pyplot(fig)
+        plt.close(fig)  # Close the figure after displaying
+    except Exception as e:
+        logger.error(f"Error while visualizing image: {e}", exc_info=True)
+        placeholder.error("An error occurred while visualizing the image. Please check the logs for details.")
+
+
 
 def get_filter_options(technique: str) -> List[str]:
     """Get filter options based on the technique."""
@@ -758,6 +755,45 @@ def get_last_processed_coordinates(results: Any, processing_details: Any) -> tup
     
 # --------- Helpers ----------#
 
+def run_technique(technique: str, tab: Any, analysis_params: Dict[str, Any]) -> None:
+    """Run a specific analysis technique."""
+    logger.info(f"Running technique: {technique}")
+    technique_params = st.session_state.get(f"{technique}_params", {})
+    logger.debug(f"Technique Parameters: {technique_params}")
+    
+    show_per_pixel_processing = analysis_params.get('show_per_pixel_processing', False)
+    
+    ui_placeholders = create_technique_ui_elements(technique, tab, show_per_pixel_processing)
+    st.session_state[f"{technique}_placeholders"] = ui_placeholders
+    
+    process_params = create_process_params(analysis_params, technique, technique_params)
+    logger.debug(f"Process Parameters: {process_params}")
+    
+    try:
+        _, results = process_image(process_params)
+        st.session_state[f"{technique}_results"] = results
+    except Exception as e:
+        logger.error(f"Error processing image for {technique}: {str(e)}")
+        st.error(f"An error occurred while processing the image for {technique}. Please check the logs for details.")
+
+def setup_and_run_analysis_techniques(analysis_params: Dict[str, Any]) -> None:
+    """Set up and run analysis techniques based on the provided parameters."""
+    logger.info("Setting up and running analysis techniques")
+    logger.debug(f"Analysis Parameters: {analysis_params}")
+    
+    techniques: List[str] = st.session_state.get('techniques', [])
+    tabs: List[Any] = st.session_state.get('tabs', [])
+
+    for technique, tab in zip(techniques, tabs):
+        if tab is not None:
+            try:
+                with tab:
+                    run_technique(technique, tab, analysis_params)
+            except Exception as e:
+                logger.error(f"Error running technique {technique}: {str(e)}")
+                st.error(f"An error occurred while processing {technique}. Please check the logs for details.")
+
+
 def create_process_params(analysis_params: Dict[str, Any], technique: str, technique_params: Dict[str, Any]) -> ProcessParams:
     return ProcessParams(
         image_array=analysis_params.get('image_array', ImageArray(np.array([]))),
@@ -768,11 +804,10 @@ def create_process_params(analysis_params: Dict[str, Any], technique: str, techn
             'pixels_to_process': analysis_params.get('pixels_to_process', 0),
             'total_pixels': analysis_params.get('total_pixels', 0),
             'show_per_pixel_processing': analysis_params.get('show_per_pixel_processing', False),
-            'search_window_size': technique_params.get('search_window_size'),
-            'filter_strength': technique_params.get('filter_strength'),
+            'search_window_size': analysis_params.get('search_window_size'),
+            'filter_strength': analysis_params.get('filter_strength'),
         },
         update_state=True,
         handle_visualization=True,
         show_per_pixel_processing=analysis_params.get('show_per_pixel_processing', False)
     )
-
