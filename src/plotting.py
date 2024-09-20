@@ -162,25 +162,42 @@ def create_process_params(analysis_params: Dict[str, Any], technique: str, techn
         ),
     )
 # --------- Updated Functions ----------#
-
-
-
 def visualize_results(image_array: ImageArray, technique: str, analysis_params: Dict[str, Any], results: Any, show_per_pixel_processing: bool):
     """Visualize the results of image processing."""
     try:
         logging.info("Starting visualization for technique: %s", technique)
-        # Your existing code...
-        processing_details = calculate_processing_details(image_array, analysis_params.get('kernel_size', 3), analysis_params.get('total_pixels', 0))
-        pixel_coords = get_last_processed_coordinates(results, processing_details)
+        
+        # Calculate processing details
+        processing_details = calculate_processing_details(
+            image_array, 
+            analysis_params.get('kernel_size', 3), 
+            analysis_params.get('total_pixels', 0)
+        )
+        logging.info("Processing details calculated")
 
-        # Check if pixel_coords is valid
+        # Get last processed coordinates
+        pixel_coords = get_last_processed_coordinates(results, processing_details)
         if pixel_coords is None:
             raise ValueError("No pixel coordinates returned.")
+        
+        # Handle both tuple and object returns
+        if isinstance(pixel_coords, tuple):
+            last_processed_x, last_processed_y = pixel_coords
+        else:
+            last_processed_x, last_processed_y = pixel_coords.x, pixel_coords.y
+        
+        logging.info("Last processed coordinates retrieved: (%d, %d)", last_processed_x, last_processed_y)
 
-        last_processed_x, last_processed_y = pixel_coords.x, pixel_coords.y
-        kernel_matrix, original_pixel_value, kernel_size = extract_kernel_from_image(image_array, last_processed_x, last_processed_y, analysis_params.get('kernel_size', 3))
+        # Extract kernel information
+        kernel_matrix, original_pixel_value, kernel_size = extract_kernel_from_image(
+            image_array, 
+            last_processed_x, 
+            last_processed_y, 
+            analysis_params.get('kernel_size', 3)
+        )
+        logging.info("Kernel information extracted. Kernel size: %d", kernel_size)
 
-        # Create VisualizationConfig object for result visualization
+        # Create VisualizationConfig object
         viz_config = create_visualization_config(
             image_array=image_array,
             technique=technique,
@@ -192,10 +209,15 @@ def visualize_results(image_array: ImageArray, technique: str, analysis_params: 
             original_pixel_value=original_pixel_value,
             show_per_pixel_processing=show_per_pixel_processing
         )
+        logging.info("VisualizationConfig object created")
 
+        # Visualize analysis results
         visualize_analysis_results(viz_config)
+        logging.info("Analysis results visualized successfully")
+
     except Exception as e:
-        logging.error("Error while visualizing results for %s: %s", technique, e)
+        logging.error("Error while visualizing results for %s: %s", technique, str(e))
+        st.error(f"An error occurred while visualizing the results for {technique}. Please check the logs.")
 
 def visualize_filter_and_zoomed(filter_name: str, filter_data: np.ndarray, viz_config: VisualizationConfig):
     """Visualize the main and zoomed versions of a filter."""
@@ -812,11 +834,16 @@ def get_last_processed_coordinates(results: Any, processing_details: Any) -> tup
         tuple: The coordinates (x, y) of the last processed pixel.
     """
     if isinstance(results, (NLMResult, SpeckleResult)):
-        return results.processing_end_coord.x, results.processing_end_coord.y
-    logging.warning("Unknown result type for getting processed coordinates.")
-    return processing_details.end_point.x, processing_details.end_point.y  # Ensure this returns a PixelCoordinates object
-# --------- Helpers ----------#
+        coords = (results.processing_end_coord.x, results.processing_end_coord.y)
+        logging.info(f"Retrieved coordinates from results: {coords}")
+        return coords
+    
+    logging.info("Unknown result type, using processing_details for coordinates.")
+    coords = (processing_details.end_point.x, processing_details.end_point.y)
+    logging.info(f"Retrieved coordinates from processing_details: {coords}")
+    return coords  # This returns a tuple of (x, y)
 
+# --------- Helpers ----------#
 def run_technique(technique: str, tab: Any, analysis_params: Dict[str, Any]) -> None:
     technique_params = st.session_state.get(f"{technique}_params", {})
     show_per_pixel_processing = analysis_params.get('show_per_pixel_processing', False)
