@@ -11,6 +11,16 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Tuple, List, Optional
 import logging
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,  # Set the logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+    format='%(asctime)s - %(levelname)s - %(message)s',  # Log message format
+    handlers=[
+        logging.StreamHandler()  # Output logs to console
+        # You can also add a file handler if you want to log to a file
+        # logging.FileHandler('app.log')  # Uncomment to log to a file
+    ])
+
 # Constants for Image Visualization
 ZOOMED_IMAGE_DIMENSIONS = (8, 8)
 DEFAULT_SPECKLE_VIEW = ['Speckle Contrast', 'Original Image']
@@ -158,7 +168,8 @@ def create_process_params(analysis_params: Dict[str, Any], technique: str, techn
 def visualize_results(image_array: ImageArray, technique: str, analysis_params: Dict[str, Any], results: Any, show_per_pixel_processing: bool):
     """Visualize the results of image processing."""
     try:
-        # Extract processing details and kernel information
+        logging.info("Starting visualization for technique: %s", technique)
+        # Your existing code...
         processing_details = calculate_processing_details(image_array, analysis_params.get('kernel_size', 3), analysis_params.get('total_pixels', 0))
         pixel_coords = get_last_processed_coordinates(results, processing_details)
 
@@ -184,8 +195,7 @@ def visualize_results(image_array: ImageArray, technique: str, analysis_params: 
 
         visualize_analysis_results(viz_config)
     except Exception as e:
-        logging.error(f"Error while visualizing results for {technique}: {e}")
-        st.error("An error occurred while visualizing the results. Please check the logs.")
+        logging.error("Error while visualizing results for %s: %s", technique, e)
 
 def visualize_filter_and_zoomed(filter_name: str, filter_data: np.ndarray, viz_config: VisualizationConfig):
     """Visualize the main and zoomed versions of a filter."""
@@ -418,7 +428,7 @@ def add_overlays(ax: plt.Axes, plot_image: np.ndarray, config: VisualizationConf
         plot_image (np.ndarray): The image being plotted.
         config (VisualizationConfig): Configuration parameters.
     """
-    logging.debug(f"[add_overlays] center: {config.last_processed_pixel}, kernel_size: {config.kernel_size}, technique: {config.analysis_type}, config: {config}")
+    logging.info(f"[add_overlays] center: {config.last_processed_pixel}, kernel_size: {config.kernel_size}, technique: {config.analysis_type}, config: {config}")
     
     if not validate_inputs(config):
         raise ValueError("Invalid inputs for center, kernel size or config")
@@ -495,7 +505,7 @@ def draw_search_window_overlay(axes: plt.Axes, image: np.ndarray, config: Visual
     if config.use_full_image:
         window_left, window_top = -0.5, -0.5
         window_width, window_height = image_width, image_height
-        logging.debug("Using full image as search window")
+        logging.info("Using full image as search window")
     else:
         window_left = max(0, center_x - half_window_size) - 0.5
         window_top = max(0, center_y - half_window_size) - 0.5
@@ -531,7 +541,7 @@ def process_image(params: ProcessParams):
     Returns:
         tuple: The modified parameters and results.
     """
-    logging.debug("Starting image processing...")
+    logging.info("Starting image processing...")
     
     technique = params.technique
     analysis_params = params.analysis_params
@@ -578,7 +588,7 @@ def extract_or_default(source: dict, key: str, default_value):
         The extracted value or the default value.
     """
     value = source.get(key, default_value)
-    logging.debug(f"Parameter '{key}': {value}")
+    logging.info(f"Parameter '{key}': {value}")
     return value
 
 def apply_technique(technique: str, image: np.ndarray, kernel_size: int, pixels_to_process: int, search_window_size: int, filter_strength: int):
@@ -596,7 +606,7 @@ def apply_technique(technique: str, image: np.ndarray, kernel_size: int, pixels_
     Returns:
         The results of the image processing.
     """
-    logging.debug(f"Applying technique: {technique}")
+    logging.info(f"Applying technique: {technique}")
     
     if technique == "nlm":
         return process_nlm(
@@ -625,7 +635,7 @@ def normalize_image(image: np.ndarray, low_percentile: int = 2, high_percentile:
         np.ndarray: The normalized image array.
     """
     p_low, p_high = np.percentile(image, [low_percentile, high_percentile])
-    logging.debug(f"Normalizing image with percentiles: {low_percentile}, {high_percentile}")
+    logging.info(f"Normalizing image with percentiles: {low_percentile}, {high_percentile}")
     return np.clip(image, p_low, p_high) - p_low / (p_high - p_low)
 
 
@@ -659,7 +669,7 @@ def create_technique_ui_elements(technique: str, tab: Any, show_per_pixel_proces
 
         # Fetch available filters for the given technique
         filter_options = get_filter_options(technique)
-        logging.debug(f"Filter options for {technique}: {filter_options}")
+        logging.info(f"Filter options for {technique}: {filter_options}")
 
         if selected_filters := create_filter_selection(
             technique, filter_options
@@ -773,7 +783,7 @@ def create_filter_views(selected_filters: List[str], ui_placeholders: Dict[str, 
         # If per-pixel processing is enabled, create zoomed-in views
         if show_per_pixel_processing:
             ui_placeholders[f'zoomed_{filter_key}'] = columns[i].expander(f"Zoomed-in {filter_name}", expanded=False).empty()
-        logging.debug(f"Created view for {filter_name} with zoom: {show_per_pixel_processing}")
+        logging.info(f"Created view for {filter_name} with zoom: {show_per_pixel_processing}")
 
 def update_session_state(technique: str, pixels_to_process: int, results: Any) -> None:
     """
@@ -790,12 +800,21 @@ def update_session_state(technique: str, pixels_to_process: int, results: Any) -
     })
     logging.info(f"Session state updated for {technique} with {pixels_to_process} pixels processed.")
 
-def get_last_processed_coordinates(results: Any, processing_details: Any) -> PixelCoordinates:
-    """Get the coordinates of the last processed pixel."""
+def get_last_processed_coordinates(results: Any, processing_details: Any) -> tuple:
+    """
+    Get the coordinates of the last processed pixel.
+    
+    Args:
+        results (Any): The result object from the image processing.
+        processing_details (Any): Additional processing details if available.
+    
+    Returns:
+        tuple: The coordinates (x, y) of the last processed pixel.
+    """
     if isinstance(results, (NLMResult, SpeckleResult)):
-        return results.processing_end_coord  # Ensure this returns a PixelCoordinates object
+        return results.processing_end_coord.x, results.processing_end_coord.y
     logging.warning("Unknown result type for getting processed coordinates.")
-    return PixelCoordinates(x=processing_details.end_x, y=processing_details.end_y)  # Ensure this returns a PixelCoordinates object
+    return processing_details.end_point.x, processing_details.end_point.y  # Ensure this returns a PixelCoordinates object
 # --------- Helpers ----------#
 
 def run_technique(technique: str, tab: Any, analysis_params: Dict[str, Any]) -> None:
