@@ -2,10 +2,8 @@
 This module provides plotting functionalities using Matplotlib and Streamlit.
 """
 
-import functools
 import itertools
-import json  # Add this import for structured logging
-import logging
+
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -13,28 +11,20 @@ import matplotlib.pyplot as plt
 import numpy as np
 import streamlit as st
 from matplotlib.collections import LineCollection
-
+import logging
+import json
 from src.formula import display_analysis_formula
-from src.nlm import NLMResult, process_nlm
-from src.speckle import SpeckleResult, process_speckle
-from src.utils import calculate_processing_details
+from src.nlm import NLMResult
+from src.speckle import SpeckleResult
+from src.processing import (
+    process_image,
+    extract_kernel_from_image,
+    calculate_processing_details,
+    ProcessParams,
+    configure_process_params,
+)
 
-
-# Configure logging with structured format
-class JsonFormatter(logging.Formatter):
-    """Formatter that outputs logs in JSON format."""
-
-    def format(self, record):
-        log_obj = {
-            "level": record.levelname,
-            "message": record.getMessage(),
-            "time": self.formatTime(record),
-            "function": record.funcName,
-            "line": record.lineno,
-            "filename": record.filename,
-        }
-        return json.dumps(log_obj)
-
+import functools
 
 # Update logging configuration
 logging.basicConfig(
@@ -43,36 +33,37 @@ logging.basicConfig(
     handlers=[logging.StreamHandler()],
 )
 
-# Set the custom formatter
-for handler in logging.getLogger().handlers:
-    handler.setFormatter(JsonFormatter())
 
 # Constants for Image Visualization
-ZOOMED_IMAGE_DIMENSIONS = (8, 8)
 DEFAULT_SPECKLE_VIEW = ["Speckle Contrast", "Original Image"]
 DEFAULT_NLM_VIEW = ["Non-Local Means", "Original Image"]
 
-# Constants for plot type
-PLOT_MAIN = "main"
-PLOT_ZOOMED = "zoomed"
-DEFAULT_SEARCH_WINDOW_SIZE = 21
-DEFAULT_FILTER_STRENGTH = 10.0
-DEFAULT_KERNEL_SIZE = 3
+
+def generate_plot_key(filter_name: str, plot_type: str) -> str:
+    """Generate a key for identifying plots based on filter name and plot type."""
+    base_key = filter_name.lower().replace(" ", "_")
+    return f"zoomed_{base_key}" if plot_type == "zoomed" else base_key
 
 
-@dataclass
-class PixelCoordinates:
-    """Represents the pixel's (x, y) coordinates."""
+# Logging decorator
+def log_action(action_name: str):
+    """Decorator to log actions with a specified name."""
 
-    x: int
-    y: int
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            logging.info(json.dumps({"action": action_name}))
+            try:
+                result = func(*args, **kwargs)
+                logging.info(json.dumps({"action": action_name, "status": "success"}))
+                return result
+            except Exception as e:
+                logging.error(json.dumps({"action": action_name, "error": str(e)}))
+                raise
 
+        return wrapper
 
-@dataclass
-class ImageArray:
-    """Container for the image data as a numpy array."""
-
-    data: np.ndarray
+    return decorator
 
 
 @dataclass
@@ -86,11 +77,11 @@ class VisualizationConfig:
     show_per_pixel_processing: bool = False
     search_window_size: Optional[int] = None
     use_full_image: bool = False
-    image_array: Optional[ImageArray] = None
+    image_array: Optional[np.ndarray] = None
     analysis_params: Dict[str, Any] = field(default_factory=dict)
     results: Optional[Any] = None
     ui_placeholders: Dict[str, Any] = field(default_factory=dict)
-    last_processed_pixel: Optional[PixelCoordinates] = None
+    last_processed_pixel: Optional[Tuple[int, int]] = None
     kernel_size: int = 3
     kernel_matrix: Optional[np.ndarray] = None
     original_pixel_value: float = 0.0
@@ -133,53 +124,19 @@ class VisualizationConfig:
         self.kernel_matrix = matrix
 
 
-def create_visualization_config(
-    image_array: ImageArray,
-    technique: str,
-    analysis_params: Dict[str, Any],
-    results: Any,
-    last_processed_pixel: Tuple[int, int],
-    kernel_matrix: np.ndarray,
-    kernel_size: int,
-    original_pixel_value: float,
-    show_per_pixel_processing: bool,
-) -> VisualizationConfig:
-    """Utility to create a VisualizationConfig object."""
-    return VisualizationConfig(
-        vmin=None,
-        vmax=None,
-        zoom=False,
-        show_kernel=show_per_pixel_processing,
-        show_per_pixel_processing=show_per_pixel_processing,
-        search_window_size=analysis_params.get("search_window_size"),
-        use_full_image=analysis_params.get("use_whole_image", False),
-        image_array=image_array,
-        analysis_params=analysis_params,
-        results=results,
-        ui_placeholders=st.session_state.get(f"{technique}_placeholders", {}),
-        last_processed_pixel=PixelCoordinates(
-            x=last_processed_pixel[0], y=last_processed_pixel[1]
-        ),
-        kernel_size=kernel_size,
-        kernel_matrix=kernel_matrix,
-        original_pixel_value=original_pixel_value,
-        color_map=st.session_state.get("color_map", "gray"),
-        title=f"{technique.upper()} Analysis Result",
-        figure_size=(8, 8),
-        technique=technique,  # Keep this line
-    )
+@dataclass
+class PixelCoordinates:
+    """Represents the pixel's (x, y) coordinates."""
+
+    x: int
+    y: int
 
 
 @dataclass
-class ProcessParams:
-    """Holds parameters for image processing."""
+class ImageArray:
+    """Container for the image data as a numpy array."""
 
-    image_array: ImageArray
-    analysis_params: Dict[str, Any]
-    show_per_pixel_processing: bool
-    technique: str
-    update_state: bool
-    handle_visualization: bool
+    data: np.ndarray
 
 
 def create_process_params(
@@ -222,27 +179,6 @@ def create_process_params(
     )
 
 
-# Logging decorator
-def log_action(action_name: str):
-    """Decorator to log actions with a specified name."""
-
-    def decorator(func):
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            logging.info(json.dumps({"action": action_name}))
-            try:
-                result = func(*args, **kwargs)
-                logging.info(json.dumps({"action": action_name, "status": "success"}))
-                return result
-            except Exception as e:
-                logging.error(json.dumps({"action": action_name, "error": str(e)}))
-                raise
-
-        return wrapper
-
-    return decorator
-
-
 # --------- Updated Functions ----------#
 
 
@@ -251,12 +187,12 @@ def visualize_filter_and_zoomed(
     filter_name: str, filter_data: np.ndarray, viz_config: VisualizationConfig
 ):
     """Visualize the main and zoomed versions of a filter."""
-    for plot_type in [PLOT_MAIN, PLOT_ZOOMED]:
+    for plot_type in ["main", "zoomed"]:
         plot_key = generate_plot_key(filter_name, plot_type)
 
         # Skip unnecessary visualizations
         if plot_key not in viz_config.ui_placeholders or (
-            plot_type == PLOT_ZOOMED and not viz_config.show_per_pixel_processing
+            plot_type == "zoomed" and not viz_config.show_per_pixel_processing
         ):
             continue
 
@@ -264,7 +200,7 @@ def visualize_filter_and_zoomed(
         config = update_visualization_config(
             viz_config, filter_data, filter_name, plot_type
         )
-        title = f"Zoomed-In {filter_name}" if plot_type == PLOT_ZOOMED else filter_name
+        title = f"Zoomed-In {filter_name}" if plot_type == "zoomed" else filter_name
 
         try:
             # Log the type of results before accessing nonlocal_means
@@ -312,13 +248,6 @@ def visualize_filter_and_zoomed(
             raise
 
 
-@log_action("generate_plot_key")
-def generate_plot_key(filter_name: str, plot_type: str) -> str:
-    """Generate a key for identifying plots based on filter name and plot type."""
-    base_key = filter_name.lower().replace(" ", "_")
-    return f"zoomed_{base_key}" if plot_type == PLOT_ZOOMED else base_key
-
-
 @log_action("update_visualization_config")
 def update_visualization_config(
     viz_config: VisualizationConfig,
@@ -330,11 +259,11 @@ def update_visualization_config(
     return VisualizationConfig(
         vmin=None if filter_name == "Original Image" else np.min(filter_data),
         vmax=None if filter_name == "Original Image" else np.max(filter_data),
-        zoom=(plot_type == PLOT_ZOOMED),
+        zoom=(plot_type == "zoomed"),
         show_kernel=(
-            viz_config.show_per_pixel_processing if plot_type == PLOT_MAIN else True
+            viz_config.show_per_pixel_processing if plot_type == "main" else True
         ),
-        show_per_pixel_processing=(plot_type == PLOT_ZOOMED),
+        show_per_pixel_processing=(plot_type == "zoomed"),
         search_window_size=viz_config.search_window_size
         if viz_config.technique == "nlm"
         else None,
@@ -432,7 +361,7 @@ def create_image_plot(
 
         add_overlays(ax, plot_image, config)
         fig.tight_layout(pad=2)
-        return 
+        return
     except Exception as e:
         logging.error(
             json.dumps(
@@ -440,6 +369,7 @@ def create_image_plot(
             )
         )
         raise
+
 
 @log_action("prepare_filter_options_and_parameters")
 def prepare_filter_options_and_parameters(
@@ -534,54 +464,6 @@ def get_zoomed_image_section(
     new_center_y = center_y - top
 
     return zoomed_image, new_center_x, new_center_y
-
-
-@log_action("extract_kernel_from_image")
-def extract_kernel_from_image(
-    image_array: np.ndarray, end_x: int, end_y: int, kernel_size: int
-) -> Tuple[np.ndarray, float, int]:
-    """
-    Extract a kernel from an image centered at the given coordinates.
-
-    Args:
-        image_array (np.ndarray): The input image.
-        end_x (int): X-coordinate for the kernel center.
-        end_y (int): Y-coordinate for the kernel center.
-        kernel_size (int): Size of the kernel.
-
-    Returns:
-        Tuple[np.ndarray, float, int]: The extracted kernel, the original pixel value, and the kernel size.
-    """
-    half_kernel = kernel_size // 2
-    height, width = image_array.shape
-
-    # Determine kernel bounds
-    y_start, y_end = max(0, end_y - half_kernel), min(height, end_y + half_kernel + 1)
-    x_start, x_end = max(0, end_x - half_kernel), min(width, end_x + half_kernel + 1)
-    kernel_values = image_array[y_start:y_end, x_start:x_end]
-
-    # Handle edge cases by padding the kernel if needed
-    if kernel_values.size == 0:
-        raise ValueError(
-            json.dumps(
-                {
-                    "action": "extract_kernel_from_image",
-                    "error": f"Extracted kernel at ({end_x}, {end_y}) is empty. Image shape: {image_array.shape}, Kernel size: {kernel_size}",
-                }
-            )
-        )
-
-    if kernel_values.shape != (kernel_size, kernel_size):
-        kernel_values = np.pad(
-            kernel_values,
-            (
-                (max(0, half_kernel - end_y), max(0, end_y + half_kernel + 1 - height)),
-                (max(0, half_kernel - end_x), max(0, end_x + half_kernel + 1 - width)),
-            ),
-            mode="edge",
-        )
-
-    return kernel_values.astype(float), float(image_array[end_y, end_x]), kernel_size
 
 
 # ---- Annotation Functions---=--#
@@ -756,150 +638,6 @@ def add_overlays(
 # --------- Image Processing Functions ----------#
 
 
-@log_action("process_image")
-def process_image(params: ProcessParams):
-    """
-    Process an image based on the provided parameters.
-
-    Args:
-        params (ProcessParams): The processing parameters including image array and techniques.
-
-    Returns:
-        tuple: The modified parameters and results.
-    """
-    try:
-        technique = params.technique
-        analysis_params = params.analysis_params
-
-        # Extract or assign default parameters
-        kernel_size = extract_or_default(st.session_state, "kernel_size", 3)
-        pixels_to_process = extract_or_default(analysis_params, "pixels_to_process", 0)
-        search_window_size = extract_or_default(
-            analysis_params, "search_window_size", DEFAULT_SEARCH_WINDOW_SIZE
-        )
-        filter_strength = extract_or_default(
-            analysis_params, "filter_strength", DEFAULT_FILTER_STRENGTH
-        )
-
-        # Update analysis_params with the resolved values
-        analysis_params.update(
-            {
-                "kernel_size": kernel_size,
-                "pixels_to_process": pixels_to_process,
-                "search_window_size": search_window_size,
-                "filter_strength": filter_strength,
-            }
-        )
-
-        # Add your processing logic here
-        # For example:
-        results = apply_technique(
-            technique,
-            params.image_array.data,
-            kernel_size,
-            pixels_to_process,
-            search_window_size,
-            filter_strength,
-        )
-
-        return params, results
-
-    except Exception as e:
-        logging.error(
-            json.dumps(
-                {"action": "process_image", "technique": technique, "error": str(e)}
-            )
-        )
-        raise
-
-
-@log_action("extract_or_default")
-def extract_or_default(source: dict, key: str, default_value):
-    """
-    Extract a value from the dictionary or return a default if key is not present.
-
-    Args:
-        source (dict): The dictionary to extract from.
-        key (str): The key to look for.
-        default_value: The value to return if key is not found.
-
-    Returns:
-        The extracted value or the default value.
-    """
-    value = source.get(key, default_value)
-    logging.info(
-        json.dumps({"action": "extract_or_default", "key": key, "value": value})
-    )
-    return value
-
-
-@log_action("apply_technique")
-def apply_technique(
-    technique: str,
-    image: np.ndarray,
-    kernel_size: int,
-    pixels_to_process: int,
-    search_window_size: int,
-    filter_strength: float,
-):
-    """
-    Apply the specified technique to the image.
-
-    Args:
-        technique (str): The processing technique to apply.
-        image (np.ndarray): The image array to process.
-        kernel_size (int): The size of the kernel.
-        pixels_to_process (int): Number of pixels to process.
-        search_window_size (int): The size of the search window (for NLM).
-        filter_strength (float): The strength of the filter.
-
-    Returns:
-        The results of the image processing.
-    """
-    if technique == "nlm":
-        return process_nlm(
-            image=image,
-            kernel_size=kernel_size,
-            pixels_to_process=pixels_to_process,
-            search_window_size=search_window_size,
-            filter_strength=filter_strength,
-        )
-    elif technique == "speckle":
-        return process_speckle(image, kernel_size, pixels_to_process)
-    else:
-        logging.error(
-            json.dumps(
-                {
-                    "action": "apply_technique",
-                    "error": f"Unknown technique: {technique}",
-                }
-            )
-        )
-        raise ValueError(f"Unknown technique: {technique}")
-
-
-@log_action("normalize_image")
-def normalize_image(
-    image: np.ndarray, low_percentile: int = 2, high_percentile: int = 98
-) -> np.ndarray:
-    """
-    Normalize an image using percentile-based scaling.
-
-    Args:
-        image (np.ndarray): The image array to normalize.
-        low_percentile (int): The lower percentile for clipping.
-        high_percentile (int): The upper percentile for clipping.
-
-    Returns:
-        np.ndarray: The normalized image array.
-    """
-    p_low, p_high = np.percentile(image, [low_percentile, high_percentile])
-    logging.info(
-        json.dumps({"action": "normalize_image", "p_low": p_low, "p_high": p_high})
-    )
-    return np.clip(image, p_low, p_high) - p_low / (p_high - p_low)
-
-
 # --------- UI Setup Functions ----------#
 
 
@@ -1053,21 +791,6 @@ def create_filter_views(
             )
 
 
-@log_action("update_session_state")
-def update_session_state(technique: str, pixels_to_process: int, results: Any) -> None:
-    """
-    Update session state with processing results.
-
-    Args:
-        technique (str): Image processing technique.
-        pixels_to_process (int): Number of processed pixels.
-        results (Any): The result of the image processing.
-    """
-    st.session_state.update(
-        {"processed_pixels": pixels_to_process, f"{technique}_results": results}
-    )
-
-
 @log_action("visualize_results")
 def visualize_results(
     image_array: ImageArray,
@@ -1177,26 +900,3 @@ def run_technique(technique: str, tab: Any, analysis_params: Dict[str, Any]) -> 
         st.session_state[f"{technique}_results"] = results
     except (ValueError, TypeError, KeyError) as e:
         st.error(f"Error for {technique}: {str(e)}. Please check the logs for details.")
-
-
-@log_action("configure_process_params")
-def configure_process_params(
-    technique: str, process_params: ProcessParams, technique_params: Dict[str, Any]
-) -> None:
-    """Configure process parameters based on the technique."""
-    if technique == "nlm":
-        process_params.analysis_params["use_whole_image"] = technique_params.get(
-            "use_whole_image", False
-        )
-
-
-@log_action("setup_and_run_analysis_techniques")
-def setup_and_run_analysis_techniques(analysis_params: Dict[str, Any]) -> None:
-    """Set up and run analysis techniques based on the provided parameters."""
-    techniques: List[str] = st.session_state.get("techniques", [])
-    tabs: List[Any] = st.session_state.get("tabs", [])
-
-    for technique, tab in zip(techniques, tabs):
-        if tab is not None:
-            with tab:
-                run_technique(technique, tab, analysis_params)

@@ -23,7 +23,7 @@ NLM_FORMULA_CONFIG = {
     The Non-Local Means (NLM) algorithm denoises each pixel by replacing it with a weighted average of pixels from the entire image (or a large search window). The weights are determined by the similarity of small patches around each pixel:
     
     1. Patch Comparison: For each pixel $(x,y)$, compare the patch $P_{{{x},{y}}}$ to patches $P_{{i,j}}$ around other pixels $(i,j)$.
-    2. Weight Calculation: Based on the patch similarity, calculate a weight $w_{{{x},{y}}}(i,j)$ for each comparison.  
+    2. Weight Calculation: Based on the patch similarity, calculate a weight $w_{{{x},{y}}}(i,j)$ for each comparison.
     3. Weighted Average: Use these weights to compute the NLM value $NLM_{{{x},{y}}}$, a weighted average of pixel intensities $I_{{i,j}}$.
     
     This process transitions the original pixel intensity $I_{{{x},{y}}}$ to the non-local mean value $NLM_{{{x},{y}}}$.
@@ -31,13 +31,19 @@ NLM_FORMULA_CONFIG = {
     "additional_formulas": [
         {
             "title": "Neighborhood Analysis",
-            "formula": r"\text{{Patch Size: }} {patch_size} \times {patch_size}"
-            r"\quad\quad\text{{Centered at: }}({x}, {y})"
-            r"\\\\"
-            "{kernel_matrix}",
-            "explanation": r"Analysis of a ${patch_size}\times{patch_size}$ patch $P_{{{x},{y}}}$ centered at $(x,y)$ for patch comparison. Matrix shows pixel values, with the central value (bold) being the denoised pixel.",
+            "formula": (
+                r"\quad\quad\text{Centered at: }({x}, {y})"
+                r"\\\\"
+                "{kernel_matrix}",
+            ),
+            "explanation": (
+                r"Analysis of a ${patch_size}\times{patch_size}$ patch $P_{{{x},{y}}}$ "
+                r"centered at $(x,y)$ for patch comparison. Matrix shows pixel values, "
+                r"with the central value (bold) being the denoised pixel."
+            ),
         },
         {
+
             "title": "Weight Calculation",  # Maybe change this to "Patch Similarity"?
             "formula": r"w_{{{x},{y}}}(i,j) = e^{{-\frac{{\|P_{{{x},{y}}} - P_{{i,j}}\|^2}}{{h^2}}}}",
             "explanation": r"""
@@ -270,10 +276,10 @@ def generate_kernel_matrix(kernel_size, kernel_matrix):
 
     matrix_rows = [
         " & ".join(
-            r"\mathbf{{{:.3f}}}".format(center_value)
+            rf"\mathbf{{{center_value:.3f}}}"
             if i == center and j == center
             # else r"{:.3f}".format(kernel_matrix[i][j])
-            else r"{:.3f}".format(kernel_matrix[i, j])
+            else f"{kernel_matrix[i, j]:.3f}"
             for j in range(kernel_size)
         )
         for i in range(kernel_size)
@@ -287,3 +293,4 @@ def generate_kernel_matrix(kernel_size, kernel_matrix):
         + r"\\ \hdashline".join(matrix_rows)
         + r"\\ \hline\end{array}"
     )
+
