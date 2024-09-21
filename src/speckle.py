@@ -14,34 +14,18 @@ from typing import List
 import numpy as np
 from numba import njit
 
-from src.utils import (
+from src.processing import (
     FilterResult,
-    Point,
     ProcessingDetails,
     calculate_processing_details,
 )
-
-
-# --- Mean Calculation ---
-@njit
-def calculate_mean(local_window):
-    """
-    Mean (μ) calculation: average intensity of all pixels in the kernel K centered at (x, y).
-    Formula: μ_{x,y} = 
-    (1 / N) * Σ_{i,j ∈ K_{x,y}} I_{i,j} = 
-    (1 / kernel_size^2) * Σ_{i,j ∈ K_{x,y}} I_{i,j}
-    """
-    return np.mean(local_window)
-
-
-# --- Standard Deviation Calculation ---
 
 
 # --- Speckle Contrast Calculation ---
 @njit
 def calculate_speckle_contrast(local_std, local_mean):
     """
-    Speckle Contrast (SC): 
+    Speckle Contrast (SC):
     ratio of standard deviation to mean intensity within the kernel centered at (x, y).
     Formula: SC_{x,y} = σ_{x,y} / μ_{x,y}
     """
@@ -50,7 +34,18 @@ def calculate_speckle_contrast(local_std, local_mean):
 
 # --- Apply Speckle Contrast ---
 @njit
-def apply_speckle_contrast(image, kernel_size, pixels_to_process, start_point: Point):
+def apply_speckle_contrast(image, kernel_size, pixels_to_process, start_point):
+    """Applies speckle contrast to the given image.
+
+    Args:
+        image (np.ndarray): The input image.
+        kernel_size (int): Size of the kernel for processing.
+        pixels_to_process (int): Number of pixels to process.
+        start_point (Tuple[int, int]): Starting point for processing.
+
+    Returns:
+        np.ndarray: The processed image.
+    """
     height, width = image.shape
     mean_filter = np.zeros((height, width), dtype=np.float32)
     std_dev_filter = np.zeros((height, width), dtype=np.float32)
@@ -69,7 +64,7 @@ def apply_speckle_contrast(image, kernel_size, pixels_to_process, start_point: P
             ]
 
             # Calculate mean, std deviation, and speckle contrast
-            mean_filter[row, col] = calculate_mean(local_window)
+            mean_filter[row, col] = np.mean(local_window)
             std_dev_filter[row, col] = np.std(local_window)
             sc_filter[row, col] = calculate_speckle_contrast(
                 std_dev_filter[row, col], mean_filter[row, col]
@@ -128,6 +123,8 @@ def process_speckle(image, kernel_size, pixels_to_process):
 # --- Data Class for Results ---
 @dataclass
 class SpeckleResult(FilterResult):
+    """Represents the result of a speckle filter, containing mean and standard deviation filters."""
+
     mean_filter: np.ndarray
     std_dev_filter: np.ndarray
     speckle_contrast_filter: np.ndarray

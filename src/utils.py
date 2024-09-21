@@ -9,19 +9,95 @@ Includes:
 - calculate_processing_details: Calculates processing details for an image.
 """
 
-# --- Imports ---
-from abc import ABC, abstractmethod
+# Import necessary modules
+from src.plotting import run_technique, VisualizationConfig
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple, NamedTuple
-import matplotlib.pyplot as plt
+from typing import Tuple
 import numpy as np
 import streamlit as st
+from typing import Dict, Any, List
+import matplotlib.pyplot as plt
 from streamlit_image_comparison import image_comparison
-
+import json  # Add this import for structured logging
+import logging
 
 # --- Type Aliases ---
-ImageArray = np.ndarray
-PixelCoordinates = Tuple[int, int]
+
+
+def setup_and_run_analysis_techniques(analysis_params: Dict[str, Any]) -> None:
+    """Set up and run analysis techniques based on the provided parameters."""
+    techniques: List[str] = st.session_state.get("techniques", [])
+    tabs: List[Any] = st.session_state.get("tabs", [])
+
+    for technique, tab in zip(techniques, tabs):
+        if tab is not None:
+            with tab:
+                run_technique(technique, tab, analysis_params)
+
+
+def update_session_state(technique: str, pixels_to_process: int, results: Any) -> None:
+    """
+    Update session state with processing results.
+
+    Args:
+        technique (str): Image processing technique.
+        pixels_to_process (int): Number of processed pixels.
+        results (Any): The result of the image processing.
+    """
+    st.session_state.update(
+        {"processed_pixels": pixels_to_process, f"{technique}_results": results}
+    )
+
+
+def create_visualization_config(
+    image_array: np.ndarray,
+    technique: str,
+    analysis_params: Dict[str, Any],
+    results: Any,
+    last_processed_pixel: Tuple[int, int],
+    kernel_matrix: np.ndarray,
+    kernel_size: int,
+    original_pixel_value: float,
+    show_per_pixel_processing: bool,
+) -> VisualizationConfig:
+    """Utility to create a VisualizationConfig object."""
+    return VisualizationConfig(
+        vmin=None,
+        vmax=None,
+        zoom=False,
+        show_kernel=show_per_pixel_processing,
+        show_per_pixel_processing=show_per_pixel_processing,
+        search_window_size=analysis_params.get("search_window_size"),
+        use_full_image=analysis_params.get("use_whole_image", False),
+        image_array=image_array,
+        analysis_params=analysis_params,
+        results=results,
+        ui_placeholders=st.session_state.get(f"{technique}_placeholders", {}),
+        last_processed_pixel=(last_processed_pixel[0], last_processed_pixel[1]),
+        kernel_size=kernel_size,
+        kernel_matrix=kernel_matrix,
+        original_pixel_value=original_pixel_value,
+        color_map=st.session_state.get("color_map", "gray"),
+        title=f"{technique.upper()} Analysis Result",
+        figure_size=(8, 8),
+        technique=technique,  # Keep this line
+    )
+
+
+# Configure logging with structured format
+class JsonFormatter(logging.Formatter):
+    """Formatter that outputs logs in JSON format."""
+
+    def format(self, record):
+        log_obj = {
+            "level": record.levelname,
+            "message": record.getMessage(),
+            "time": self.formatTime(record),
+            "function": record.funcName,
+            "line": record.lineno,
+            "filename": record.filename,
+        }
+        return json.dumps(log_obj)
 
 
 # --- Common Error Handling ---
@@ -91,9 +167,7 @@ class ImageComparison:
                                     return None, None
 
                                 if len(normalized_images) != 2:
-                                    st.error(
-                                        f"Got {len(normalized_images)}."
-                                    )
+                                    st.error(f"Got {len(normalized_images)}.")
                                     return None, None
 
                                 return normalized_images[0], normalized_images[1]
@@ -141,109 +215,4 @@ class ImageComparison:
             handle_error(f"Error while handling image comparison: {e}")
 
 
-# --- Abstract Base Class for Filter Results ---
-@dataclass
-class FilterResult(ABC):
-    """Abstract base class for various filtering techniques."""
-
-    processing_coord: PixelCoordinates
-    processing_end_coord: PixelCoordinates
-    kernel_size: int
-    pixels_processed: int
-    image_dimensions: Tuple[int, int]
-
-    @abstractmethod
-    def get_filter_data(self) -> Dict[str, Any]:
-        """Get filter-specific data as a dictionary."""
-
-    @classmethod
-    @abstractmethod
-    def get_filter_options(cls) -> List[str]:
-        """Get available filter options."""
-
-    def get_last_processed_coordinates(self) -> PixelCoordinates:
-        """Get the last processed pixel coordinates."""
-        return self.processing_end_coord
-
-
 # --- Named Tuples for Coordinates and Dimensions ---
-class Point(NamedTuple):
-    """A named tuple representing a point with x and y coordinates."""
-
-    x: int
-    y: int
-
-
-class Dimensions(NamedTuple):
-    """A named tuple representing dimensions with width and height."""
-
-    width: int
-    height: int
-
-
-# --- Dataclass for Processing Details ---
-@dataclass(frozen=True)
-class ProcessingDetails:
-    """A dataclass to store image processing details."""
-
-    image_dimensions: Dimensions
-    valid_dimensions: Dimensions
-    start_point: Point
-    end_point: Point
-    pixels_to_process: int
-    kernel_size: int
-
-    def __post_init__(self):
-        """Validate dimensions and coordinates after initialization."""
-
-        def _validate_dimensions():
-            if self.image_dimensions.width <= 0 or self.image_dimensions.height <= 0:
-                raise ValueError("Image dimensions must be positive.")
-            if self.valid_dimensions.width <= 0 or self.valid_dimensions.height <= 0:
-                raise ValueError(
-                    "Kernel size is too large for the given image dimensions."
-                )
-            if self.pixels_to_process < 0:
-                raise ValueError("Number of pixels to process must be non-negative.")
-
-        _validate_dimensions()
-
-        def _validate_coordinates():
-            if self.start_point.x < 0 or self.start_point.y < 0:
-                raise ValueError("Start coordinates must be non-negative.")
-            if (
-                self.end_point.x >= self.image_dimensions.width
-                or self.end_point.y >= self.image_dimensions.height
-            ):
-                raise ValueError("End coordinates exceed image boundaries.")
-
-        _validate_coordinates()
-
-
-# --- Function to Calculate Processing Details ---
-def calculate_processing_details(
-    image: ImageArray, kernel_size: int, max_pixels: Optional[int]
-) -> ProcessingDetails:
-    """Calculate processing details for the given image and kernel size."""
-    image_height, image_width = image.shape[:2]
-    half_kernel = kernel_size // 2
-    valid_height, valid_width = (
-        image_height - kernel_size + 1,
-        image_width - kernel_size + 1,
-    )
-
-    if valid_height <= 0 or valid_width <= 0:
-        raise ValueError("Kernel size is too large for the given image dimensions.")
-
-    pixels_to_process = min(valid_height * valid_width, max_pixels or float("inf"))
-    end_y, end_x = divmod(pixels_to_process - 1, valid_width)
-    end_y, end_x = end_y + half_kernel, end_x + half_kernel
-
-    return ProcessingDetails(
-        image_dimensions=Dimensions(width=image_width, height=image_height),
-        valid_dimensions=Dimensions(width=valid_width, height=valid_height),
-        start_point=Point(x=half_kernel, y=half_kernel),
-        end_point=Point(x=end_x, y=end_y),
-        pixels_to_process=pixels_to_process,
-        kernel_size=kernel_size,
-    )
