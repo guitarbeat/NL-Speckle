@@ -9,7 +9,9 @@ import streamlit as st
 from typing import Dict, Any, List, Tuple
 import matplotlib.pyplot as plt
 from streamlit_image_comparison import image_comparison
+from src.plotting import log_action
 
+@log_action
 def setup_and_run_analysis_techniques(analysis_params: Dict[str, Any]) -> None:
     """Set up and run analysis techniques based on the provided parameters."""
     techniques: List[str] = st.session_state.get("techniques", [])
@@ -20,12 +22,14 @@ def setup_and_run_analysis_techniques(analysis_params: Dict[str, Any]) -> None:
             with tab:
                 run_technique(technique, tab, analysis_params)
 
+@log_action
 def update_session_state(technique: str, pixels_to_process: int, results: Any) -> None:
     """Update session state with processing results."""
     st.session_state.update(
         {"processed_pixels": pixels_to_process, f"{technique}_results": results}
     )
 
+@log_action
 def create_visualization_config(
     image_array: np.ndarray,
     technique: str,
@@ -60,6 +64,7 @@ def create_visualization_config(
         technique=technique,
     )
 
+@log_action
 class ImageComparison:
     """Class for handling image comparison functionality."""
 

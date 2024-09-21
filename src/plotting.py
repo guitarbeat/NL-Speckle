@@ -11,8 +11,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import streamlit as st
 from matplotlib.collections import LineCollection
-import logging
-import json
 from src.formula import display_analysis_formula
 from src.nlm import NLMResult
 from src.speckle import SpeckleResult
@@ -23,15 +21,8 @@ from src.processing import (
     ProcessParams,
     configure_process_params,
 )
+from src.decor import log_action
 
-import functools
-
-# Update logging configuration
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(message)s",  # We will use the custom formatter
-    handlers=[logging.StreamHandler()],
-)
 
 
 # Constants for Image Visualization
@@ -39,31 +30,11 @@ DEFAULT_SPECKLE_VIEW = ["Speckle Contrast", "Original Image"]
 DEFAULT_NLM_VIEW = ["Non-Local Means", "Original Image"]
 
 
+@log_action
 def generate_plot_key(filter_name: str, plot_type: str) -> str:
     """Generate a key for identifying plots based on filter name and plot type."""
     base_key = filter_name.lower().replace(" ", "_")
     return f"zoomed_{base_key}" if plot_type == "zoomed" else base_key
-
-
-# Logging decorator
-def log_action(action_name: str):
-    """Decorator to log actions with a specified name."""
-
-    def decorator(func):
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            logging.info(json.dumps({"action": action_name}))
-            try:
-                result = func(*args, **kwargs)
-                logging.info(json.dumps({"action": action_name, "status": "success"}))
-                return result
-            except Exception as e:
-                logging.error(json.dumps({"action": action_name, "error": str(e)}))
-                raise
-
-        return wrapper
-
-    return decorator
 
 
 @dataclass
@@ -105,16 +76,19 @@ class VisualizationConfig:
         """Post-initialization validation."""
         self._validate_vmin_vmax()
 
+    @log_action
     def _validate_vmin_vmax(self):
         """Ensure vmin is not greater than vmax."""
         if self.vmin is not None and self.vmax is not None and self.vmin > self.vmax:
             raise ValueError("vmin cannot be greater than vmax.")
 
     @property
+    @log_action
     def zoom_dimensions(self) -> Tuple[int, int]:
         """Return zoomed dimensions if zoom is enabled."""
         return self.figure_size if self.zoom else (self.image_array.data.shape[:2])
 
+    @log_action
     def set_kernel_matrix(self, matrix: np.ndarray):
         """Set the kernel matrix with validation."""
         if matrix.shape != (self.kernel_size, self.kernel_size):
@@ -139,6 +113,7 @@ class ImageArray:
     data: np.ndarray
 
 
+@log_action
 def create_process_params(
     analysis_params: Dict[str, Any], technique: str, technique_params: Dict[str, Any]
 ) -> ProcessParams:
@@ -181,8 +156,7 @@ def create_process_params(
 
 # --------- Updated Functions ----------#
 
-
-@log_action("visualize_filter_and_zoomed")
+@log_action(detailed_logging=True)
 def visualize_filter_and_zoomed(
     filter_name: str, filter_data: np.ndarray, viz_config: VisualizationConfig
 ):
@@ -202,53 +176,18 @@ def visualize_filter_and_zoomed(
         )
         title = f"Zoomed-In {filter_name}" if plot_type == "zoomed" else filter_name
 
-        try:
-            # Log the type of results before accessing nonlocal_means
-            if hasattr(viz_config.results, "nonlocal_means"):
-                logging.info(
-                    json.dumps(
-                        {
-                            "action": "visualize_filter_and_zoomed",
-                            "filter_name": filter_name,
-                            "results_type": type(
-                                viz_config.results.nonlocal_means
-                            ).__name__,
-                        }
-                    )
-                )
-            else:
-                logging.warning(
-                    json.dumps(
-                        {
-                            "action": "visualize_filter_and_zoomed",
-                            "filter_name": filter_name,
-                            "message": "does not have nonlocal_means attribute.",
-                        }
-                    )
-                )
-
-            visualize_image(
-                filter_data,
-                viz_config.ui_placeholders[plot_key],
-                *viz_config.last_processed_pixel,
-                viz_config.kernel_size,
-                title=title,
-                config=config,
-            )
-        except Exception as e:
-            logging.error(
-                json.dumps(
-                    {
-                        "action": "visualize_filter_and_zoomed",
-                        "filter_name": filter_name,
-                        "error": str(e),
-                    }
-                )
-            )
-            raise
+  
+        visualize_image(
+            filter_data,
+            viz_config.ui_placeholders[plot_key],
+            *viz_config.last_processed_pixel,
+            viz_config.kernel_size,
+            title=title,
+            config=config,
+        )
 
 
-@log_action("update_visualization_config")
+@log_action
 def update_visualization_config(
     viz_config: VisualizationConfig,
     filter_data: np.ndarray,
@@ -284,7 +223,7 @@ def update_visualization_config(
 # --------- Visualization Functions ----------#
 
 
-@log_action("visualize_analysis_results")
+@log_action
 def visualize_analysis_results(viz_params: VisualizationConfig) -> None:
     """
     Visualize analysis results based on the provided parameters.
@@ -293,54 +232,38 @@ def visualize_analysis_results(viz_params: VisualizationConfig) -> None:
         viz_params (VisualizationConfig): Visualization parameters including results,
         image array, etc.
     """
-    try:
-        last_processed_x = viz_params.last_processed_pixel.x
-        last_processed_y = viz_params.last_processed_pixel.y
 
-        if viz_params.results is None:
-            logging.warning(
-                json.dumps(
-                    {
-                        "action": "visualize_analysis_results",
-                        "message": "Results are None. Skipping visualization.",
-                    }
-                )
-            )
-            return
+    last_processed_x = viz_params.last_processed_pixel.x
+    last_processed_y = viz_params.last_processed_pixel.y
 
-        filter_options, specific_params = prepare_filter_options_and_parameters(
-            viz_params.results, viz_params.last_processed_pixel
+
+    filter_options, specific_params = prepare_filter_options_and_parameters(
+        viz_params.results, viz_params.last_processed_pixel
+    )
+    filter_options["Original Image"] = viz_params.image_array.data
+
+    selected_filters = st.session_state.get(
+        f"{viz_params.technique}_selected_filters", []
+    )
+    for filter_name in selected_filters:
+        if filter_name in filter_options:
+            filter_data = filter_options[filter_name]
+            visualize_filter_and_zoomed(filter_name, filter_data, viz_params)
+
+    if viz_params.show_per_pixel_processing:
+        display_analysis_formula(
+            specific_params,
+            viz_params.ui_placeholders,
+            viz_params.technique,
+            last_processed_x,
+            last_processed_y,
+            viz_params.kernel_size,
+            viz_params.kernel_matrix,
+            viz_params.original_pixel_value,
         )
-        filter_options["Original Image"] = viz_params.image_array.data
-
-        selected_filters = st.session_state.get(
-            f"{viz_params.technique}_selected_filters", []
-        )
-        for filter_name in selected_filters:
-            if filter_name in filter_options:
-                filter_data = filter_options[filter_name]
-                visualize_filter_and_zoomed(filter_name, filter_data, viz_params)
-
-        if viz_params.show_per_pixel_processing:
-            display_analysis_formula(
-                specific_params,
-                viz_params.ui_placeholders,
-                viz_params.technique,
-                last_processed_x,
-                last_processed_y,
-                viz_params.kernel_size,
-                viz_params.kernel_matrix,
-                viz_params.original_pixel_value,
-            )
-    except ValueError as e:
-        logging.error(
-            json.dumps({"action": "visualize_analysis_results", "error": str(e)})
-        )
-        st.error("An error occurred during visualization. Please check the logs.")
-        raise
 
 
-@log_action("create_image_plot")
+@log_action
 def create_image_plot(
     plot_image: np.ndarray, config: VisualizationConfig
 ) -> plt.Figure:
@@ -353,25 +276,18 @@ def create_image_plot(
     Returns:
         plt.Figure: The created plot figure.
     """
-    try:
-        fig, ax = plt.subplots(1, 1, figsize=config.figure_size)
-        ax.imshow(plot_image, vmin=config.vmin, vmax=config.vmax, cmap=config.color_map)
-        ax.set_title(config.title)
-        ax.axis("off")
+    fig, ax = plt.subplots(1, 1, figsize=config.figure_size)
+    ax.imshow(plot_image, vmin=config.vmin, vmax=config.vmax, cmap=config.color_map)
+    ax.set_title(config.title)
+    ax.axis("off")
 
-        add_overlays(ax, plot_image, config)
-        fig.tight_layout(pad=2)
-        return
-    except Exception as e:
-        logging.error(
-            json.dumps(
-                {"action": "create_image_plot", "title": config.title, "error": str(e)}
-            )
-        )
-        raise
+    add_overlays(ax, plot_image, config)
+    fig.tight_layout(pad=2)
+    return
 
 
-@log_action("prepare_filter_options_and_parameters")
+
+@log_action
 def prepare_filter_options_and_parameters(
     results: Any, last_processed_pixel: Tuple[int, int]
 ) -> Tuple[Dict[str, np.ndarray], Dict[str, Any]]:
@@ -415,7 +331,7 @@ def prepare_filter_options_and_parameters(
     return filter_options, specific_params
 
 
-@log_action("prepare_comparison_images")
+@log_action
 def prepare_comparison_images() -> Optional[Dict[str, np.ndarray]]:
     """
     Prepare images for comparison from different analysis results.
@@ -436,7 +352,7 @@ def prepare_comparison_images() -> Optional[Dict[str, np.ndarray]]:
     return comparison_images if len(comparison_images) > 1 else None
 
 
-@log_action("get_zoomed_image_section")
+@log_action
 def get_zoomed_image_section(
     image: np.ndarray, center_x: int, center_y: int, kernel_size: int
 ) -> Tuple[np.ndarray, int, int]:
@@ -469,7 +385,7 @@ def get_zoomed_image_section(
 # ---- Annotation Functions---=--#
 
 
-@log_action("add_overlays")
+@log_action
 def add_overlays(
     ax: plt.Axes, plot_image: np.ndarray, config: VisualizationConfig
 ) -> None:
@@ -481,24 +397,6 @@ def add_overlays(
         plot_image (np.ndarray): The image being plotted.
         config (VisualizationConfig): Configuration parameters.
     """
-    # Inline validation logic
-    if config.last_processed_pixel.x < 0 or config.last_processed_pixel.y < 0:
-        logging.error(
-            json.dumps(
-                {
-                    "action": "add_overlays",
-                    "error": "Center coordinates must be non-negative.",
-                }
-            )
-        )
-        raise ValueError("Invalid inputs for center, kernel size or config")
-    if config.kernel_size <= 0:
-        logging.error(
-            json.dumps(
-                {"action": "add_overlays", "error": "Kernel size must be positive."}
-            )
-        )
-        raise ValueError("Invalid inputs for center, kernel size or config")
 
     if config.show_kernel:
         # Draw main rectangle
@@ -589,14 +487,7 @@ def add_overlays(
         if config.use_full_image:
             window_left, window_top = -0.5, -0.5
             window_width, window_height = image_width, image_height
-            logging.info(
-                json.dumps(
-                    {
-                        "action": "add_overlays",
-                        "message": "Using full image as search window",
-                    }
-                )
-            )
+
         else:
             window_left = max(0, config.last_processed_pixel.x - half_window_size) - 0.5
             window_top = max(0, config.last_processed_pixel.y - half_window_size) - 0.5
@@ -641,7 +532,7 @@ def add_overlays(
 # --------- UI Setup Functions ----------#
 
 
-@log_action("create_technique_ui_elements")
+@log_action
 def create_technique_ui_elements(
     technique: str, tab: Any, show_per_pixel_processing: bool
 ) -> Dict[str, Any]:
@@ -683,7 +574,7 @@ def create_technique_ui_elements(
 
 
 # --------- Utility Functions ----------#
-@log_action("visualize_image")
+@log_action
 def visualize_image(
     image: np.ndarray, placeholder, config: VisualizationConfig
 ) -> None:
@@ -714,7 +605,7 @@ def visualize_image(
         )
 
 
-@log_action("get_filter_options")
+@log_action
 def get_filter_options(technique: str) -> List[str]:
     """
     Get filter options based on the image processing technique.
@@ -733,7 +624,7 @@ def get_filter_options(technique: str) -> List[str]:
         return []
 
 
-@log_action("create_filter_selection")
+@log_action
 def create_filter_selection(technique: str, filter_options: List[str]) -> List[str]:
     """
     Create and return a filter selection UI element.
@@ -762,7 +653,7 @@ def create_filter_selection(technique: str, filter_options: List[str]) -> List[s
     return selected_filters
 
 
-@log_action("create_filter_views")
+@log_action
 def create_filter_views(
     selected_filters: List[str],
     ui_placeholders: Dict[str, Any],
@@ -791,7 +682,7 @@ def create_filter_views(
             )
 
 
-@log_action("visualize_results")
+@log_action
 def visualize_results(
     image_array: ImageArray,
     technique: str,
@@ -879,11 +770,9 @@ def visualize_results(
 
 
 # --------- Helpers ----------#
-@log_action("run_technique")
+
+@log_action
 def run_technique(technique: str, tab: Any, analysis_params: Dict[str, Any]) -> None:
-    """
-    Execute a specific image processing technique and update the UI with the results.
-    """
     technique_params = st.session_state.get(f"{technique}_params", {})
     show_per_pixel_processing = analysis_params.get("show_per_pixel_processing", False)
 
@@ -898,5 +787,23 @@ def run_technique(technique: str, tab: Any, analysis_params: Dict[str, Any]) -> 
         configure_process_params(technique, process_params, technique_params)
         _, results = process_image(process_params)
         st.session_state[f"{technique}_results"] = results
+
+        # Create VisualizationConfig object
+        viz_config = VisualizationConfig(
+            image_array=ImageArray(process_params.image_array),
+            technique=technique,
+            analysis_params=analysis_params,
+            results=results,
+            last_processed_pixel=PixelCoordinates(*results.get_last_processed_coordinates()),
+            ui_placeholders=ui_placeholders,
+            show_per_pixel_processing=show_per_pixel_processing,
+            kernel_size=process_params.analysis_params.get('kernel_size', 3),
+            kernel_matrix=None,  # You might need to extract this from somewhere
+            original_pixel_value=0.0,  # You might need to calculate this
+        )
+
+        # Call visualize_analysis_results
+        visualize_analysis_results(viz_config)
+
     except (ValueError, TypeError, KeyError) as e:
         st.error(f"Error for {technique}: {str(e)}. Please check the logs for details.")

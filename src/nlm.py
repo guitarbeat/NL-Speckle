@@ -18,13 +18,11 @@ Dependencies:
 - logging
 """
 
-import itertools
 import logging
 from dataclasses import dataclass
 from typing import List, Tuple
 
 import numpy as np
-from numba import njit
 
 
 
@@ -32,15 +30,13 @@ from src.processing import(
     FilterResult,
     ProcessingDetails,
     calculate_processing_details,
-    
 )
+from src.decor import log_action
 # --- Logger Setup ---
 logger = logging.getLogger(__name__)
 
 # --- Patch Calculation Functions ---
 
-
-@njit
 def calculate_patch_difference(
     center_patch: np.ndarray, comparison_patch: np.ndarray
 ) -> float:
@@ -56,8 +52,6 @@ def calculate_patch_difference(
     """
     return np.sum((center_patch - comparison_patch) ** 2)
 
-
-@njit
 def calculate_weight(patch_difference: float, filter_strength: float) -> float:
     """
     Calculates the weight for a patch comparison based on patch difference and filter strength.
@@ -71,36 +65,25 @@ def calculate_weight(patch_difference: float, filter_strength: float) -> float:
     """
     return np.exp(-patch_difference / (filter_strength**2))
 
-
 def get_patch(image: np.ndarray, row: int, col: int, half_kernel: int) -> np.ndarray:
+    # sourcery skip: use-itertools-product
     """
     Extracts a square patch from the image centered at the given row and column.
-
-    Args:
-        image (np.ndarray): The input image.
-        row (int): The row index for the center of the patch.
-        col (int): The column index for the center of the patch.
-        half_kernel (int): Half of the kernel size (radius of the patch).
-
-    Returns:
-        np.ndarray: The extracted patch.
     """
     height, width = image.shape
     patch = np.zeros((2 * half_kernel + 1, 2 * half_kernel + 1), dtype=image.dtype)
 
-    for i, j in itertools.product(
-        range(-half_kernel, half_kernel + 1), range(-half_kernel, half_kernel + 1)
-    ):
-        patch_row = row + i
-        patch_col = col + j
-        if 0 <= patch_row < height and 0 <= patch_col < width:
-            patch[i + half_kernel, j + half_kernel] = image[patch_row, patch_col]
+    for i in range(-half_kernel, half_kernel + 1):
+        for j in range(-half_kernel, half_kernel + 1):
+            patch_row = row + i
+            patch_col = col + j
+            if 0 <= patch_row < height and 0 <= patch_col < width:
+                patch[i + half_kernel, j + half_kernel] = image[patch_row, patch_col]
 
     return patch
 
 
 # --- NLM Calculation Function ---
-
 
 def calculate_nlm_value(
     row: int,
@@ -109,20 +92,9 @@ def calculate_nlm_value(
     kernel_size: int,
     search_window_size: int,
     filter_strength: float,
-) -> Tuple[float, float]:
+) -> Tuple[float, float]:  # sourcery skip: use-itertools-product
     """
     Calculates the NLM denoised value for a pixel in the image.
-
-    Args:
-        row (int): The row index of the pixel.
-        col (int): The column index of the pixel.
-        image (np.ndarray): The input image.
-        kernel_size (int): The size of the kernel used for the patch.
-        search_window_size (int): The size of the search window.
-        filter_strength (float): The filter strength used for weighting.
-
-    Returns:
-        Tuple[float, float]: The NLM denoised pixel value and the total weight.
     """
     if kernel_size is None:
         raise ValueError("kernel_size cannot be None")
@@ -136,19 +108,18 @@ def calculate_nlm_value(
     total_weight = 0.0
     weighted_sum = 0.0
 
-    for i, j in itertools.product(
-        range(max(0, row - half_search), min(height, row + half_search + 1)),
-        range(max(0, col - half_search), min(width, col + half_search + 1)),
-    ):
-        if i == row and j == col:
-            continue
+    # Replace itertools.product with nested loops
+    for i in range(max(0, row - half_search), min(height, row + half_search + 1)):
+        for j in range(max(0, col - half_search), min(width, col + half_search + 1)):
+            if i == row and j == col:
+                continue
 
-        comparison_patch = get_patch(image, i, j, half_kernel)
-        patch_difference = calculate_patch_difference(center_patch, comparison_patch)
-        weight = calculate_weight(patch_difference, filter_strength)
+            comparison_patch = get_patch(image, i, j, half_kernel)
+            patch_difference = calculate_patch_difference(center_patch, comparison_patch)
+            weight = calculate_weight(patch_difference, filter_strength)
 
-        total_weight += weight
-        weighted_sum += weight * image[i, j]
+            total_weight += weight
+            weighted_sum += weight * image[i, j]
 
     nlm_value = weighted_sum / total_weight if total_weight > 0 else image[row, col]
 
@@ -157,8 +128,6 @@ def calculate_nlm_value(
 
 # --- NLM Application Function ---
 
-
-@njit(parallel=True)
 def apply_nlm(
     image: np.ndarray,
     kernel_size: int,
@@ -188,8 +157,8 @@ def apply_nlm(
     total_weights = np.zeros_like(image)
 
     for pixel in range(pixels_to_process):
-        row = start_point.y + pixel // valid_width
-        col = start_point.x + pixel % valid_width
+        row = start_point[1] + pixel // valid_width  # Use indexing
+        col = start_point[0] + pixel % valid_width    # Use indexing
 
         if row < height and col < width:
             nlm_value, weight = calculate_nlm_value(
@@ -203,7 +172,7 @@ def apply_nlm(
 
 # --- Main Processing Function ---
 
-
+@log_action
 def process_nlm(
     image: np.ndarray,
     kernel_size: int,
@@ -229,8 +198,9 @@ def process_nlm(
             image, kernel_size, pixels_to_process
         )
 
+        # Ensure image is a NumPy array before converting
         nonlocal_means, total_weights = apply_nlm(
-            image.astype(np.float32),
+            np.asarray(image, dtype=np.float32),  # Ensure this is a float32 array
             kernel_size,
             search_window_size,
             filter_strength,
