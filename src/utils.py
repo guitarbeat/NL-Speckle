@@ -1,28 +1,14 @@
 """
 Utility functions and classes for image processing and comparison.
-
-Includes:
-- ImageComparison: Handles image comparison in Streamlit.
-- FilterResult: Abstract base class for filtering techniques.
-- Point and Dimensions: Named tuples for coordinates and dimensions.
-- ProcessingDetails: Dataclass for storing image processing details.
-- calculate_processing_details: Calculates processing details for an image.
 """
 
 # Import necessary modules
 from src.plotting import run_technique, VisualizationConfig
-from dataclasses import dataclass
-from typing import Tuple
 import numpy as np
 import streamlit as st
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Tuple
 import matplotlib.pyplot as plt
 from streamlit_image_comparison import image_comparison
-import json  # Add this import for structured logging
-import logging
-
-# --- Type Aliases ---
-
 
 def setup_and_run_analysis_techniques(analysis_params: Dict[str, Any]) -> None:
     """Set up and run analysis techniques based on the provided parameters."""
@@ -34,20 +20,11 @@ def setup_and_run_analysis_techniques(analysis_params: Dict[str, Any]) -> None:
             with tab:
                 run_technique(technique, tab, analysis_params)
 
-
 def update_session_state(technique: str, pixels_to_process: int, results: Any) -> None:
-    """
-    Update session state with processing results.
-
-    Args:
-        technique (str): Image processing technique.
-        pixels_to_process (int): Number of processed pixels.
-        results (Any): The result of the image processing.
-    """
+    """Update session state with processing results."""
     st.session_state.update(
         {"processed_pixels": pixels_to_process, f"{technique}_results": results}
     )
-
 
 def create_visualization_config(
     image_array: np.ndarray,
@@ -80,34 +57,9 @@ def create_visualization_config(
         color_map=st.session_state.get("color_map", "gray"),
         title=f"{technique.upper()} Analysis Result",
         figure_size=(8, 8),
-        technique=technique,  # Keep this line
+        technique=technique,
     )
 
-
-# Configure logging with structured format
-class JsonFormatter(logging.Formatter):
-    """Formatter that outputs logs in JSON format."""
-
-    def format(self, record):
-        log_obj = {
-            "level": record.levelname,
-            "message": record.getMessage(),
-            "time": self.formatTime(record),
-            "function": record.funcName,
-            "line": record.lineno,
-            "filename": record.filename,
-        }
-        return json.dumps(log_obj)
-
-
-# --- Common Error Handling ---
-def handle_error(message: str):
-    """Handle errors and display an error message in Streamlit."""
-    st.error(f"{message}. Please check the logs.")
-
-
-# --- Image Comparison Class ---
-@dataclass
 class ImageComparison:
     """Class for handling image comparison functionality."""
 
@@ -120,99 +72,81 @@ class ImageComparison:
                 if not images:
                     st.warning("No images available for comparison.")
                     return
+                
                 available_images = list(images.keys())
-
-                def get_image_choices():
-                    col1, col2 = st.columns(2)
-                    image_choice_1 = col1.selectbox(
-                        "Select first image to compare:",
-                        [""] + available_images,
-                        index=0,
-                    )
-                    image_choice_2 = col2.selectbox(
-                        "Select second image to compare:",
-                        [""] + available_images,
-                        index=0,
-                    )
-                    return image_choice_1, image_choice_2
-
-                image_choice_1, image_choice_2 = get_image_choices()
+                image_choice_1, image_choice_2 = ImageComparison.get_image_choices(available_images)
 
                 if image_choice_1 and image_choice_2:
                     img1, img2 = images[image_choice_1], images[image_choice_2]
 
-                    def display():
-                        if image_choice_1 == image_choice_2:
-
-                            def normalize_and_colorize(images, cmap_names):
-                                colored_images = []
-                                for img, cmap_name in zip(images, cmap_names):
-                                    normalized = (
-                                        (img - np.min(img))
-                                        / (np.max(img) - np.min(img))
-                                        if np.max(img) - np.min(img) != 0
-                                        else img
-                                    )
-                                    colored = plt.get_cmap(cmap_name)(normalized)[
-                                        :, :, :3
-                                    ]
-                                    colored_images.append(
-                                        (colored * 255).astype(np.uint8)
-                                    )
-                                return colored_images
-
-                            def process_normalized_images(normalized_images):
-                                if not isinstance(normalized_images, list):
-                                    st.error("Expected a list of normalized images.")
-                                    return None, None
-
-                                if len(normalized_images) != 2:
-                                    st.error(f"Got {len(normalized_images)}.")
-                                    return None, None
-
-                                return normalized_images[0], normalized_images[1]
-
-                            normalized_images = normalize_and_colorize(
-                                [img1, img2], [cmap_name] * 2
-                            )
-                            img1_uint8, img2_uint8 = process_normalized_images(
-                                normalized_images
-                            )
-
-                            image_comparison(
-                                img1=img1_uint8,
-                                img2=img2_uint8,
-                                label1=image_choice_1,
-                                label2=image_choice_2,
-                            )
-                            st.subheader("Selected Images")
-                            st.image(
-                                [img1_uint8, img2_uint8],
-                                caption=[image_choice_1, image_choice_2],
-                            )
-                        else:
-                            st.error(
-                                "Please select two different images for comparison."
-                            )
-
-                            def display_difference_map():
-                                diff_map = np.abs(img1 - img2)
-                                display_diff = normalize_and_colorize(
-                                    [diff_map], [cmap_name]
-                                )[0]
-                                st.image(
-                                    display_diff,
-                                    caption="Difference Map",
-                                    use_column_width=True,
-                                )
-
-                            display_difference_map()
-
-                    display()
+                    if image_choice_1 == image_choice_2:
+                        ImageComparison.display_same_image_comparison(img1, img2, image_choice_1, image_choice_2, cmap_name)
+                    else:
+                        st.error("Please select two different images for comparison.")
+                        ImageComparison.display_difference_map(img1, img2, cmap_name)
                 else:
                     st.info("Select two images to compare.")
         except (KeyError, ValueError, TypeError) as e:
-            handle_error(f"Error while handling image comparison: {e}")
+            st.error(f"Error in image comparison: {str(e)}")
+    @staticmethod
+    def get_image_choices(available_images):
+        col1, col2 = st.columns(2)
+        image_choice_1 = col1.selectbox(
+            "Select first image to compare:",
+            [""] + available_images,
+            index=0,
+        )
+        image_choice_2 = col2.selectbox(
+            "Select second image to compare:",
+            [""] + available_images,
+            index=0,
+        )
+        return image_choice_1, image_choice_2
+    
+    @staticmethod
+    def normalize_and_colorize(images, cmap_names):
+        colored_images = []
+        for img, cmap_name in zip(images, cmap_names):
+            normalized = (img - np.min(img)) / (np.max(img) - np.min(img)) if np.max(img) - np.min(img) != 0 else img
+            colored = plt.get_cmap(cmap_name)(normalized)[:, :, :3]
+            colored_images.append((colored * 255).astype(np.uint8))
+        return colored_images
 
+    @staticmethod
+    def process_normalized_images(normalized_images):
+        if not isinstance(normalized_images, list):
+            st.error("Expected a list of normalized images.")
+            return None, None
 
-# --- Named Tuples for Coordinates and Dimensions ---
+        if len(normalized_images) != 2:
+            st.error(f"Got {len(normalized_images)} images. Expected 2.")
+            return None, None
+
+        return normalized_images[0], normalized_images[1]
+
+    @staticmethod
+    def display_same_image_comparison(img1, img2, image_choice_1, image_choice_2, cmap_name):
+        normalized_images = ImageComparison.normalize_and_colorize([img1, img2], [cmap_name] * 2)
+        img1_uint8, img2_uint8 = ImageComparison.process_normalized_images(normalized_images)
+
+        image_comparison(
+            img1=img1_uint8,
+            img2=img2_uint8,
+            label1=image_choice_1,
+            label2=image_choice_2,
+        )
+        st.subheader("Selected Images")
+        st.image(
+            [img1_uint8, img2_uint8],
+            caption=[image_choice_1, image_choice_2],
+        )
+
+    @staticmethod
+    def display_difference_map(img1, img2, cmap_name):
+        diff_map = np.abs(img1 - img2)
+        display_diff = ImageComparison.normalize_and_colorize([diff_map], [cmap_name])[0]
+        st.image(
+            display_diff,
+            caption="Difference Map",
+            use_column_width=True,
+        )
