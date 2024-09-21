@@ -9,10 +9,14 @@ import streamlit as st
 from src.utils import ImageComparison, setup_and_run_analysis_techniques
 from src.plotting import (
     prepare_comparison_images,
-    VisualizationConfig,
+    VisualizationConfig
 )
 from src.sidebar import SidebarUI
 from src.processing import calculate_processing_details
+from src.decor import log_action
+import logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
 
 APP_CONFIG = {
     "page_title": "Speckle Contrast Visualization",
@@ -21,6 +25,7 @@ APP_CONFIG = {
     "initial_sidebar_state": "expanded",
 }
 
+@log_action
 def main():
     """Main function to set up the Streamlit app configuration, logo, and run the application."""
     st.set_page_config(**APP_CONFIG)
@@ -40,7 +45,7 @@ def main():
         st.error(f"An error occurred: {e}. Please check your input and try again.")
 
 
-
+@log_action
 def setup_app(st):
     sidebar_params = SidebarUI.setup()
     st.session_state.sidebar_params = sidebar_params
@@ -62,7 +67,7 @@ def setup_app(st):
     params = {
         "image_array": sidebar_params["image_array"],
         "show_per_pixel_processing": sidebar_params["show_per_pixel_processing"],
-        "total_pixels": details.valid_dimensions.width * details.valid_dimensions.height,
+        "total_pixels": details.valid_dimensions[0] * details.valid_dimensions[1],  # Change here
         "pixels_to_process": details.pixels_to_process,
         "image_dimensions": details.image_dimensions,
         "kernel_size": kernel_size,

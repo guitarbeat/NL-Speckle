@@ -8,8 +8,9 @@ import logging
 import json
 import numpy as np
 from typing import Any, Dict, List, Optional, Tuple
+from src.decor import log_action
 
-
+@log_action
 def extract_or_default(source: dict, key: str, default_value):
     """
     Extract a value from the dictionary or return a default if key is not present.
@@ -28,6 +29,7 @@ def extract_or_default(source: dict, key: str, default_value):
     )
     return value
 
+
 @dataclass
 class ProcessParams:
     """Holds parameters for image processing."""
@@ -39,7 +41,7 @@ class ProcessParams:
     update_state: bool
     handle_visualization: bool
 
-
+@log_action
 def normalize_image(
     image: np.ndarray, low_percentile: int = 2, high_percentile: int = 98
 ) -> np.ndarray:
@@ -60,7 +62,7 @@ def normalize_image(
     )
     return np.clip(image, p_low, p_high) - p_low / (p_high - p_low)
 
-
+@log_action
 def extract_kernel_from_image(
     image_array: np.ndarray, end_x: int, end_y: int, kernel_size: int
 ) -> Tuple[np.ndarray, float, int]:
@@ -107,7 +109,7 @@ def extract_kernel_from_image(
 
     return kernel_values.astype(float), float(image_array[end_y, end_x]), kernel_size
 
-
+@log_action
 def apply_technique(
     technique: str,
     image: np.ndarray,
@@ -152,7 +154,6 @@ def apply_technique(
             )
         )
         raise ValueError(f"Unknown technique: {technique}")
-
 
 def process_image(params: ProcessParams):
     """
@@ -209,7 +210,7 @@ def process_image(params: ProcessParams):
         )
         raise
 
-
+@log_action
 def configure_process_params(
     technique: str, process_params: ProcessParams, technique_params: Dict[str, Any]
 ) -> None:
@@ -218,8 +219,6 @@ def configure_process_params(
         process_params.analysis_params["use_whole_image"] = technique_params.get(
             "use_whole_image", False
         )
-
-
 
 # --- Dataclass for Processing Details ---
 @dataclass(frozen=True)
@@ -237,9 +236,9 @@ class ProcessingDetails:
         """Validate dimensions and coordinates after initialization."""
 
         def _validate_dimensions():
-            if self.image_dimensions.width <= 0 or self.image_dimensions.height <= 0:
+            if self.image_dimensions[0] <= 0 or self.image_dimensions[1] <= 0:
                 raise ValueError("Image dimensions must be positive.")
-            if self.valid_dimensions.width <= 0 or self.valid_dimensions.height <= 0:
+            if self.valid_dimensions[0] <= 0 or self.valid_dimensions[1] <= 0:
                 raise ValueError(
                     "Kernel size is too large for the given image dimensions."
                 )
@@ -249,18 +248,16 @@ class ProcessingDetails:
         _validate_dimensions()
 
         def _validate_coordinates():
-            if self.start_point.x < 0 or self.start_point.y < 0:
+            if self.start_point[0] < 0 or self.start_point[1] < 0:
                 raise ValueError("Start coordinates must be non-negative.")
             if (
-                self.end_point.x >= self.image_dimensions.width
-                or self.end_point.y >= self.image_dimensions.height
+                self.end_point[0] >= self.image_dimensions[0]
+                or self.end_point[1] >= self.image_dimensions[1]
             ):
                 raise ValueError("End coordinates exceed image boundaries.")
 
         _validate_coordinates()
 
-
-# --- Function to Calculate Processing Details ---
 def calculate_processing_details(
     image: np.ndarray, kernel_size: int, max_pixels: Optional[int]
 ) -> ProcessingDetails:
@@ -280,10 +277,10 @@ def calculate_processing_details(
     end_y, end_x = end_y + half_kernel, end_x + half_kernel
 
     return ProcessingDetails(
-        image_dimensions=Tuple(int,int)(width=image_width, height=image_height),
-        valid_dimensions=Tuple(int,int)(width=valid_width, height=valid_height),
-        start_point=Tuple(int,int)(x=half_kernel, y=half_kernel),
-        end_point=Tuple(int,int)(x=end_x, y=end_y),
+        image_dimensions=(image_width, image_height),  # Tuple
+        valid_dimensions=(valid_width, valid_height),
+        start_point=(half_kernel, half_kernel),
+        end_point=(end_x, end_y),
         pixels_to_process=pixels_to_process,
         kernel_size=kernel_size,
     )
