@@ -22,6 +22,8 @@ from src.utils import calculate_processing_details
 
 # Configure logging with structured format
 class JsonFormatter(logging.Formatter):
+    """Formatter that outputs logs in JSON format."""
+
     def format(self, record):
         log_obj = {
             "level": record.levelname,
@@ -183,6 +185,16 @@ class ProcessParams:
 def create_process_params(
     analysis_params: Dict[str, Any], technique: str, technique_params: Dict[str, Any]
 ) -> ProcessParams:
+    """Create process parameters based on analysis and technique.
+
+    Args:
+        analysis_params (Dict[str, Any]): Parameters for analysis.
+        technique (str): The technique to be used.
+        technique_params (Dict[str, Any]): Parameters specific to the technique.
+
+    Returns:
+        ProcessParams: The created process parameters.
+    """
     common_params = {
         "kernel_size": st.session_state.get("kernel_size", 3),
         "pixels_to_process": analysis_params.get("pixels_to_process", 0),
@@ -212,6 +224,8 @@ def create_process_params(
 
 # Logging decorator
 def log_action(action_name: str):
+    """Decorator to log actions with a specified name."""
+
     def decorator(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
@@ -347,7 +361,8 @@ def visualize_analysis_results(viz_params: VisualizationConfig) -> None:
     Visualize analysis results based on the provided parameters.
 
     Args:
-        viz_params (VisualizationConfig): Visualization parameters including results, image array, etc.
+        viz_params (VisualizationConfig): Visualization parameters including results,
+        image array, etc.
     """
     try:
         last_processed_x = viz_params.last_processed_pixel.x
@@ -400,8 +415,24 @@ def visualize_analysis_results(viz_params: VisualizationConfig) -> None:
 def create_image_plot(
     plot_image: np.ndarray, config: VisualizationConfig
 ) -> plt.Figure:
+    """Creates an image plot from the given image and configuration.
+
+    Args:
+        plot_image (np.ndarray): The image data to plot.
+        config (VisualizationConfig): The configuration for visualization.
+
+    Returns:
+        plt.Figure: The created plot figure.
+    """
     try:
-        return create_image_plot_internal(config, plot_image)
+        fig, ax = plt.subplots(1, 1, figsize=config.figure_size)
+        ax.imshow(plot_image, vmin=config.vmin, vmax=config.vmax, cmap=config.color_map)
+        ax.set_title(config.title)
+        ax.axis("off")
+
+        add_overlays(ax, plot_image, config)
+        fig.tight_layout(pad=2)
+        return 
     except Exception as e:
         logging.error(
             json.dumps(
@@ -409,18 +440,6 @@ def create_image_plot(
             )
         )
         raise
-
-
-def create_image_plot_internal(config, plot_image):
-    fig, ax = plt.subplots(1, 1, figsize=config.figure_size)
-    ax.imshow(plot_image, vmin=config.vmin, vmax=config.vmax, cmap=config.color_map)
-    ax.set_title(config.title)
-    ax.axis("off")
-
-    add_overlays(ax, plot_image, config)
-    fig.tight_layout(pad=2)
-    return fig
-
 
 @log_action("prepare_filter_options_and_parameters")
 def prepare_filter_options_and_parameters(
@@ -470,7 +489,6 @@ def prepare_filter_options_and_parameters(
 def prepare_comparison_images() -> Optional[Dict[str, np.ndarray]]:
     """
     Prepare images for comparison from different analysis results.
-
     Returns:
         Optional[Dict[str, np.ndarray]]: A dictionary of image names and their corresponding arrays, or None.
     """
@@ -949,7 +967,6 @@ def visualize_image(
                 config.kernel_size,
             )
         else:
-
             fig = create_image_plot(image, config)
             placeholder.pyplot(fig)  # Display plot
             plt.close(fig)  # Ensure figure is closed after rendering to free up memory

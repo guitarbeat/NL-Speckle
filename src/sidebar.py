@@ -26,7 +26,6 @@ PRELOADED_IMAGE_PATHS = {
 }
 
 
-
 @dataclass
 class SidebarUI:
     """
@@ -141,7 +140,9 @@ class SidebarUI:
             "Show Per-Pixel Processing Steps", value=False
         )
         kernel_size = SidebarUI._select_kernel_size()
-        total_pixels = (image.width - kernel_size + 1) * (image.height - kernel_size + 1)
+        total_pixels = (image.width - kernel_size + 1) * (
+            image.height - kernel_size + 1
+        )
         pixels_to_process = (
             SidebarUI._setup_pixel_count_sliders(total_pixels)
             if show_per_pixel
