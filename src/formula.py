@@ -5,7 +5,6 @@ Provides interactive explanations and visualizations of the mathematical concept
 
 import streamlit as st
 
-
 NLM_FORMULA_CONFIG = {
     "title": "Non-Local Means (NLM) Denoising",
     "variables": {
@@ -32,9 +31,7 @@ NLM_FORMULA_CONFIG = {
         {
             "title": "Neighborhood Analysis",
             "formula": (
-                r"\quad\quad\text{Centered at: }({x}, {y})"
-                r"\\\\"
-                "{kernel_matrix}",
+                r"\quad\quad\text{Centered at: }({x}, {y})" r"\\\\" "{kernel_matrix}",
             ),
             "explanation": (
                 r"Analysis of a ${patch_size}\times{patch_size}$ patch $P_{{{x},{y}}}$ "
@@ -43,7 +40,6 @@ NLM_FORMULA_CONFIG = {
             ),
         },
         {
-
             "title": "Weight Calculation",  # Maybe change this to "Patch Similarity"?
             "formula": r"w_{{{x},{y}}}(i,j) = e^{{-\frac{{\|P_{{{x},{y}}} - P_{{i,j}}\|^2}}{{h^2}}}}",
             "explanation": r"""
@@ -276,10 +272,12 @@ def generate_kernel_matrix(kernel_size, kernel_matrix):
 
     matrix_rows = [
         " & ".join(
-            rf"\mathbf{{{center_value:.3f}}}"
-            if i == center and j == center
-            # else r"{:.3f}".format(kernel_matrix[i][j])
-            else f"{kernel_matrix[i, j]:.3f}"
+            (
+                rf"\mathbf{{{center_value:.3f}}}"
+                if i == center and j == center
+                # else r"{:.3f}".format(kernel_matrix[i][j])
+                else f"{kernel_matrix[i, j]:.3f}"
+            )
             for j in range(kernel_size)
         )
         for i in range(kernel_size)
@@ -293,4 +291,3 @@ def generate_kernel_matrix(kernel_size, kernel_matrix):
         + r"\\ \hdashline".join(matrix_rows)
         + r"\\ \hline\end{array}"
     )
-

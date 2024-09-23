@@ -13,12 +13,8 @@ from typing import List
 
 import numpy as np
 
-from src.processing import (
-    FilterResult,
-    ProcessingDetails,
-    calculate_processing_details,
-)
 from src.decor import log_action
+from src.processing import FilterResult, ProcessingDetails, calculate_processing_details
 
 
 def calculate_speckle_contrast(local_std, local_mean):
@@ -28,6 +24,7 @@ def calculate_speckle_contrast(local_std, local_mean):
     Formula: SC_{x,y} = σ_{x,y} / μ_{x,y}
     """
     return local_std / local_mean if local_mean != 0 else 0
+
 
 def apply_speckle_contrast(image, kernel_size, pixels_to_process, start_point):
     """Applies speckle contrast to the given image."""
@@ -75,17 +72,14 @@ def process_speckle(image, kernel_size, pixels_to_process):
         processing_info: ProcessingDetails = calculate_processing_details(
             image, kernel_size, pixels_to_process
         )
-        
+
         print(f"Image shape: {image.shape}, dtype: {image.dtype}")
         print(f"Processing info: {processing_info}")
-        
+
         start_y, start_x = processing_info.start_point
-        
+
         mean_filter, std_dev_filter, sc_filter = apply_speckle_contrast(
-            image,
-            kernel_size,
-            pixels_to_process,
-            (start_x, start_y)
+            image, kernel_size, pixels_to_process, (start_x, start_y)
         )
 
         return SpeckleResult(
@@ -104,6 +98,7 @@ def process_speckle(image, kernel_size, pixels_to_process):
     except Exception as e:
         print(f"Error in process_speckle: {type(e).__name__}: {str(e)}")
         import traceback
+
         traceback.print_exc()
         return None
 

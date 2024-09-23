@@ -3,7 +3,6 @@ This module provides plotting functionalities using Matplotlib and Streamlit.
 """
 
 import itertools
-
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -11,16 +10,16 @@ import matplotlib.pyplot as plt
 import numpy as np
 import streamlit as st
 from matplotlib.collections import LineCollection
+
 from src.formula import display_analysis_formula
 from src.nlm import NLMResult
-from src.speckle import SpeckleResult
 from src.processing import (
-    process_image,
-    extract_kernel_from_image,
     ProcessParams,
     configure_process_params,
+    extract_kernel_from_image,
+    process_image,
 )
-
+from src.speckle import SpeckleResult
 
 # Constants for Image Visualization
 DEFAULT_SPECKLE_VIEW = ["Speckle Contrast", "Original Image"]
@@ -191,9 +190,9 @@ def update_visualization_config(
             viz_config.show_per_pixel_processing if plot_type == "main" else True
         ),
         show_per_pixel_processing=(plot_type == "zoomed"),
-        search_window_size=viz_config.search_window_size
-        if viz_config.technique == "nlm"
-        else None,
+        search_window_size=(
+            viz_config.search_window_size if viz_config.technique == "nlm" else None
+        ),
         use_full_image=viz_config.analysis_params.get("use_whole_image", False),
         image_array=viz_config.image_array,
         analysis_params=viz_config.analysis_params,
