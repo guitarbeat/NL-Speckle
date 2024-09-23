@@ -2,15 +2,14 @@
 This module provides plotting functionalities using Matplotlib and Streamlit.
 """
 
-import itertools
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple, Union
 
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Tuple, Union
 import matplotlib.pyplot as plt
 import numpy as np
 import streamlit as st
-from matplotlib.collections import LineCollection
 
+from src.overlay import add_overlays, VisualizationConfig, KernelConfig,SearchWindowConfig
 from src.formula import display_analysis_formula
 from src.nlm import NLMResult
 from src.processing import (
@@ -31,50 +30,6 @@ def generate_plot_key(filter_name: str, plot_type: str) -> str:
     base_key = filter_name.lower().replace(" ", "_")
     return f"zoomed_{base_key}" if plot_type == "zoomed" else base_key
 
-
-@dataclass
-class VisualizationConfig:
-    """Holds configuration for image visualization and analysis settings."""
-
-    vmin: Optional[float] = None
-    vmax: Optional[float] = None
-    zoom: bool = False
-    show_kernel: bool = False
-    show_per_pixel_processing: bool = False
-    search_window_size: Optional[int] = None
-    use_full_image: bool = False
-    image_array: Optional[np.ndarray] = None
-    analysis_params: Dict[str, Any] = field(default_factory=dict)
-    results: Optional[Any] = None
-    ui_placeholders: Dict[str, Any] = field(default_factory=dict)
-    last_processed_pixel: Optional[Tuple[int, int]] = None
-    kernel_size: int = 3
-    kernel_matrix: Optional[np.ndarray] = None
-    original_pixel_value: float = 0.0
-    technique: str = ""  # Keep this line
-    color_map: str = "gray"
-    kernel_outline_color: str = "red"
-    search_window_outline_color: str = "blue"
-    pixel_value_text_color: str = "red"
-    grid_line_color: str = "red"
-    center_pixel_color: str = "green"
-    kernel_outline_width: int = 1
-    search_window_outline_width: float = 2.0
-    grid_line_width: int = 1
-    center_pixel_outline_width: int = 1
-    pixel_value_font_size: int = 15
-    grid_line_style: str = ":"
-    title: str = ""
-    figure_size: Tuple[int, int] = (8, 8)
-
-    def __post_init__(self):
-        """Post-initialization validation."""
-        self._validate_vmin_vmax()
-
-    def _validate_vmin_vmax(self):
-        """Ensure vmin is not greater than vmax."""
-        if self.vmin is not None and self.vmax is not None and self.vmin > self.vmax:
-            raise ValueError("vmin cannot be greater than vmax.")
 
 
 @dataclass
@@ -167,32 +122,27 @@ def update_visualization_config(
     plot_type: str,
 ) -> VisualizationConfig:
     """Update the VisualizationConfig object for zoomed or main view."""
-    return VisualizationConfig(
-        vmin=None if filter_name == "Original Image" else np.min(filter_data),
-        vmax=None if filter_name == "Original Image" else np.max(filter_data),
-        zoom=(plot_type == "zoomed"),
-        show_kernel=(
-            viz_config.show_per_pixel_processing if plot_type == "main" else True
-        ),
-        show_per_pixel_processing=(plot_type == "zoomed"),
-        search_window_size=(
-            viz_config.search_window_size if viz_config.technique == "nlm" else None
-        ),
-        use_full_image=viz_config.analysis_params.get("use_whole_image", False),
-        image_array=viz_config.image_array,
-        analysis_params=viz_config.analysis_params,
-        results=viz_config.results,
-        ui_placeholders=viz_config.ui_placeholders,
-        last_processed_pixel=viz_config.last_processed_pixel,
-        kernel_size=viz_config.kernel_size,
-        kernel_matrix=viz_config.kernel_matrix,
-        original_pixel_value=viz_config.original_pixel_value,
-        color_map=viz_config.color_map,
-        technique=viz_config.technique,  # Add this line
-    )
+    updated_config = {
+        "vmin": None if filter_name == "Original Image" else np.min(filter_data),
+        "vmax": None if filter_name == "Original Image" else np.max(filter_data),
+        "zoom": (plot_type == "zoomed"),
+        "show_kernel": (viz_config.show_per_pixel_processing if plot_type == "main" else True),
+        "show_per_pixel_processing": (plot_type == "zoomed"),
+        "image_array": viz_config.image_array,
+        "analysis_params": viz_config.analysis_params,
+        "results": viz_config.results,
+        "ui_placeholders": viz_config.ui_placeholders,
+        "last_processed_pixel": viz_config.last_processed_pixel,
+        "original_pixel_value": viz_config.original_pixel_value,
+        "color_map": viz_config.color_map,
+        "technique": viz_config.technique,
+        "kernel": viz_config.kernel,
+        "search_window": viz_config.search_window,
+        "pixel_value": viz_config.pixel_value,
+    }
 
-
-# --------- Visualization Functions ----------#
+    return VisualizationConfig(**updated_config)
+    
 
 
 def create_image_plot(
@@ -217,6 +167,7 @@ def create_image_plot(
     return fig
 
 
+# --------- Visualization Functions ----------#
 def prepare_filter_options_and_parameters(
     results: Any, last_processed_pixel: Tuple[int, int]
 ) -> Tuple[Dict[str, np.ndarray], Dict[str, Any]]:
@@ -230,9 +181,7 @@ def prepare_filter_options_and_parameters(
     Returns:
         Tuple[Dict[str, np.ndarray], Dict[str, Any]]: Filter options and specific parameters.
     """
-    # end_x, end_y = last_processed_pixel
-    end_x = last_processed_pixel.x
-    end_y = last_processed_pixel.y
+    end_x, end_y = last_processed_pixel
     filter_options = results.get_filter_data()
     specific_params = {
         "kernel_size": results.kernel_size,
@@ -260,7 +209,6 @@ def prepare_filter_options_and_parameters(
         }
 
     return filter_options, specific_params
-
 
 def prepare_comparison_images() -> Optional[Dict[str, np.ndarray]]:
     """
@@ -310,158 +258,6 @@ def get_zoomed_image_section(
 
     return zoomed_image, new_center_x, new_center_y
 
-
-# ---- Annotation Functions---=--#
-
-
-def add_overlays(
-    ax: plt.Axes, plot_image: np.ndarray, config: VisualizationConfig
-) -> None:
-    """
-    Add overlays to the plot based on the technique and configuration.
-
-    Args:
-        ax (plt.Axes): The axes to add overlays to.
-        plot_image (np.ndarray): The image being plotted.
-        config (VisualizationConfig): Configuration parameters.
-    """
-
-    if config.show_kernel:
-        # Draw main rectangle
-        ax.add_patch(
-            plt.Rectangle(
-                (
-                    (config.last_processed_pixel.x - (config.kernel_size // 2)) - 0.5,
-                    (config.last_processed_pixel.y - (config.kernel_size // 2)) - 0.5,
-                ),
-                config.kernel_size,
-                config.kernel_size,
-                edgecolor=config.kernel_outline_color,
-                linewidth=config.kernel_outline_width,
-                facecolor="none",
-            )
-        )
-
-        # Draw grid lines
-        grid_lines = [
-            [
-                (
-                    (config.last_processed_pixel.x - (config.kernel_size // 2))
-                    + i
-                    - 0.5,
-                    (config.last_processed_pixel.y - (config.kernel_size // 2)) - 0.5,
-                ),
-                (
-                    (config.last_processed_pixel.x - (config.kernel_size // 2))
-                    + i
-                    - 0.5,
-                    (config.last_processed_pixel.y - (config.kernel_size // 2))
-                    + config.kernel_size
-                    - 0.5,
-                ),
-            ]
-            for i in range(1, config.kernel_size)
-        ] + [
-            [
-                (
-                    (config.last_processed_pixel.x - (config.kernel_size // 2)) - 0.5,
-                    (config.last_processed_pixel.y - (config.kernel_size // 2))
-                    + i
-                    - 0.5,
-                ),
-                (
-                    (config.last_processed_pixel.x - (config.kernel_size // 2))
-                    + config.kernel_size
-                    - 0.5,
-                    (config.last_processed_pixel.y - (config.kernel_size // 2))
-                    + i
-                    - 0.5,
-                ),
-            ]
-            for i in range(1, config.kernel_size)
-        ]
-        ax.add_collection(
-            LineCollection(
-                grid_lines,
-                colors=config.grid_line_color,
-                linestyles=config.grid_line_style,
-                linewidths=config.grid_line_width,
-            )
-        )
-
-        # Highlight center pixel
-        ax.add_patch(
-            plt.Rectangle(
-                (
-                    config.last_processed_pixel.x - 0.5,
-                    config.last_processed_pixel.y - 0.5,
-                ),
-                1,
-                1,
-                edgecolor=config.center_pixel_color,
-                linewidth=config.center_pixel_outline_width,
-                facecolor=config.center_pixel_color,
-                alpha=0.5,
-            )
-        )
-
-    if (
-        config.technique == "nlm"
-        and config.search_window_size is not None
-        and config.show_kernel
-    ):
-        image_height, image_width = plot_image.shape[:2]
-        half_window_size = config.search_window_size // 2
-        if config.use_full_image:
-            window_left, window_top = -0.5, -0.5
-            window_width, window_height = image_width, image_height
-
-        else:
-            window_left = max(0, config.last_processed_pixel.x - half_window_size) - 0.5
-            window_top = max(0, config.last_processed_pixel.y - half_window_size) - 0.5
-            window_width = min(
-                image_width - (config.last_processed_pixel.x - half_window_size),
-                config.search_window_size,
-            )
-            window_height = min(
-                image_height - (config.last_processed_pixel.y - half_window_size),
-                config.search_window_size,
-            )
-
-        ax.add_patch(
-            plt.Rectangle(
-                (window_left, window_top),
-                window_width,
-                window_height,
-                edgecolor=config.search_window_outline_color,
-                linewidth=config.search_window_outline_width,
-                facecolor="none",
-            )
-        )
-
-    if config.zoom and config.show_per_pixel_processing:
-        image_height, image_width = plot_image.shape[:2]
-
-        for i, j in itertools.product(range(image_height), range(image_width)):
-            ax.text(
-                j,
-                i,
-                f"{plot_image[i, j]:.2f}",
-                ha="center",
-                va="center",
-                color=config.pixel_value_text_color,
-                fontsize=config.pixel_value_font_size,
-            )
-
-
-# --------- Image Processing Functions ----------#
-
-
-# --------- UI Setup Functions ----------#
-
-# --------- Utility Functions ----------
-
-
 def visualize_image(
     image: np.ndarray, placeholder, *, config: VisualizationConfig
 ) -> None:
@@ -479,13 +275,11 @@ def visualize_image(
             try:
                 image, new_center_x, new_center_y = get_zoomed_image_section(
                     image,
-                    config.last_processed_pixel.x,
-                    config.last_processed_pixel.y,
-                    config.kernel_size,
+                    config.last_processed_pixel[0],  # x coordinate
+                    config.last_processed_pixel[1],  # y coordinate
+                    config.kernel.size,
                 )
-                config.last_processed_pixel = PixelCoordinates(
-                    new_center_x, new_center_y
-                )
+                config.last_processed_pixel = (new_center_x, new_center_y)
             except Exception as e:
                 placeholder.error(
                     f"An error occurred while zooming the image: {e}. Please check the logs for details."
@@ -504,6 +298,19 @@ def visualize_image(
         placeholder.error(
             f"An error occurred while visualizing the image: {e}. Please check the logs for details."
         )
+
+
+# ---- Annotation Functions---=--#
+
+
+
+
+# --------- Image Processing Functions ----------#
+
+
+# --------- UI Setup Functions ----------#
+
+# --------- Utility Functions ----------
 
 
 def get_filter_options(technique: str) -> List[str]:
@@ -604,7 +411,6 @@ def create_technique_ui_elements(
     return ui_placeholders
 
 
-# --------- Helpers ----------#
 def visualize_analysis_results(viz_params: VisualizationConfig) -> None:
     """
     Visualize analysis results based on the provided parameters.
@@ -627,17 +433,17 @@ def visualize_analysis_results(viz_params: VisualizationConfig) -> None:
             visualize_filter_and_zoomed(filter_name, filter_data, viz_params)
 
     if viz_params.show_per_pixel_processing:
+        last_processed_x, last_processed_y = viz_params.last_processed_pixel
         display_analysis_formula(
             specific_params,
             viz_params.ui_placeholders,
             viz_params.technique,
-            viz_params.last_processed_pixel.x,
-            viz_params.last_processed_pixel.y,
-            viz_params.kernel_size,
-            viz_params.kernel_matrix,
+            last_processed_x,
+            last_processed_y,
+            viz_params.kernel.size,
+            viz_params.kernel.kernel_matrix,
             viz_params.original_pixel_value,
         )
-
 
 def run_technique(technique: str, tab: Any, analysis_params: Dict[str, Any]) -> None:
     technique_params = st.session_state.get(f"{technique}_params", {})
@@ -669,7 +475,6 @@ def run_technique(technique: str, tab: Any, analysis_params: Dict[str, Any]) -> 
     except (ValueError, TypeError, KeyError) as e:
         st.error(f"Error for {technique}: {str(e)}. Please check the logs for details.")
 
-
 def create_visualization_config(
     image_array: np.ndarray,
     technique: str,
@@ -700,20 +505,19 @@ def create_visualization_config(
         analysis_params.get("kernel_size", 3),
     )
 
-    viz_config = VisualizationConfig(
-        image_array=ImageArray(image_array),
-        technique=technique,
-        analysis_params=analysis_params,
-        results=results,
-        last_processed_pixel=PixelCoordinates(x=last_processed_x, y=last_processed_y),
-        kernel_matrix=kernel_matrix,
-        kernel_size=kernel_size,
-        original_pixel_value=original_pixel_value,
-        show_per_pixel_processing=show_per_pixel_processing,
-        ui_placeholders=ui_placeholders,
-    )
+    config_params = {
+        "image_array": ImageArray(image_array),
+        "technique": technique,
+        "analysis_params": analysis_params,
+        "results": results,
+        "last_processed_pixel": (last_processed_x, last_processed_y),
+        "original_pixel_value": original_pixel_value,
+        "show_per_pixel_processing": show_per_pixel_processing,
+        "ui_placeholders": ui_placeholders,
+        "kernel": KernelConfig(kernel_matrix=kernel_matrix, size=kernel_size),
+    }
 
     if isinstance(results, NLMResult):
-        viz_config.search_window_size = results.search_window_size
+        config_params["search_window"] = SearchWindowConfig(size=results.search_window_size)
 
-    return viz_config
+    return VisualizationConfig(**config_params)

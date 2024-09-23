@@ -231,7 +231,8 @@ def display_formula_section(config, variables, section_key):
     explanation_key = "explanation"
 
     try:
-        st.latex(config[formula_key].format(**variables))
+        # Ensure the formula is a string
+        st.latex(str(config[formula_key]).format(**variables))  # Convert to string if necessary
         st.markdown(config[explanation_key].format(**variables))
     except KeyError as e:
         st.error(f"Missing key in {section_key} formula or explanation: {e}")
