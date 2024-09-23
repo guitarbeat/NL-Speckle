@@ -3,9 +3,7 @@ This module serves as the main entry point for the Streamlit application.
 It imports necessary utilities and plotting functions for image comparison.
 """
 
-import hashlib
 import logging
-import time
 from typing import List
 
 import streamlit as st
@@ -31,10 +29,6 @@ def main():
     """Main function to set up the Streamlit app configuration, logo, and run the application."""
     st.set_page_config(**APP_CONFIG)
     st.logo("media/logo.png")
-    if "session_id" not in st.session_state:
-        st.session_state.session_id = hashlib.md5(
-            str(time.time()).encode(), usedforsecurity=False
-        ).hexdigest()
     if "color_map" not in st.session_state:
         config = VisualizationConfig()
         st.session_state.color_map = config.color_map

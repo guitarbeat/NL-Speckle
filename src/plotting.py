@@ -76,19 +76,6 @@ class VisualizationConfig:
         if self.vmin is not None and self.vmax is not None and self.vmin > self.vmax:
             raise ValueError("vmin cannot be greater than vmax.")
 
-    @property
-    def zoom_dimensions(self) -> Tuple[int, int]:
-        """Return zoomed dimensions if zoom is enabled."""
-        return self.figure_size if self.zoom else (self.image_array.data.shape[:2])
-
-    def set_kernel_matrix(self, matrix: np.ndarray):
-        """Set the kernel matrix with validation."""
-        if matrix.shape != (self.kernel_size, self.kernel_size):
-            raise ValueError(
-                f"Kernel matrix must be of shape ({self.kernel_size}, {self.kernel_size})"
-            )
-        self.kernel_matrix = matrix
-
 
 @dataclass
 class PixelCoordinates:
@@ -137,8 +124,6 @@ def create_process_params(
         image_array=analysis_params.get("image_array", ImageArray(np.array([]))),
         technique=technique,
         analysis_params=technique_params | common_params,
-        update_state=True,
-        handle_visualization=True,
         show_per_pixel_processing=analysis_params.get(
             "show_per_pixel_processing", False
         ),

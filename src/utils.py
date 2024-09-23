@@ -16,14 +16,6 @@ from src.plotting import VisualizationConfig
 
 
 @log_action
-def update_session_state(technique: str, pixels_to_process: int, results: Any) -> None:
-    """Update session state with processing results."""
-    st.session_state.update(
-        {"processed_pixels": pixels_to_process, f"{technique}_results": results}
-    )
-
-
-@log_action
 def create_visualization_config(
     image_array: np.ndarray,
     technique: str,
