@@ -95,14 +95,13 @@ class SidebarUI:
             "Show Per-Pixel Processing Steps", value=False, key="show_per_pixel"
         )
 
-        if "kernel_size" not in st.session_state:
-            st.session_state.kernel_size = 3  # Default value
-
+        # Consolidated kernel size initialization
+        kernel_size = st.session_state.get("kernel_size", 3)  # Default value
         kernel_size = st.sidebar.slider(
             "Kernel Size",
             min_value=3,
             max_value=21,
-            value=st.session_state.kernel_size,
+            value=kernel_size,
             step=2,
             key="kernel_size_slider",
         )
@@ -112,10 +111,7 @@ class SidebarUI:
             image.height - kernel_size + 1
         )
 
-        if show_per_pixel:
-            pixels_to_process = SidebarUI.setup_pixel_processing(total_pixels)
-        else:
-            pixels_to_process = total_pixels
+        pixels_to_process = SidebarUI.setup_pixel_processing(total_pixels) if show_per_pixel else total_pixels
 
         return {
             "show_per_pixel_processing": show_per_pixel,
