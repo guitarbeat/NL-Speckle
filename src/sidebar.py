@@ -5,11 +5,13 @@ It includes available color maps and preloaded image paths.
 
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
-from PIL import Image
+
 import numpy as np
 import streamlit as st
-from src.plotting import VisualizationConfig  # Import the VisualizationConfig class
+from PIL import Image
+
 from src.decor import log_action
+from src.plotting import VisualizationConfig  # Import the VisualizationConfig class
 
 AVAILABLE_COLOR_MAPS = [
     "gray",
@@ -90,20 +92,26 @@ class SidebarUI:
     def setup_display_options(image: Image.Image) -> Dict[str, Any]:
         st.sidebar.markdown("### 🖥️ Display Options")
         show_per_pixel = st.sidebar.checkbox(
-            "Show Per-Pixel Processing Steps", 
-            value=False, 
-            key="show_per_pixel"
+            "Show Per-Pixel Processing Steps", value=False, key="show_per_pixel"
         )
-        
-        if 'kernel_size' not in st.session_state:
+
+        if "kernel_size" not in st.session_state:
             st.session_state.kernel_size = 3  # Default value
 
-        kernel_size = st.sidebar.slider("Kernel Size", min_value=3, max_value=21, value=st.session_state.kernel_size, step=2, key='kernel_size_slider')
+        kernel_size = st.sidebar.slider(
+            "Kernel Size",
+            min_value=3,
+            max_value=21,
+            value=st.session_state.kernel_size,
+            step=2,
+            key="kernel_size_slider",
+        )
         st.session_state.kernel_size = kernel_size  # Update session state
 
-        total_pixels = (image.width - kernel_size + 1) * (image.height - kernel_size + 1)
-        
-        
+        total_pixels = (image.width - kernel_size + 1) * (
+            image.height - kernel_size + 1
+        )
+
         if show_per_pixel:
             pixels_to_process = SidebarUI.setup_pixel_processing(total_pixels)
         else:
@@ -119,17 +127,20 @@ class SidebarUI:
     @staticmethod
     @log_action
     def setup_pixel_processing(total_pixels: int) -> int:
-        
-        if 'exact_pixel_count' not in st.session_state:
+        if "exact_pixel_count" not in st.session_state:
             st.session_state.exact_pixel_count = total_pixels
-        if 'percentage_slider' not in st.session_state:
+        if "percentage_slider" not in st.session_state:
             st.session_state.percentage_slider = 100
 
         def update_exact_count():
-            st.session_state.exact_pixel_count = int(total_pixels * st.session_state.percentage_slider / 100)
+            st.session_state.exact_pixel_count = int(
+                total_pixels * st.session_state.percentage_slider / 100
+            )
 
         def update_percentage():
-            st.session_state.percentage_slider = int((st.session_state.exact_pixel_count / total_pixels) * 100)
+            st.session_state.percentage_slider = int(
+                (st.session_state.exact_pixel_count / total_pixels) * 100
+            )
 
         col1, col2 = st.sidebar.columns(2)
         with col1:
@@ -140,7 +151,7 @@ class SidebarUI:
                 value=st.session_state.percentage_slider,
                 step=1,
                 key="percentage_slider",
-                on_change=update_exact_count
+                on_change=update_exact_count,
             )
         with col2:
             st.number_input(
@@ -150,10 +161,10 @@ class SidebarUI:
                 value=st.session_state.exact_pixel_count,
                 step=1,
                 key="exact_pixel_count",
-                on_change=update_percentage
+                on_change=update_percentage,
             )
         return st.session_state.exact_pixel_count
-    
+
     @staticmethod
     def select_color_map() -> str:
         """
@@ -178,7 +189,8 @@ class SidebarUI:
             "Normalization",
             options=["None", "Percentile"],
             index=0,
-            help="Choose the normalization method for the image"    )
+            help="Choose the normalization method for the image",
+        )
 
         apply_gaussian_noise = st.sidebar.checkbox(
             "Add Gaussian Noise", value=False, help="Add Gaussian noise to the image"
@@ -186,7 +198,7 @@ class SidebarUI:
         noise_params = (
             SidebarUI._setup_gaussian_noise_params() if apply_gaussian_noise else {}
         )
-        
+
         image_np = np.array(image) / 255.0
         if apply_gaussian_noise:
             image_np = SidebarUI._apply_gaussian_noise(image_np, **noise_params)
@@ -248,7 +260,7 @@ class SidebarUI:
         image_np = np.clip(image_np, p_low, p_high)
         image_np = (image_np - p_low) / (p_high - p_low)
         return image_np
-    
+
     @staticmethod
     def _setup_nlm_options(image: Image.Image) -> Dict[str, Any]:
         """
@@ -267,7 +279,7 @@ class SidebarUI:
             use_whole_image = st.checkbox(
                 "Use whole image as search window", value=False
             )
-            
+
             # Search window size selection
             if not use_whole_image:
                 search_window_size = st.slider(
@@ -307,4 +319,3 @@ class SidebarUI:
                 "filter_strength": 10.0,
                 "use_whole_image": False,
             }
-            
