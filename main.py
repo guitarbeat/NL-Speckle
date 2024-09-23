@@ -6,14 +6,15 @@ It imports necessary utilities and plotting functions for image comparison.
 import hashlib
 import time
 import streamlit as st
-from src.utils import ImageComparison, setup_and_run_analysis_techniques
+from src.utils import ImageComparison
 from src.plotting import (
     prepare_comparison_images,
-    VisualizationConfig
+    VisualizationConfig,
+    run_technique
 )
+from typing import List
 from src.sidebar import SidebarUI
 from src.processing import calculate_processing_details
-from src.decor import log_action
 import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -25,7 +26,6 @@ APP_CONFIG = {
     "initial_sidebar_state": "expanded",
 }
 
-@log_action
 def main():
     """Main function to set up the Streamlit app configuration, logo, and run the application."""
     st.set_page_config(**APP_CONFIG)
@@ -45,7 +45,6 @@ def main():
         st.error(f"An error occurred: {e}. Please check your input and try again.")
 
 
-@log_action
 def setup_app(st):
     sidebar_params = SidebarUI.setup()
     st.session_state.sidebar_params = sidebar_params
@@ -78,11 +77,21 @@ def setup_app(st):
     }
 
     st.session_state.analysis_params = params
-    setup_and_run_analysis_techniques(params)
+
+    techniques: List[str] = st.session_state.get("techniques", [])
+
+    for technique, tab in zip(techniques, tabs):
+        if tab is not None:
+            with tab:
+                run_technique(
+                    technique,
+                    tab,
+                    params,
+                )
 
     with tabs[2]:
         comparison_images = prepare_comparison_images()
         ImageComparison.handle(tabs[2], st.session_state.color_map, comparison_images)
-
+        
 if __name__ == "__main__":
     main()
