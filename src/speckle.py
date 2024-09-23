@@ -13,7 +13,7 @@ from typing import List
 
 import numpy as np
 
-from src.decor import log_action
+
 from src.processing import FilterResult, ProcessingDetails, calculate_processing_details
 
 
@@ -60,7 +60,6 @@ def apply_speckle_contrast(image, kernel_size, pixels_to_process, start_point):
     return mean_filter, std_dev_filter, sc_filter
 
 
-@log_action
 def process_speckle(image, kernel_size, pixels_to_process):
     """
     Processes a speckle image to calculate speckle contrast and related metrics.

@@ -8,7 +8,6 @@ from typing import List, Tuple
 
 import numpy as np
 
-from src.decor import log_action
 from src.processing import FilterResult, ProcessingDetails, calculate_processing_details
 
 # --- Logger Setup ---
@@ -159,7 +158,6 @@ def apply_nlm(
 # --- Main Processing Function ---
 
 
-@log_action
 def process_nlm(
     image: np.ndarray,
     kernel_size: int,

@@ -474,7 +474,7 @@ def run_technique(technique: str, tab: Any, analysis_params: Dict[str, Any]) -> 
 
     except (ValueError, TypeError, KeyError) as e:
         st.error(f"Error for {technique}: {str(e)}. Please check the logs for details.")
-
+   
 def create_visualization_config(
     image_array: np.ndarray,
     technique: str,
@@ -483,20 +483,6 @@ def create_visualization_config(
     ui_placeholders: Dict[str, Any],
     show_per_pixel_processing: bool,
 ) -> VisualizationConfig:
-    """
-    Create a VisualizationConfig object with the necessary parameters.
-
-    Args:
-        image_array (np.ndarray): The input image array.
-        technique (str): The image processing technique.
-        analysis_params (Dict[str, Any]): Analysis parameters.
-        results (Union[SpeckleResult, NLMResult]): Processing results.
-        ui_placeholders (Dict[str, Any]): UI placeholders for visualization.
-        show_per_pixel_processing (bool): Flag to show per-pixel processing.
-
-    Returns:
-        VisualizationConfig: The created VisualizationConfig object.
-    """
     last_processed_x, last_processed_y = results.get_last_processed_coordinates()
     kernel_matrix, original_pixel_value, kernel_size = extract_kernel_from_image(
         image_array,
@@ -518,6 +504,13 @@ def create_visualization_config(
     }
 
     if isinstance(results, NLMResult):
-        config_params["search_window"] = SearchWindowConfig(size=results.search_window_size)
+        config_params["search_window"] = SearchWindowConfig(
+            size=results.search_window_size,
+            use_full_image=analysis_params.get("use_full_image", False)
+        )
+    else:
+        config_params["search_window"] = SearchWindowConfig()  # Default config for non-NLM techniques
+
+    st.write(f"Debug: search_window config = {config_params['search_window']}")
 
     return VisualizationConfig(**config_params)
