@@ -29,8 +29,28 @@ PRELOADED_IMAGE_PATHS = {
 
 @dataclass
 class SidebarUI:
+    """
+    Provides a user interface within Streamlit's sidebar to configure image processing parameters for a Streamlit application.
+    Parameters:
+        None
+    Processing Logic:
+        - Streamlit components are used to interactively select images, configure display and advanced options, and define parameters for algorithms like Non-Local Means (NLM) denoising.
+        - The UI elements are bundled into expanders for a streamlined experience, enabling users to reveal or hide sections as needed.
+        - Depending on the user's choices and inputs in the UI, a dictionary is compiled that includes all relevant settings and options which is then returned.
+        - Heavy use of Streamlit's session state ensures consistency and responsiveness across user interactions with the UI components.
+    """
     @staticmethod
     def setup() -> Optional[Dict[str, Any]]:
+        """Initializes the sidebar for the Streamlit application, setting up image processing configurations.
+        Parameters:
+            None
+        Returns:
+            - Optional[Dict[str, Any]]: A dictionary containing the setup parameters if an image is selected, 
+                                        otherwise None.
+        Processing Logic:
+            - The function checks if an image has been selected, and if not, it returns None immediately.
+            - Expander UI elements are used to group related settings into collapsible sections for better user experience.
+            - Combines display options, NLM parameters, and advanced options into a single dictionary to be returned."""
         st.sidebar.title("Image Processing Settings")
 
         with st.sidebar.expander("Image Selector", expanded=True):
@@ -88,6 +108,16 @@ class SidebarUI:
 
     @staticmethod
     def setup_display_options(image: Image.Image) -> Dict[str, Any]:
+        """Configures and stores display options related to image processing in the sidebar.
+        Parameters:
+            - image (Image.Image): The image to process.
+        Returns:
+            - Dict[str, Any]: A dictionary containing display options such as per-pixel processing choice, total pixels, pixels to process, and kernel size.
+        Processing Logic:
+            - Sets default kernel_size in session state if not already set.
+            - Uses a checkbox to decide whether to show per-pixel processing steps.
+            - Allows adjustment of the kernel_size with a slider and updates the session state.
+            - Calculates the total number of pixels to process based on the kernel size."""
         st.sidebar.markdown("### 🖥️ Display Options")
         show_per_pixel = st.sidebar.checkbox(
             "Show Per-Pixel Processing Steps", 
@@ -119,6 +149,16 @@ class SidebarUI:
     @staticmethod
     @log_action
     def setup_pixel_processing(total_pixels: int) -> int:
+        """Initializes pixel processing sliders and synchronizes their values.
+        Parameters:
+            - total_pixels (int): The total number of pixels that can be processed.
+        Returns:
+            - int: The current exact number of pixels to process based on the slider or input.
+        Processing Logic:
+            - Initializes session state variables 'exact_pixel_count' and 'percentage_slider'
+        if they do not already exist.
+            - Defines functions to update 'exact_pixel_count' based on the percentage or update
+        the percentage based on the 'exact_pixel_count'."""
         
         if 'exact_pixel_count' not in st.session_state:
             st.session_state.exact_pixel_count = total_pixels

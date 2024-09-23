@@ -599,6 +599,18 @@ def create_filter_views(
 def create_technique_ui_elements(
     technique: str, tab: Any, show_per_pixel_processing: bool
 ) -> Dict[str, Any]:
+    """Creates UI elements for a specific image processing technique within a given tab.
+    Parameters:
+        - technique (str): Name of the image processing technique.
+        - tab (Any): The tab in which UI elements should be created.
+        - show_per_pixel_processing (bool): Flag indicating whether to show per-pixel processing elements.
+    Returns:
+        - Dict[str, Any]: A dictionary containing placeholders for UI elements.
+    Processing Logic:
+        - Validates that 'technique' is a non-empty string.
+        - Initializes UI placeholders within the context of the given tab.
+        - Retrieves filter options based on the technique and creates filter selection UI.
+        - Conditionally adds a placeholder for zoomed-in kernel visualization if per-pixel processing is enabled."""
     if not technique or not isinstance(technique, str):
         raise ValueError("Technique must be a non-empty string.")
 
@@ -656,6 +668,18 @@ def visualize_analysis_results(viz_params: VisualizationConfig) -> None:
 
 
 def run_technique(technique: str, tab: Any, analysis_params: Dict[str, Any]) -> None:
+    """Execute an image processing technique with UI and visualization.
+    Parameters:
+        - technique (str): The name of the image processing technique to run.
+        - tab (Any): The tab or UI element to attach the controls for the technique.
+        - analysis_params (Dict[str, Any]): A dictionary containing analysis parameters.
+    Returns:
+        - None: This function does not return anything.
+    Processing Logic:
+        - Retrieves any existing parameters from the session state for the specified technique.
+        - Dynamically builds the user interface elements required for the technique.
+        - Gathers parameters for processing the image and executes processing.
+        - Handles exceptions and outputs error messages to Streamlit."""
     technique_params = st.session_state.get(f"{technique}_params", {})
     show_per_pixel_processing = analysis_params.get("show_per_pixel_processing", False)
 

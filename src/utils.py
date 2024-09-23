@@ -86,6 +86,14 @@ class ImageComparison:
             st.error(f"Error in image comparison: {str(e)}")
     @staticmethod
     def get_image_choices(available_images):
+        """Selects two images from a list of available images using a UI.
+        Parameters:
+            - available_images (list): A list of image names to be displayed for selection.
+        Returns:
+            - tuple: A tuple containing the names of the first and second selected images.
+        Processing Logic:
+            - Utilizes UI columns for a side-by-side selection.
+            - Initializes both select boxes with an empty string as the first option."""
         col1, col2 = st.columns(2)
         image_choice_1 = col1.selectbox(
             "Select first image to compare:",
@@ -110,6 +118,13 @@ class ImageComparison:
 
     @staticmethod
     def process_normalized_images(normalized_images):
+        """Return the first two elements from a list of normalized images if the list contains exactly two elements.
+        Parameters:
+            - normalized_images (list): A list of normalized images to process.
+        Returns:
+            - tuple: A tuple containing the first and second image from the list if there are exactly two images, otherwise (None, None).
+        Processing Logic:
+            - The function enforces that the input is a list and contains exactly two items by checking its type and length."""
         if not isinstance(normalized_images, list):
             st.error("Expected a list of normalized images.")
             return None, None
@@ -122,6 +137,19 @@ class ImageComparison:
 
     @staticmethod
     def display_same_image_comparison(img1, img2, image_choice_1, image_choice_2, cmap_name):
+        """Displays a side-by-side comparison of two images with specified color mappings.
+        Parameters:
+            - img1 (np.ndarray): First image to compare.
+            - img2 (np.ndarray): Second image to compare.
+            - image_choice_1 (str): Label for the first image.
+            - image_choice_2 (str): Label for the second image.
+            - cmap_name (str): Name of the colormap to apply to both images.
+        Returns:
+            - None: This function does not return a value; it renders the images directly to a display.
+        Processing Logic:
+            - Normalize color map and colorize both images using the specified colormap.
+            - Convert the normalized images to uint8 format before displaying.
+            - Display the images with their corresponding labels side by side for comparison."""
         normalized_images = ImageComparison.normalize_and_colorize([img1, img2], [cmap_name] * 2)
         img1_uint8, img2_uint8 = ImageComparison.process_normalized_images(normalized_images)
 
@@ -139,6 +167,17 @@ class ImageComparison:
 
     @staticmethod
     def display_difference_map(img1, img2, cmap_name):
+        """Displays the difference between two images using a specific colormap.
+        Parameters:
+            - img1 (np.array): The first image array to compare.
+            - img2 (np.array): The second image array to compare.
+            - cmap_name (str): The name of the colormap used to colorize the difference.
+        Returns:
+            - None: This function does not return anything, it directly displays the image.
+        Processing Logic:
+            - Calculate the absolute difference between the two input images as diff_map.
+            - Use the ImageComparison.normalize_and_colorize method to apply the colormap to the diff_map.
+            - Use the st.image function from streamlit to display the resulting difference image."""
         diff_map = np.abs(img1 - img2)
         display_diff = ImageComparison.normalize_and_colorize([diff_map], [cmap_name])[0]
         st.image(
