@@ -1,6 +1,6 @@
 """
-This module defines the SidebarUI class and related constants for the Streamlit application.
-It includes available color maps and preloaded image paths.
+This module defines the SidebarUI class and related constants for the Streamlit
+application. It includes available color maps and preloaded image paths.
 """
 
 from dataclasses import dataclass
@@ -237,9 +237,9 @@ class SidebarUI:
         Apply Gaussian noise to the image.
 
         Args:
-            image_np (np.ndarray): Input image as a numpy array.
-            mean (float): Mean of the Gaussian noise.
-            std_dev (float): Standard deviation of the Gaussian noise.
+            image_np (np.ndarray): Input image as a numpy array. mean (float):
+            Mean of the Gaussian noise. std_dev (float): Standard deviation of
+            the Gaussian noise.
 
         Returns:
             np.ndarray: Image with applied Gaussian noise.
@@ -260,7 +260,8 @@ class SidebarUI:
     @staticmethod
     def _setup_nlm_options(image: Image.Image) -> Dict[str, Any]:
         """
-        Set up non-local means denoising options, including search window size selection.
+        Set up non-local means denoising options, including search window size
+        selection.
 
         Args:
             image (Image.Image): The input image.

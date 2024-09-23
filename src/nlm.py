@@ -1,5 +1,6 @@
 """
-This module provides the implementation of Non-Local Means (NLM) denoising algorithm functions.
+This module provides the implementation of Non-Local Means (NLM) denoising
+algorithm functions.
 """
 
 import logging
@@ -34,7 +35,8 @@ def calculate_patch_difference(
 
 def calculate_weight(patch_difference: float, filter_strength: float) -> float:
     """
-    Calculates the weight for a patch comparison based on patch difference and filter strength.
+    Calculates the weight for a patch comparison based on patch difference and
+    filter strength.
 
     Args:
         patch_difference (float): The difference between patches.
@@ -125,12 +127,11 @@ def apply_nlm(
     Applies the Non-Local Means algorithm to the entire image.
 
     Args:
-        image (np.ndarray): The input image.
-        kernel_size (int): The size of the patch kernel.
-        search_window_size (int): The size of the search window.
+        image (np.ndarray): The input image. kernel_size (int): The size of the
+        patch kernel. search_window_size (int): The size of the search window.
         filter_strength (float): The filter strength for patch comparison.
-        pixels_to_process (int): The number of pixels to process.
-        start_point (Point): The starting point for processing.
+        pixels_to_process (int): The number of pixels to process. start_point
+        (Point): The starting point for processing.
 
     Returns:
         np.ndarray: The denoised image and total weights for normalization.
@@ -169,11 +170,11 @@ def process_nlm(
     Main function to execute the NLM denoising on the input image.
 
     Args:
-        image (np.ndarray): The input image.
-        kernel_size (int): The size of the patch kernel.
-        pixels_to_process (int): The number of pixels to process.
-        search_window_size (int, optional): The size of the search window. Defaults to 7.
-        filter_strength (float, optional): The filter strength. Defaults to 0.1.
+        image (np.ndarray): The input image. kernel_size (int): The size of the
+        patch kernel. pixels_to_process (int): The number of pixels to process.
+        search_window_size (int, optional): The size of the search window.
+        Defaults to 7. filter_strength (float, optional): The filter strength.
+        Defaults to 0.1.
 
     Returns:
         NLMResult: The result of the NLM denoising.

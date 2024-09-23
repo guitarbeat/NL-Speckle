@@ -1,4 +1,23 @@
+"""
+The above code defines data classes and functions for visualizing image
+processing techniques with overlays such as kernels, search windows, and pixel
+values.
+
+:param subplot: The `subplot` parameter in the provided code refers to a subplot
+    within a Matplotlib
+figure. Subplots are used to arrange multiple plots within a single figure. In
+this context, the `subplot` parameter is of type `plt.Axes`, which represents an
+individual plot or subplot within a Matplotlib :type subplot: plt.Axes :param
+image: The code you provided defines several data classes and functions related
+to image processing visualization. Here's a brief overview of the key
+components: :type image: np.ndarray :param config: The `config` parameter in the
+provided code represents a configuration object that holds various settings for
+image visualization and analysis. Here are the key attributes of the
+`VisualizationConfig` data class: :type config: VisualizationConfig
+"""
+
 import itertools
+
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Tuple, List
 
@@ -73,9 +92,9 @@ def add_overlays(subplot: plt.Axes, image: np.ndarray, config: VisualizationConf
     Add overlays to the plot based on the technique and configuration.
 
     Args:
-        subplot (plt.Axes): The subplot to add overlays to.
-        image (np.ndarray): The image being plotted.
-        config (VisualizationConfig): Configuration parameters.
+        subplot (plt.Axes): The subplot to add overlays to. image (np.ndarray):
+        The image being plotted. config (VisualizationConfig): Configuration
+        parameters.
     """
     if config.show_kernel:
         add_kernel_overlay(subplot, config)
@@ -92,8 +111,8 @@ def add_kernel_overlay(subplot: plt.Axes, config: VisualizationConfig) -> None:
     Add kernel overlay to the plot.
 
     Args:
-        subplot (plt.Axes): The subplot to add the kernel overlay to.
-        config (VisualizationConfig): Configuration parameters.
+        subplot (plt.Axes): The subplot to add the kernel overlay to. config
+        (VisualizationConfig): Configuration parameters.
     """
     add_kernel_rectangle(subplot, config)
     add_kernel_grid_lines(subplot, config)
@@ -105,8 +124,8 @@ def add_kernel_rectangle(subplot: plt.Axes, config: VisualizationConfig) -> None
     Add the main kernel rectangle to the subplot.
 
     Args:
-        subplot (plt.Axes): The subplot to add the kernel rectangle to.
-        config (VisualizationConfig): Configuration parameters.
+        subplot (plt.Axes): The subplot to add the kernel rectangle to. config
+        (VisualizationConfig): Configuration parameters.
     """
     kernel_top_left = get_kernel_top_left(config)
     subplot.add_patch(
@@ -126,8 +145,8 @@ def add_kernel_grid_lines(subplot: plt.Axes, config: VisualizationConfig) -> Non
     Add grid lines to the kernel in the subplot.
 
     Args:
-        subplot (plt.Axes): The subplot to add the kernel grid lines to.
-        config (VisualizationConfig): Configuration parameters.
+        subplot (plt.Axes): The subplot to add the kernel grid lines to. config
+        (VisualizationConfig): Configuration parameters.
     """
     grid_lines = generate_kernel_grid_lines(config)
     subplot.add_collection(
@@ -145,8 +164,8 @@ def highlight_center_pixel(subplot: plt.Axes, config: VisualizationConfig) -> No
     Highlight the center pixel of the kernel in the subplot.
 
     Args:
-        subplot (plt.Axes): The subplot to highlight the center pixel in.
-        config (VisualizationConfig): Configuration parameters.
+        subplot (plt.Axes): The subplot to highlight the center pixel in. config
+        (VisualizationConfig): Configuration parameters.
     """
     center_pixel_coords = (
         config.last_processed_pixel[0] - 0.5,
@@ -171,8 +190,8 @@ def add_search_window_overlay(subplot: plt.Axes, image: np.ndarray, config: Visu
 
     Args:
         subplot (plt.Axes): The subplot to add the search window overlay to.
-        image (np.ndarray): The image being plotted.
-        config (VisualizationConfig): Configuration parameters.
+        image (np.ndarray): The image being plotted. config
+        (VisualizationConfig): Configuration parameters.
     """
     window_left, window_top, window_width, window_height = get_search_window_dims(
         image, config
@@ -194,9 +213,9 @@ def add_pixel_value_overlay(subplot: plt.Axes, image: np.ndarray, config: Visual
     Add pixel value overlay for the zoomed view to the subplot.
 
     Args:
-        subplot (plt.Axes): The subplot to add the pixel value overlay to.
-        image (np.ndarray): The image being plotted.
-        config (VisualizationConfig): Configuration parameters.
+        subplot (plt.Axes): The subplot to add the pixel value overlay to. image
+        (np.ndarray): The image being plotted. config (VisualizationConfig):
+        Configuration parameters.
     """
     image_height, image_width = image.shape[:2]
     for i, j in itertools.product(range(image_height), range(image_width)):
@@ -265,11 +284,12 @@ def get_search_window_dims(image: np.ndarray, config: VisualizationConfig) -> Tu
     Calculate the dimensions of the search window.
 
     Args:
-        image (np.ndarray): The image being plotted.
-        config (VisualizationConfig): Configuration parameters.
+        image (np.ndarray): The image being plotted. config
+        (VisualizationConfig): Configuration parameters.
 
     Returns:
-        Tuple[float, float, float, float]: The left, top, width, and height of the search window.
+        Tuple[float, float, float, float]: The left, top, width, and height of
+        the search window.
     """
     image_height, image_width = image.shape[:2]
 

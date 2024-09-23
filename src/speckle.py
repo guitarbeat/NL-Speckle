@@ -1,10 +1,10 @@
 """
 This module provides functions for calculating speckle contrast in images.
 
-Functions:
-- calculate_mean(local_window): Calculate the mean intensity within a local window.
-- calculate_speckle_contrast(local_std, local_mean): Calculate the speckle contrast.
-- apply_speckle_contrast(image, kernel_size, pixels_to_process, start_point):
+Functions: - calculate_mean(local_window): Calculate the mean intensity within a
+local window. - calculate_speckle_contrast(local_std, local_mean): Calculate the
+speckle contrast. - apply_speckle_contrast(image, kernel_size,
+pixels_to_process, start_point):
     Apply speckle contrast to an image.
 """
 
@@ -19,9 +19,8 @@ from src.processing import FilterResult, ProcessingDetails, calculate_processing
 
 def calculate_speckle_contrast(local_std, local_mean):
     """
-    Speckle Contrast (SC):
-    ratio of standard deviation to mean intensity within the kernel centered at (x, y).
-    Formula: SC_{x,y} = σ_{x,y} / μ_{x,y}
+    Speckle Contrast (SC): ratio of standard deviation to mean intensity within
+    the kernel centered at (x, y). Formula: SC_{x,y} = σ_{x,y} / μ_{x,y}
     """
     return local_std / local_mean if local_mean != 0 else 0
 
@@ -104,7 +103,8 @@ def process_speckle(image, kernel_size, pixels_to_process):
 # --- Data Class for Results ---
 @dataclass
 class SpeckleResult(FilterResult):
-    """Represents the result of a speckle filter, containing mean and standard deviation filters."""
+    """Represents the result of a speckle filter, containing mean and standard
+    deviation filters."""
 
     mean_filter: np.ndarray
     std_dev_filter: np.ndarray
