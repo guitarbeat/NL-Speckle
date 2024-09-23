@@ -21,8 +21,6 @@ class ProcessParams:
     analysis_params: Dict[str, Any]
     show_per_pixel_processing: bool
     technique: str
-    update_state: bool
-    handle_visualization: bool
 
 
 def process_image(params):
@@ -197,12 +195,10 @@ def calculate_processing_details(
     )
 
 
-# --- Abstract Base Class for Filter Results ---
 @dataclass
 class FilterResult(ABC):
     """Abstract base class for various filtering techniques."""
 
-    processing_coord: Tuple[int, int]
     processing_end_coord: Tuple[int, int]
     kernel_size: int
     pixels_processed: int
@@ -212,9 +208,9 @@ class FilterResult(ABC):
     def get_filter_data(self) -> Dict[str, Any]:
         """Get filter-specific data as a dictionary."""
 
-    @classmethod
+    @staticmethod
     @abstractmethod
-    def get_filter_options(cls) -> List[str]:
+    def get_filter_options() -> List[str]:
         """Get available filter options."""
 
     def get_last_processed_coordinates(self) -> Tuple[int, int]:

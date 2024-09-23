@@ -198,7 +198,6 @@ def process_nlm(
         return NLMResult(
             nonlocal_means=nonlocal_means,
             normalization_factors=total_weights,
-            processing_coord=processing_info.start_point,
             processing_end_coord=processing_info.end_point,
             kernel_size=kernel_size,
             pixels_processed=processing_info.pixels_to_process,
@@ -225,8 +224,8 @@ class NLMResult(FilterResult):
     search_window_size: int
     filter_strength: float
 
-    @classmethod
-    def get_filter_options(cls) -> List[str]:
+    @staticmethod
+    def get_filter_options() -> List[str]:
         """
         Returns the available filter options for NLM results.
 

@@ -89,7 +89,6 @@ def process_speckle(image, kernel_size, pixels_to_process):
             start_pixel_mean=mean_filter[start_y, start_x],
             start_pixel_std_dev=std_dev_filter[start_y, start_x],
             start_pixel_speckle_contrast=sc_filter[start_y, start_x],
-            processing_coord=processing_info.start_point,
             processing_end_coord=processing_info.end_point,
             kernel_size=kernel_size,
             pixels_processed=processing_info.pixels_to_process,
@@ -115,8 +114,8 @@ class SpeckleResult(FilterResult):
     start_pixel_std_dev: float
     start_pixel_speckle_contrast: float
 
-    @classmethod
-    def get_filter_options(cls) -> List[str]:
+    @staticmethod
+    def get_filter_options() -> List[str]:
         return ["Mean Filter", "Std Dev Filter", "Speckle Contrast"]
 
     def get_filter_data(self) -> dict:
