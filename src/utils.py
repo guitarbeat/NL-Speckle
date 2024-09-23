@@ -3,24 +3,15 @@ Utility functions and classes for image processing and comparison.
 """
 
 # Import necessary modules
-from src.plotting import run_technique, VisualizationConfig
+from src.plotting import VisualizationConfig
 import numpy as np
 import streamlit as st
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, Tuple
 import matplotlib.pyplot as plt
 from streamlit_image_comparison import image_comparison
-from src.plotting import log_action
+from src.decor import log_action
 
-@log_action
-def setup_and_run_analysis_techniques(analysis_params: Dict[str, Any]) -> None:
-    """Set up and run analysis techniques based on the provided parameters."""
-    techniques: List[str] = st.session_state.get("techniques", [])
-    tabs: List[Any] = st.session_state.get("tabs", [])
 
-    for technique, tab in zip(techniques, tabs):
-        if tab is not None:
-            with tab:
-                run_technique(technique, tab, analysis_params)
 
 @log_action
 def update_session_state(technique: str, pixels_to_process: int, results: Any) -> None:

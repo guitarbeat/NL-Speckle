@@ -17,11 +17,9 @@ from src.speckle import SpeckleResult
 from src.processing import (
     process_image,
     extract_kernel_from_image,
-    calculate_processing_details,
     ProcessParams,
-    configure_process_params,
+    configure_process_params
 )
-from src.decor import log_action
 
 
 
@@ -30,7 +28,7 @@ DEFAULT_SPECKLE_VIEW = ["Speckle Contrast", "Original Image"]
 DEFAULT_NLM_VIEW = ["Non-Local Means", "Original Image"]
 
 
-@log_action
+
 def generate_plot_key(filter_name: str, plot_type: str) -> str:
     """Generate a key for identifying plots based on filter name and plot type."""
     base_key = filter_name.lower().replace(" ", "_")
@@ -76,19 +74,16 @@ class VisualizationConfig:
         """Post-initialization validation."""
         self._validate_vmin_vmax()
 
-    @log_action
     def _validate_vmin_vmax(self):
         """Ensure vmin is not greater than vmax."""
         if self.vmin is not None and self.vmax is not None and self.vmin > self.vmax:
             raise ValueError("vmin cannot be greater than vmax.")
 
     @property
-    @log_action
     def zoom_dimensions(self) -> Tuple[int, int]:
         """Return zoomed dimensions if zoom is enabled."""
         return self.figure_size if self.zoom else (self.image_array.data.shape[:2])
 
-    @log_action
     def set_kernel_matrix(self, matrix: np.ndarray):
         """Set the kernel matrix with validation."""
         if matrix.shape != (self.kernel_size, self.kernel_size):
@@ -112,8 +107,6 @@ class ImageArray:
 
     data: np.ndarray
 
-
-@log_action
 def create_process_params(
     analysis_params: Dict[str, Any], technique: str, technique_params: Dict[str, Any]
 ) -> ProcessParams:
@@ -156,7 +149,6 @@ def create_process_params(
 
 # --------- Updated Functions ----------#
 
-@log_action(detailed_logging=True)
 def visualize_filter_and_zoomed(
     filter_name: str, filter_data: np.ndarray, viz_config: VisualizationConfig
 ):
@@ -176,18 +168,15 @@ def visualize_filter_and_zoomed(
         )
         title = f"Zoomed-In {filter_name}" if plot_type == "zoomed" else filter_name
 
+        # Update the config with the title instead of passing it separately
+        config.title = title
   
         visualize_image(
             filter_data,
             viz_config.ui_placeholders[plot_key],
-            *viz_config.last_processed_pixel,
-            viz_config.kernel_size,
-            title=title,
-            config=config,
+            config=config
         )
 
-
-@log_action
 def update_visualization_config(
     viz_config: VisualizationConfig,
     filter_data: np.ndarray,
@@ -223,47 +212,6 @@ def update_visualization_config(
 # --------- Visualization Functions ----------#
 
 
-@log_action
-def visualize_analysis_results(viz_params: VisualizationConfig) -> None:
-    """
-    Visualize analysis results based on the provided parameters.
-
-    Args:
-        viz_params (VisualizationConfig): Visualization parameters including results,
-        image array, etc.
-    """
-
-    last_processed_x = viz_params.last_processed_pixel.x
-    last_processed_y = viz_params.last_processed_pixel.y
-
-
-    filter_options, specific_params = prepare_filter_options_and_parameters(
-        viz_params.results, viz_params.last_processed_pixel
-    )
-    filter_options["Original Image"] = viz_params.image_array.data
-
-    selected_filters = st.session_state.get(
-        f"{viz_params.technique}_selected_filters", []
-    )
-    for filter_name in selected_filters:
-        if filter_name in filter_options:
-            filter_data = filter_options[filter_name]
-            visualize_filter_and_zoomed(filter_name, filter_data, viz_params)
-
-    if viz_params.show_per_pixel_processing:
-        display_analysis_formula(
-            specific_params,
-            viz_params.ui_placeholders,
-            viz_params.technique,
-            last_processed_x,
-            last_processed_y,
-            viz_params.kernel_size,
-            viz_params.kernel_matrix,
-            viz_params.original_pixel_value,
-        )
-
-
-@log_action
 def create_image_plot(
     plot_image: np.ndarray, config: VisualizationConfig
 ) -> plt.Figure:
@@ -283,11 +231,8 @@ def create_image_plot(
 
     add_overlays(ax, plot_image, config)
     fig.tight_layout(pad=2)
-    return
+    return fig  
 
-
-
-@log_action
 def prepare_filter_options_and_parameters(
     results: Any, last_processed_pixel: Tuple[int, int]
 ) -> Tuple[Dict[str, np.ndarray], Dict[str, Any]]:
@@ -301,7 +246,9 @@ def prepare_filter_options_and_parameters(
     Returns:
         Tuple[Dict[str, np.ndarray], Dict[str, Any]]: Filter options and specific parameters.
     """
-    end_x, end_y = last_processed_pixel
+    # end_x, end_y = last_processed_pixel
+    end_x = last_processed_pixel.x
+    end_y = last_processed_pixel.y
     filter_options = results.get_filter_data()
     specific_params = {
         "kernel_size": results.kernel_size,
@@ -330,8 +277,6 @@ def prepare_filter_options_and_parameters(
 
     return filter_options, specific_params
 
-
-@log_action
 def prepare_comparison_images() -> Optional[Dict[str, np.ndarray]]:
     """
     Prepare images for comparison from different analysis results.
@@ -351,8 +296,6 @@ def prepare_comparison_images() -> Optional[Dict[str, np.ndarray]]:
 
     return comparison_images if len(comparison_images) > 1 else None
 
-
-@log_action
 def get_zoomed_image_section(
     image: np.ndarray, center_x: int, center_y: int, kernel_size: int
 ) -> Tuple[np.ndarray, int, int]:
@@ -384,8 +327,6 @@ def get_zoomed_image_section(
 
 # ---- Annotation Functions---=--#
 
-
-@log_action
 def add_overlays(
     ax: plt.Axes, plot_image: np.ndarray, config: VisualizationConfig
 ) -> None:
@@ -531,52 +472,10 @@ def add_overlays(
 
 # --------- UI Setup Functions ----------#
 
+# --------- Utility Functions ----------
 
-@log_action
-def create_technique_ui_elements(
-    technique: str, tab: Any, show_per_pixel_processing: bool
-) -> Dict[str, Any]:
-    """
-    Create UI elements for a specific image processing technique.
-
-    Args:
-        technique (str): The image processing technique (e.g., 'nlm', 'speckle').
-        tab (Any): The tab in which to place the UI elements.
-        show_per_pixel_processing (bool): Whether to display per-pixel processing views.
-
-    Returns:
-        Dict[str, Any]: Dictionary of placeholders for various UI elements.
-    """
-    # Input validation for technique
-    if not technique or not isinstance(technique, str):
-        raise ValueError("Technique must be a non-empty string.")
-
-    with tab:
-        # Create empty placeholders for dynamic UI elements
-        ui_placeholders = {"formula": st.empty(), "original_image": st.empty()}
-
-        # Fetch available filters for the given technique
-        filter_options = get_filter_options(technique)
-
-        if selected_filters := create_filter_selection(technique, filter_options):
-            # Render the selected filter views
-            create_filter_views(
-                selected_filters, ui_placeholders, show_per_pixel_processing
-            )
-        else:
-            st.warning("No views selected. Please select at least one view to display.")
-
-        # Handle per-pixel processing view if enabled
-        if show_per_pixel_processing:
-            ui_placeholders["zoomed_kernel"] = st.empty()
-
-    return ui_placeholders
-
-
-# --------- Utility Functions ----------#
-@log_action
 def visualize_image(
-    image: np.ndarray, placeholder, config: VisualizationConfig
+    image: np.ndarray, placeholder, *, config: VisualizationConfig
 ) -> None:
     """
     Visualize an image with optional zooming and overlays.
@@ -589,23 +488,32 @@ def visualize_image(
     try:
         # Optional zooming on the image
         if config.zoom:
-            image = get_zoomed_image_section(
-                image,
-                config.last_processed_pixel.x,
-                config.last_processed_pixel.y,
-                config.kernel_size,
-            )
-        else:
+            try:
+                image, new_center_x, new_center_y = get_zoomed_image_section(
+                    image,
+                    config.last_processed_pixel.x,
+                    config.last_processed_pixel.y,
+                    config.kernel_size,
+                )
+                config.last_processed_pixel = PixelCoordinates(new_center_x, new_center_y)
+            except Exception as e:
+                placeholder.error(
+                    f"An error occurred while zooming the image: {e}. Please check the logs for details."
+                )
+                return
+
+        try:
             fig = create_image_plot(image, config)
-            placeholder.pyplot(fig)  # Display plot
+            placeholder.pyplot(fig)  # Pass the figure object to pyplot
             plt.close(fig)  # Ensure figure is closed after rendering to free up memory
+        except Exception as e:
+            placeholder.error(
+                f"An error occurred while creating the image plot: {e}. Please check the logs for details."
+            )
     except (ValueError, TypeError, KeyError) as e:
         placeholder.error(
-            f"An error occurred while visualizing the image: {e}. Please check the logs for details."
-        )
-
-
-@log_action
+            f"An error occurred while visualizing the image: {e}. Please check the logs for details.")
+        
 def get_filter_options(technique: str) -> List[str]:
     """
     Get filter options based on the image processing technique.
@@ -623,8 +531,6 @@ def get_filter_options(technique: str) -> List[str]:
     else:
         return []
 
-
-@log_action
 def create_filter_selection(technique: str, filter_options: List[str]) -> List[str]:
     """
     Create and return a filter selection UI element.
@@ -652,8 +558,6 @@ def create_filter_selection(technique: str, filter_options: List[str]) -> List[s
     st.session_state[f"{technique}_selected_filters"] = selected_filters
     return selected_filters
 
-
-@log_action
 def create_filter_views(
     selected_filters: List[str],
     ui_placeholders: Dict[str, Any],
@@ -681,104 +585,63 @@ def create_filter_views(
                 columns[i].expander(f"Zoomed-in {filter_name}", expanded=False).empty()
             )
 
+def create_technique_ui_elements(technique: str, tab: Any, show_per_pixel_processing: bool) -> Dict[str, Any]:
+    if not technique or not isinstance(technique, str):
+        raise ValueError("Technique must be a non-empty string.")
 
-@log_action
-def visualize_results(
-    image_array: ImageArray,
-    technique: str,
-    analysis_params: Dict[str, Any],
-    results: Union[SpeckleResult, NLMResult],
-    show_per_pixel_processing: bool,
-):
-    """Visualize the results of image processing."""
-    try:
-        # Calculate processing details
-        calculate_processing_details(
-            image_array,
-            analysis_params.get("kernel_size", 3),
-            analysis_params.get("total_pixels", 0),
-        )
+    with tab:
+        ui_placeholders = {"formula": st.empty(), "original_image": st.empty()}
 
-        # Get last processed coordinates
-        last_processed_x, last_processed_y = (
-            results.get_last_processed_coordinates().x,
-            results.get_last_processed_coordinates().y,
-        )
+        filter_options = get_filter_options(technique)
 
-        # Extract kernel information
-        kernel_matrix, original_pixel_value, kernel_size = extract_kernel_from_image(
-            image_array,
-            last_processed_x,
-            last_processed_y,
-            analysis_params.get("kernel_size", 3),
-        )
-
-        # Create VisualizationConfig object
-        viz_config = VisualizationConfig(
-            image_array=image_array,
-            technique=technique,
-            analysis_params=analysis_params,
-            results=results,
-            last_processed_pixel=PixelCoordinates(
-                x=last_processed_x, y=last_processed_y
-            ),
-            kernel_matrix=kernel_matrix,
-            kernel_size=kernel_size,
-            original_pixel_value=original_pixel_value,
-            show_per_pixel_processing=show_per_pixel_processing,
-        )
-
-        # Visualize analysis results based on the result type
-        if isinstance(results, SpeckleResult):
-            # Handle SpeckleResult-specific visualization
-            filter_options = results.get_filter_data()
-            filter_options["Original Image"] = image_array.data
-        elif isinstance(results, NLMResult):
-            # Handle NLMResult-specific visualization
-            filter_options = results.get_filter_data()
-            filter_options["Original Image"] = image_array.data
-            viz_config.search_window_size = results.search_window_size
+        if selected_filters := create_filter_selection(technique, filter_options):
+            create_filter_views(selected_filters, ui_placeholders, show_per_pixel_processing)
         else:
-            raise ValueError(f"Unsupported result type: {type(results)}")
+            st.warning("No views selected. Please select at least one view to display.")
 
-        selected_filters = st.session_state.get(f"{technique}_selected_filters", [])
-        for filter_name in selected_filters:
-            if filter_name in filter_options:
-                filter_data = filter_options[filter_name]
-                visualize_filter_and_zoomed(filter_name, filter_data, viz_config)
+        if show_per_pixel_processing:
+            ui_placeholders["zoomed_kernel"] = st.empty()
 
-        if viz_config.show_per_pixel_processing:
-            specific_params = {
-                "kernel_size": viz_config.kernel_size,
-                "pixels_processed": results.pixels_processed,
-                "total_pixels": viz_config.kernel_size**2,
-            }
-            display_analysis_formula(
-                specific_params,
-                viz_config.ui_placeholders,
-                technique,
-                last_processed_x,
-                last_processed_y,
-                viz_config.kernel_size,
-                viz_config.kernel_matrix,
-                viz_config.original_pixel_value,
-            )
-    except (ValueError, TypeError, KeyError) as e:
-        st.error(
-            f"An error occurred while visualizing the results for {technique}: {str(e)}."
-        )
+    return ui_placeholders
 
 
 # --------- Helpers ----------#
+def visualize_analysis_results(viz_params: VisualizationConfig) -> None:
+    """
+    Visualize analysis results based on the provided parameters.
 
-@log_action
+    Args:
+        viz_params (VisualizationConfig): Visualization parameters including results,
+        image array, etc.
+    """
+    filter_options, specific_params = prepare_filter_options_and_parameters(
+        viz_params.results, viz_params.last_processed_pixel
+    )
+    filter_options["Original Image"] = viz_params.image_array.data
+
+    selected_filters = st.session_state.get(f"{viz_params.technique}_selected_filters", [])
+    for filter_name in selected_filters:
+        if filter_name in filter_options:
+            filter_data = filter_options[filter_name]
+            visualize_filter_and_zoomed(filter_name, filter_data, viz_params)
+
+    if viz_params.show_per_pixel_processing:
+        display_analysis_formula(
+            specific_params,
+            viz_params.ui_placeholders,
+            viz_params.technique,
+            viz_params.last_processed_pixel.x,
+            viz_params.last_processed_pixel.y,
+            viz_params.kernel_size,
+            viz_params.kernel_matrix,
+            viz_params.original_pixel_value,
+        )
+
 def run_technique(technique: str, tab: Any, analysis_params: Dict[str, Any]) -> None:
     technique_params = st.session_state.get(f"{technique}_params", {})
     show_per_pixel_processing = analysis_params.get("show_per_pixel_processing", False)
 
-    ui_placeholders = create_technique_ui_elements(
-        technique, tab, show_per_pixel_processing
-    )
+    ui_placeholders = create_technique_ui_elements(technique, tab, show_per_pixel_processing)
     st.session_state[f"{technique}_placeholders"] = ui_placeholders
 
     process_params = create_process_params(analysis_params, technique, technique_params)
@@ -788,22 +651,64 @@ def run_technique(technique: str, tab: Any, analysis_params: Dict[str, Any]) -> 
         _, results = process_image(process_params)
         st.session_state[f"{technique}_results"] = results
 
-        # Create VisualizationConfig object
-        viz_config = VisualizationConfig(
-            image_array=ImageArray(process_params.image_array),
-            technique=technique,
-            analysis_params=analysis_params,
-            results=results,
-            last_processed_pixel=PixelCoordinates(*results.get_last_processed_coordinates()),
-            ui_placeholders=ui_placeholders,
-            show_per_pixel_processing=show_per_pixel_processing,
-            kernel_size=process_params.analysis_params.get('kernel_size', 3),
-            kernel_matrix=None,  # You might need to extract this from somewhere
-            original_pixel_value=0.0,  # You might need to calculate this
+        viz_config = create_visualization_config(
+            process_params.image_array,
+            technique,
+            analysis_params,
+            results,
+            ui_placeholders,
+            show_per_pixel_processing
         )
 
-        # Call visualize_analysis_results
         visualize_analysis_results(viz_config)
 
     except (ValueError, TypeError, KeyError) as e:
         st.error(f"Error for {technique}: {str(e)}. Please check the logs for details.")
+
+def create_visualization_config(
+    image_array: np.ndarray,
+    technique: str,
+    analysis_params: Dict[str, Any],
+    results: Union[SpeckleResult, NLMResult],
+    ui_placeholders: Dict[str, Any],
+    show_per_pixel_processing: bool
+) -> VisualizationConfig:
+    """
+    Create a VisualizationConfig object with the necessary parameters.
+
+    Args:
+        image_array (np.ndarray): The input image array.
+        technique (str): The image processing technique.
+        analysis_params (Dict[str, Any]): Analysis parameters.
+        results (Union[SpeckleResult, NLMResult]): Processing results.
+        ui_placeholders (Dict[str, Any]): UI placeholders for visualization.
+        show_per_pixel_processing (bool): Flag to show per-pixel processing.
+
+    Returns:
+        VisualizationConfig: The created VisualizationConfig object.
+    """
+    last_processed_x, last_processed_y = results.get_last_processed_coordinates()
+    kernel_matrix, original_pixel_value, kernel_size = extract_kernel_from_image(
+        image_array,
+        last_processed_x,
+        last_processed_y,
+        analysis_params.get("kernel_size", 3),
+    )
+
+    viz_config = VisualizationConfig(
+        image_array=ImageArray(image_array),
+        technique=technique,
+        analysis_params=analysis_params,
+        results=results,
+        last_processed_pixel=PixelCoordinates(x=last_processed_x, y=last_processed_y),
+        kernel_matrix=kernel_matrix,
+        kernel_size=kernel_size,
+        original_pixel_value=original_pixel_value,
+        show_per_pixel_processing=show_per_pixel_processing,
+        ui_placeholders=ui_placeholders,
+    )
+
+    if isinstance(results, NLMResult):
+        viz_config.search_window_size = results.search_window_size
+
+    return viz_config
