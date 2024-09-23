@@ -18,15 +18,13 @@ from src.processing import (
     process_image,
     extract_kernel_from_image,
     ProcessParams,
-    configure_process_params
+    configure_process_params,
 )
-
 
 
 # Constants for Image Visualization
 DEFAULT_SPECKLE_VIEW = ["Speckle Contrast", "Original Image"]
 DEFAULT_NLM_VIEW = ["Non-Local Means", "Original Image"]
-
 
 
 def generate_plot_key(filter_name: str, plot_type: str) -> str:
@@ -107,6 +105,7 @@ class ImageArray:
 
     data: np.ndarray
 
+
 def create_process_params(
     analysis_params: Dict[str, Any], technique: str, technique_params: Dict[str, Any]
 ) -> ProcessParams:
@@ -149,6 +148,7 @@ def create_process_params(
 
 # --------- Updated Functions ----------#
 
+
 def visualize_filter_and_zoomed(
     filter_name: str, filter_data: np.ndarray, viz_config: VisualizationConfig
 ):
@@ -170,12 +170,11 @@ def visualize_filter_and_zoomed(
 
         # Update the config with the title instead of passing it separately
         config.title = title
-  
+
         visualize_image(
-            filter_data,
-            viz_config.ui_placeholders[plot_key],
-            config=config
+            filter_data, viz_config.ui_placeholders[plot_key], config=config
         )
+
 
 def update_visualization_config(
     viz_config: VisualizationConfig,
@@ -231,7 +230,8 @@ def create_image_plot(
 
     add_overlays(ax, plot_image, config)
     fig.tight_layout(pad=2)
-    return fig  
+    return fig
+
 
 def prepare_filter_options_and_parameters(
     results: Any, last_processed_pixel: Tuple[int, int]
@@ -277,6 +277,7 @@ def prepare_filter_options_and_parameters(
 
     return filter_options, specific_params
 
+
 def prepare_comparison_images() -> Optional[Dict[str, np.ndarray]]:
     """
     Prepare images for comparison from different analysis results.
@@ -295,6 +296,7 @@ def prepare_comparison_images() -> Optional[Dict[str, np.ndarray]]:
             comparison_images |= results.get_filter_data()
 
     return comparison_images if len(comparison_images) > 1 else None
+
 
 def get_zoomed_image_section(
     image: np.ndarray, center_x: int, center_y: int, kernel_size: int
@@ -326,6 +328,7 @@ def get_zoomed_image_section(
 
 
 # ---- Annotation Functions---=--#
+
 
 def add_overlays(
     ax: plt.Axes, plot_image: np.ndarray, config: VisualizationConfig
@@ -474,6 +477,7 @@ def add_overlays(
 
 # --------- Utility Functions ----------
 
+
 def visualize_image(
     image: np.ndarray, placeholder, *, config: VisualizationConfig
 ) -> None:
@@ -495,7 +499,9 @@ def visualize_image(
                     config.last_processed_pixel.y,
                     config.kernel_size,
                 )
-                config.last_processed_pixel = PixelCoordinates(new_center_x, new_center_y)
+                config.last_processed_pixel = PixelCoordinates(
+                    new_center_x, new_center_y
+                )
             except Exception as e:
                 placeholder.error(
                     f"An error occurred while zooming the image: {e}. Please check the logs for details."
@@ -512,8 +518,10 @@ def visualize_image(
             )
     except (ValueError, TypeError, KeyError) as e:
         placeholder.error(
-            f"An error occurred while visualizing the image: {e}. Please check the logs for details.")
-        
+            f"An error occurred while visualizing the image: {e}. Please check the logs for details."
+        )
+
+
 def get_filter_options(technique: str) -> List[str]:
     """
     Get filter options based on the image processing technique.
@@ -530,6 +538,7 @@ def get_filter_options(technique: str) -> List[str]:
         return ["Original Image"] + NLMResult.get_filter_options()
     else:
         return []
+
 
 def create_filter_selection(technique: str, filter_options: List[str]) -> List[str]:
     """
@@ -558,6 +567,7 @@ def create_filter_selection(technique: str, filter_options: List[str]) -> List[s
     st.session_state[f"{technique}_selected_filters"] = selected_filters
     return selected_filters
 
+
 def create_filter_views(
     selected_filters: List[str],
     ui_placeholders: Dict[str, Any],
@@ -585,7 +595,10 @@ def create_filter_views(
                 columns[i].expander(f"Zoomed-in {filter_name}", expanded=False).empty()
             )
 
-def create_technique_ui_elements(technique: str, tab: Any, show_per_pixel_processing: bool) -> Dict[str, Any]:
+
+def create_technique_ui_elements(
+    technique: str, tab: Any, show_per_pixel_processing: bool
+) -> Dict[str, Any]:
     if not technique or not isinstance(technique, str):
         raise ValueError("Technique must be a non-empty string.")
 
@@ -595,7 +608,9 @@ def create_technique_ui_elements(technique: str, tab: Any, show_per_pixel_proces
         filter_options = get_filter_options(technique)
 
         if selected_filters := create_filter_selection(technique, filter_options):
-            create_filter_views(selected_filters, ui_placeholders, show_per_pixel_processing)
+            create_filter_views(
+                selected_filters, ui_placeholders, show_per_pixel_processing
+            )
         else:
             st.warning("No views selected. Please select at least one view to display.")
 
@@ -619,7 +634,9 @@ def visualize_analysis_results(viz_params: VisualizationConfig) -> None:
     )
     filter_options["Original Image"] = viz_params.image_array.data
 
-    selected_filters = st.session_state.get(f"{viz_params.technique}_selected_filters", [])
+    selected_filters = st.session_state.get(
+        f"{viz_params.technique}_selected_filters", []
+    )
     for filter_name in selected_filters:
         if filter_name in filter_options:
             filter_data = filter_options[filter_name]
@@ -637,11 +654,14 @@ def visualize_analysis_results(viz_params: VisualizationConfig) -> None:
             viz_params.original_pixel_value,
         )
 
+
 def run_technique(technique: str, tab: Any, analysis_params: Dict[str, Any]) -> None:
     technique_params = st.session_state.get(f"{technique}_params", {})
     show_per_pixel_processing = analysis_params.get("show_per_pixel_processing", False)
 
-    ui_placeholders = create_technique_ui_elements(technique, tab, show_per_pixel_processing)
+    ui_placeholders = create_technique_ui_elements(
+        technique, tab, show_per_pixel_processing
+    )
     st.session_state[f"{technique}_placeholders"] = ui_placeholders
 
     process_params = create_process_params(analysis_params, technique, technique_params)
@@ -657,7 +677,7 @@ def run_technique(technique: str, tab: Any, analysis_params: Dict[str, Any]) -> 
             analysis_params,
             results,
             ui_placeholders,
-            show_per_pixel_processing
+            show_per_pixel_processing,
         )
 
         visualize_analysis_results(viz_config)
@@ -665,13 +685,14 @@ def run_technique(technique: str, tab: Any, analysis_params: Dict[str, Any]) -> 
     except (ValueError, TypeError, KeyError) as e:
         st.error(f"Error for {technique}: {str(e)}. Please check the logs for details.")
 
+
 def create_visualization_config(
     image_array: np.ndarray,
     technique: str,
     analysis_params: Dict[str, Any],
     results: Union[SpeckleResult, NLMResult],
     ui_placeholders: Dict[str, Any],
-    show_per_pixel_processing: bool
+    show_per_pixel_processing: bool,
 ) -> VisualizationConfig:
     """
     Create a VisualizationConfig object with the necessary parameters.
