@@ -10,6 +10,7 @@ import numpy as np
 from typing import Any, Dict, List, Optional, Tuple
 from src.decor import log_action
 
+
 @dataclass
 class ProcessParams:
     """Holds parameters for image processing."""
@@ -21,6 +22,7 @@ class ProcessParams:
     update_state: bool
     handle_visualization: bool
 
+
 def process_image(params):
     try:
         technique = params.technique
@@ -31,12 +33,14 @@ def process_image(params):
         search_window_size = analysis_params.get("search_window_size", 21)
         filter_strength = analysis_params.get("filter_strength", 0.10)
 
-        analysis_params.update({
-            "kernel_size": kernel_size,
-            "pixels_to_process": pixels_to_process,
-            "search_window_size": search_window_size,
-            "filter_strength": filter_strength,
-        })
+        analysis_params.update(
+            {
+                "kernel_size": kernel_size,
+                "pixels_to_process": pixels_to_process,
+                "search_window_size": search_window_size,
+                "filter_strength": filter_strength,
+            }
+        )
 
         from src.nlm import process_nlm
         from src.speckle import process_speckle
@@ -50,26 +54,39 @@ def process_image(params):
                 filter_strength=filter_strength,
             )
         elif technique == "speckle":
-            results = process_speckle(params.image_array.data, kernel_size, pixels_to_process)
+            results = process_speckle(
+                params.image_array.data, kernel_size, pixels_to_process
+            )
         else:
             raise ValueError(f"Unknown technique: {technique}")
-        
-        st.session_state.update({
-            'processed_pixels': pixels_to_process,
-            f"{technique}_results": results
-        })
+
+        st.session_state.update(
+            {"processed_pixels": pixels_to_process, f"{technique}_results": results}
+        )
         return params, results
 
     except Exception as e:
-        logging.error(json.dumps({"action": "process_image", "technique": technique, "error": str(e)}))
+        logging.error(
+            json.dumps(
+                {"action": "process_image", "technique": technique, "error": str(e)}
+            )
+        )
         raise
-    
-def normalize_image(image: np.ndarray, low_percentile: int = 2, high_percentile: int = 98) -> np.ndarray:
+
+
+def normalize_image(
+    image: np.ndarray, low_percentile: int = 2, high_percentile: int = 98
+) -> np.ndarray:
     p_low, p_high = np.percentile(image, [low_percentile, high_percentile])
-    logging.info(json.dumps({"action": "normalize_image", "p_low": p_low, "p_high": p_high}))
+    logging.info(
+        json.dumps({"action": "normalize_image", "p_low": p_low, "p_high": p_high})
+    )
     return np.clip(image, p_low, p_high) - p_low / (p_high - p_low)
 
-def extract_kernel_from_image(image_array: np.ndarray, end_x: int, end_y: int, kernel_size: int) -> Tuple[np.ndarray, float, int]:
+
+def extract_kernel_from_image(
+    image_array: np.ndarray, end_x: int, end_y: int, kernel_size: int
+) -> Tuple[np.ndarray, float, int]:
     half_kernel = kernel_size // 2
     height, width = image_array.shape
 
@@ -78,10 +95,14 @@ def extract_kernel_from_image(image_array: np.ndarray, end_x: int, end_y: int, k
     kernel_values = image_array[y_start:y_end, x_start:x_end]
 
     if kernel_values.size == 0:
-        raise ValueError(json.dumps({
-            "action": "extract_kernel_from_image",
-            "error": f"Extracted kernel at ({end_x}, {end_y}) is empty. Image shape: {image_array.shape}, Kernel size: {kernel_size}",
-        }))
+        raise ValueError(
+            json.dumps(
+                {
+                    "action": "extract_kernel_from_image",
+                    "error": f"Extracted kernel at ({end_x}, {end_y}) is empty. Image shape: {image_array.shape}, Kernel size: {kernel_size}",
+                }
+            )
+        )
 
     if kernel_values.shape != (kernel_size, kernel_size):
         kernel_values = np.pad(
@@ -95,6 +116,7 @@ def extract_kernel_from_image(image_array: np.ndarray, end_x: int, end_y: int, k
 
     return kernel_values.astype(float), float(image_array[end_y, end_x]), kernel_size
 
+
 @log_action
 def configure_process_params(
     technique: str, process_params: ProcessParams, technique_params: Dict[str, Any]
@@ -104,6 +126,7 @@ def configure_process_params(
         process_params.analysis_params["use_whole_image"] = technique_params.get(
             "use_whole_image", False
         )
+
 
 # --- Dataclass for Processing Details ---
 @dataclass(frozen=True)
@@ -142,6 +165,7 @@ class ProcessingDetails:
                 raise ValueError("End coordinates exceed image boundaries.")
 
         _validate_coordinates()
+
 
 def calculate_processing_details(
     image: np.ndarray, kernel_size: int, max_pixels: Optional[int]
