@@ -1,6 +1,7 @@
 """
-Streamlit app for displaying Non-Local Means (NLM) denoising and Speckle Contrast formulas.
-Provides interactive explanations and visualizations of the mathematical concepts.
+Streamlit app for displaying Non-Local Means (NLM) denoising and Speckle
+Contrast formulas. Provides interactive explanations and visualizations of the
+mathematical concepts.
 """
 
 import streamlit as st
@@ -19,13 +20,20 @@ NLM_FORMULA_CONFIG = {
         r"I_{{i,j}} \cdot w_{{{x},{y}}}(i,j) = {nlm_value:.3f}"
     ),
     "explanation": r"""
-    The Non-Local Means (NLM) algorithm denoises each pixel by replacing it with a weighted average of pixels from the entire image (or a large search window). The weights are determined by the similarity of small patches around each pixel:
+    The Non-Local Means (NLM) algorithm denoises each pixel by replacing it with
+    a weighted average of pixels from the entire image (or a large search
+    window). The weights are determined by the similarity of small patches
+    around each pixel:
     
-    1. Patch Comparison: For each pixel $(x,y)$, compare the patch $P_{{{x},{y}}}$ to patches $P_{{i,j}}$ around other pixels $(i,j)$.
-    2. Weight Calculation: Based on the patch similarity, calculate a weight $w_{{{x},{y}}}(i,j)$ for each comparison.
-    3. Weighted Average: Use these weights to compute the NLM value $NLM_{{{x},{y}}}$, a weighted average of pixel intensities $I_{{i,j}}$.
+    1. Patch Comparison: For each pixel $(x,y)$, compare the patch
+       $P_{{{x},{y}}}$ to patches $P_{{i,j}}$ around other pixels $(i,j)$.
+    2. Weight Calculation: Based on the patch similarity, calculate a weight
+       $w_{{{x},{y}}}(i,j)$ for each comparison.
+    3. Weighted Average: Use these weights to compute the NLM value
+       $NLM_{{{x},{y}}}$, a weighted average of pixel intensities $I_{{i,j}}$.
     
-    This process transitions the original pixel intensity $I_{{{x},{y}}}$ to the non-local mean value $NLM_{{{x},{y}}}$.
+    This process transitions the original pixel intensity $I_{{{x},{y}}}$ to the
+    non-local mean value $NLM_{{{x},{y}}}$.
     """,
     "additional_formulas": [
         {
@@ -43,12 +51,13 @@ NLM_FORMULA_CONFIG = {
             "title": "Weight Calculation",  # Maybe change this to "Patch Similarity"?
             "formula": r"w_{{{x},{y}}}(i,j) = e^{{-\frac{{\|P_{{{x},{y}}} - P_{{i,j}}\|^2}}{{h^2}}}}",
             "explanation": r"""
-            Weight calculation for pixel $(i,j)$ when denoising $(x,y)$ based on patch similarity, using a Gaussian weighting function:
-            - $w_{{({x},{y})}}(i,j)$: Weight for pixel $(i,j)$
-            - $P_{{({x},{y})}}$, $P_{{(i,j)}}$: Patches centered at $(x,y)$ and $(i,j)$
-            - $\|P_{{({x},{y})}} - P_{{(i,j)}}\|^2$: Squared difference between patches
-            - $h = {h}$: Smoothing parameter
-            - Similar patches yield higher weights
+            Weight calculation for pixel $(i,j)$ when denoising $(x,y)$ based on
+            patch similarity, using a Gaussian weighting function: -
+            $w_{{({x},{y})}}(i,j)$: Weight for pixel $(i,j)$ -
+            $P_{{({x},{y})}}$, $P_{{(i,j)}}$: Patches centered at $(x,y)$ and
+            $(i,j)$ - $\|P_{{({x},{y})}} - P_{{(i,j)}}\|^2$: Squared difference
+            between patches - $h = {h}$: Smoothing parameter - Similar patches
+            yield higher weights
             """,
         },
         {
@@ -100,7 +109,8 @@ SPECKLE_FORMULA_CONFIG = {
     ],
 }
 
-# ----------------------------- Formula Display Functions ----------------------------- #
+# ----------------------------- Formula Display Functions
+# ----------------------------- #
 
 
 def display_analysis_formula(
@@ -118,13 +128,11 @@ def display_analysis_formula(
 
     Args:
         specific_params: A dictionary of specific parameters for the formula.
-        placeholders: A dictionary of Streamlit placeholders.
-        analysis_type: The type of analysis ('nlm' or 'speckle').
-        end_x: The x-coordinate of the end point.
-        end_y: The y-coordinate of the end point.
-        kernel_size: The size of the kernel.
-        kernel_matrix: The kernel matrix.
-        original_value: The original value.
+        placeholders: A dictionary of Streamlit placeholders. analysis_type: The
+        type of analysis ('nlm' or 'speckle'). end_x: The x-coordinate of the
+        end point. end_y: The y-coordinate of the end point. kernel_size: The
+        size of the kernel. kernel_matrix: The kernel matrix. original_value:
+        The original value.
     """
     variables = {
         "x": end_x,
@@ -160,11 +168,12 @@ def display_analysis_formula(
 # Prepares and adjusts variables for formula display based on the analysis type
 def prepare_variables(kwargs, analysis_type):
     """
-    Prepares and adjusts variables for formula display based on the analysis type.
+    Prepares and adjusts variables for formula display based on the analysis
+    type.
 
     Args:
-        kwargs: The input variables.
-        analysis_type: The type of analysis ('nlm' or 'speckle').
+        kwargs: The input variables. analysis_type: The type of analysis ('nlm'
+        or 'speckle').
 
     Returns:
         The prepared variables.
@@ -205,9 +214,9 @@ def display_formula(config, variables, formula_placeholder):
     Displays the main formula and additional formulas in an expandable section.
 
     Args:
-        config: The formula configuration.
-        variables: The variables for the formula.
-        formula_placeholder: The Streamlit placeholder for the formula display.
+        config: The formula configuration. variables: The variables for the
+        formula. formula_placeholder: The Streamlit placeholder for the formula
+        display.
     """
     with formula_placeholder.container():
         analysis_type = variables.get("analysis_type", "nlm")
@@ -223,9 +232,9 @@ def display_formula_section(config, variables, section_key):
     Displays a specific section of the formula (main or additional).
 
     Args:
-        config: The formula configuration.
-        variables: The variables for the formula.
-        section_key: The key for the section to display ('main' or 'additional').
+        config: The formula configuration. variables: The variables for the
+        formula. section_key: The key for the section to display ('main' or
+        'additional').
     """
     formula_key = "formula" if section_key == "formula" else f"{section_key}_formula"
     explanation_key = "explanation"
@@ -244,8 +253,8 @@ def display_additional_formulas(config, variables):
     Displays additional formulas in separate tabs.
 
     Args:
-        config: The formula configuration.
-        variables: The variables for the formula.
+        config: The formula configuration. variables: The variables for the
+        formula.
     """
     st.write("Additional Formulas:")
     tab_labels = [formula["title"] for formula in config["additional_formulas"]]
@@ -261,8 +270,7 @@ def generate_kernel_matrix(kernel_size, kernel_matrix):
     Generates a LaTeX representation of the kernel matrix.
 
     Args:
-        kernel_size: The size of the kernel.
-        kernel_matrix: The kernel matrix.
+        kernel_size: The size of the kernel. kernel_matrix: The kernel matrix.
 
     Returns:
         The LaTeX representation of the kernel matrix.

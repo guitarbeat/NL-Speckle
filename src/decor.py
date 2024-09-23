@@ -1,3 +1,10 @@
+
+"""
+The above code defines a Python decorator `log_action` that logs information
+about function calls including arguments, execution time, and results with
+customizable logging levels and detailed logging options.
+"""
+
 import functools
 import json
 import logging

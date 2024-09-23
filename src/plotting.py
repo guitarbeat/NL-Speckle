@@ -26,7 +26,8 @@ DEFAULT_NLM_VIEW = ["Non-Local Means", "Original Image"]
 
 
 def generate_plot_key(filter_name: str, plot_type: str) -> str:
-    """Generate a key for identifying plots based on filter name and plot type."""
+    """Generate a key for identifying plots based on filter name and plot
+    type."""
     base_key = filter_name.lower().replace(" ", "_")
     return f"zoomed_{base_key}" if plot_type == "zoomed" else base_key
 
@@ -53,9 +54,9 @@ def create_process_params(
     """Create process parameters based on analysis and technique.
 
     Args:
-        analysis_params (Dict[str, Any]): Parameters for analysis.
-        technique (str): The technique to be used.
-        technique_params (Dict[str, Any]): Parameters specific to the technique.
+        analysis_params (Dict[str, Any]): Parameters for analysis. technique
+        (str): The technique to be used. technique_params (Dict[str, Any]):
+        Parameters specific to the technique.
 
     Returns:
         ProcessParams: The created process parameters.
@@ -151,8 +152,8 @@ def create_image_plot(
     """Creates an image plot from the given image and configuration.
 
     Args:
-        plot_image (np.ndarray): The image data to plot.
-        config (VisualizationConfig): The configuration for visualization.
+        plot_image (np.ndarray): The image data to plot. config
+        (VisualizationConfig): The configuration for visualization.
 
     Returns:
         plt.Figure: The created plot figure.
@@ -172,14 +173,16 @@ def prepare_filter_options_and_parameters(
     results: Any, last_processed_pixel: Tuple[int, int]
 ) -> Tuple[Dict[str, np.ndarray], Dict[str, Any]]:
     """
-    Prepare filter options and specific parameters based on the analysis results.
+    Prepare filter options and specific parameters based on the analysis
+    results.
 
     Args:
-        results (Any): The analysis results object.
-        last_processed_pixel (Tuple[int, int]): Coordinates of the last processed pixel.
+        results (Any): The analysis results object. last_processed_pixel
+        (Tuple[int, int]): Coordinates of the last processed pixel.
 
     Returns:
-        Tuple[Dict[str, np.ndarray], Dict[str, Any]]: Filter options and specific parameters.
+        Tuple[Dict[str, np.ndarray], Dict[str, Any]]: Filter options and
+        specific parameters.
     """
     end_x, end_y = last_processed_pixel
     filter_options = results.get_filter_data()
@@ -212,9 +215,9 @@ def prepare_filter_options_and_parameters(
 
 def prepare_comparison_images() -> Optional[Dict[str, np.ndarray]]:
     """
-    Prepare images for comparison from different analysis results.
-    Returns:
-        Optional[Dict[str, np.ndarray]]: A dictionary of image names and their corresponding arrays, or None.
+    Prepare images for comparison from different analysis results. Returns:
+        Optional[Dict[str, np.ndarray]]: A dictionary of image names and their
+        corresponding arrays, or None.
     """
     comparison_images = {
         "Unprocessed Image": st.session_state.get("analysis_params", {}).get(
@@ -237,13 +240,13 @@ def get_zoomed_image_section(
     Extract a zoomed section of the image.
 
     Args:
-        image (np.ndarray): The original image.
-        center_x (int): X-coordinate of the zoom center.
-        center_y (int): Y-coordinate of the zoom center.
+        image (np.ndarray): The original image. center_x (int): X-coordinate of
+        the zoom center. center_y (int): Y-coordinate of the zoom center.
         kernel_size (int): Size of the zoomed section.
 
     Returns:
-        Tuple[np.ndarray, int, int]: Zoomed image section and new center coordinates.
+        Tuple[np.ndarray, int, int]: Zoomed image section and new center
+        coordinates.
     """
     half_zoom = kernel_size // 2
     top = max(0, center_y - half_zoom)
@@ -265,9 +268,9 @@ def visualize_image(
     Visualize an image with optional zooming and overlays.
 
     Args:
-        image (np.ndarray): The image array to visualize.
-        placeholder: Streamlit placeholder to display the plot.
-        config (VisualizationConfig): Configuration for visualization options.
+        image (np.ndarray): The image array to visualize. placeholder: Streamlit
+        placeholder to display the plot. config (VisualizationConfig):
+        Configuration for visualization options.
     """
     try:
         # Optional zooming on the image
@@ -336,8 +339,8 @@ def create_filter_selection(technique: str, filter_options: List[str]) -> List[s
     Create and return a filter selection UI element.
 
     Args:
-        technique (str): Image processing technique.
-        filter_options (List[str]): List of available filter options.
+        technique (str): Image processing technique. filter_options (List[str]):
+        List of available filter options.
 
     Returns:
         List[str]: List of selected filters from the UI.
@@ -370,7 +373,8 @@ def create_filter_views(
     Args:
         selected_filters (List[str]): List of selected filters to display.
         ui_placeholders (Dict[str, Any]): Dictionary of placeholders to update.
-        show_per_pixel_processing (bool): Whether to display per-pixel processing views.
+        show_per_pixel_processing (bool): Whether to display per-pixel
+        processing views.
     """
     columns = st.columns(len(selected_filters))
 
@@ -416,8 +420,8 @@ def visualize_analysis_results(viz_params: VisualizationConfig) -> None:
     Visualize analysis results based on the provided parameters.
 
     Args:
-        viz_params (VisualizationConfig): Visualization parameters including results,
-        image array, etc.
+        viz_params (VisualizationConfig): Visualization parameters including
+        results, image array, etc.
     """
     filter_options, specific_params = prepare_filter_options_and_parameters(
         viz_params.results, viz_params.last_processed_pixel
@@ -509,8 +513,6 @@ def create_visualization_config(
             use_full_image=analysis_params.get("use_full_image", False)
         )
     else:
-        config_params["search_window"] = SearchWindowConfig()  # Default config for non-NLM techniques
-
-    st.write(f"Debug: search_window config = {config_params['search_window']}")
+        config_params["search_window"] = SearchWindowConfig()
 
     return VisualizationConfig(**config_params)
