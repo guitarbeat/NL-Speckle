@@ -11,7 +11,6 @@ import streamlit as st
 from PIL import Image
 
 from src.decor import log_action
-# Import the VisualizationConfig class
 from src.plotting import VisualizationConfig
 
 AVAILABLE_COLOR_MAPS = [
@@ -43,6 +42,7 @@ class SidebarUI:
 
             st.sidebar.markdown("### 🎨 Color Map")
             color_map = SidebarUI.select_color_map()
+
         display_options = SidebarUI.setup_display_options(image)
         with st.sidebar.expander("NLM Parameters", expanded=True):
             nlm_params = SidebarUI._setup_nlm_options(image)
@@ -97,8 +97,7 @@ class SidebarUI:
             "Show Per-Pixel Processing Steps", value=False, key="show_per_pixel"
         )
 
-        # Consolidated kernel size initialization
-        kernel_size = st.session_state.get("kernel_size", 3)  # Default value
+        kernel_size = st.session_state.get("kernel_size", 3)
         kernel_size = st.sidebar.slider(
             "Kernel Size",
             min_value=3,
@@ -107,7 +106,7 @@ class SidebarUI:
             step=2,
             key="kernel_size_slider",
         )
-        st.session_state.kernel_size = kernel_size  # Update session state
+        st.session_state.kernel_size = kernel_size
 
         total_pixels = (image.width - kernel_size + 1) * (
             image.height - kernel_size + 1
@@ -320,3 +319,4 @@ class SidebarUI:
                 "filter_strength": 10.0,
                 "use_whole_image": False,
             }
+
