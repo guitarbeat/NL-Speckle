@@ -10,7 +10,6 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import streamlit as st
 
-from src.decor import log_action
 
 
 @dataclass
@@ -123,8 +122,6 @@ def extract_kernel_from_image(
 
     return kernel_values.astype(float), float(image_array[end_y, end_x]), kernel_size
 
-
-@log_action
 def configure_process_params(
     technique: str, process_params: ProcessParams, technique_params: Dict[str, Any]
 ) -> None:

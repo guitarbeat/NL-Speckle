@@ -9,13 +9,11 @@ import numpy as np
 import streamlit as st
 from streamlit_image_comparison import image_comparison
 
-from src.decor import log_action
 
 # Import necessary modules
 from src.plotting import VisualizationConfig
 
 
-@log_action
 def create_visualization_config(
     image_array: np.ndarray,
     technique: str,
@@ -52,7 +50,6 @@ def create_visualization_config(
     )
 
 
-@log_action
 class ImageComparison:
     """Class for handling image comparison functionality."""
 

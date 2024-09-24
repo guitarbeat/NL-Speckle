@@ -5,6 +5,7 @@ mathematical concepts.
 """
 
 import streamlit as st
+from src.decor import log_action
 
 NLM_FORMULA_CONFIG = {
     "title": "Non-Local Means (NLM) Denoising",
@@ -36,10 +37,22 @@ NLM_FORMULA_CONFIG = {
     non-local mean value $NLM_{{{x},{y}}}$.
     """,
     "additional_formulas": [
+
+{
+    "title": "Border Handling",
+    "formula": r"P_{{x,y}}(i,j) = \begin{{cases}} I_{{x+i,y+j}} & \text{{if }} 0 \leq x+i < {image_height} \text{{ and }} 0 \leq y+j < {image_width} \\ 0 & \text{{otherwise}} \end{{cases}}",
+    "explanation": r"""
+    To avoid boundary issues, this implementation avoids processing pixels near the image border.
+    Current pixel: ({x}, {y})
+    """
+},
+
         {
             "title": "Neighborhood Analysis",
             "formula": (
-                r"\quad\quad\text{Centered at: }({x}, {y})" r"\\\\" "{kernel_matrix}",
+                r"\quad\quad\text{{Centered at: }}({x}, {y})"
+                r"\\\\"
+                r"{kernel_matrix}"
             ),
             "explanation": (
                 r"Analysis of a ${patch_size}\times{patch_size}$ patch $P_{{{x},{y}}}$ "
@@ -47,6 +60,7 @@ NLM_FORMULA_CONFIG = {
                 r"with the central value (bold) being the denoised pixel."
             ),
         },
+
         {
             "title": "Weight Calculation",  # Maybe change this to "Patch Similarity"?
             "formula": r"w_{{{x},{y}}}(i,j) = e^{{-\frac{{\|P_{{{x},{y}}} - P_{{i,j}}\|^2}}{{h^2}}}}",
@@ -83,6 +97,16 @@ SPECKLE_FORMULA_CONFIG = {
     "main_formula": r"I_{{{x},{y}}} = {original_value:.3f} \quad \rightarrow \quad SC_{{{x},{y}}} = \frac{{\sigma_{{{x},{y}}}}}{{\mu_{{{x},{y}}}}} = \frac{{{std:.3f}}}{{{mean:.3f}}} = {sc:.3f}",
     "explanation": r"This formula shows the transition from the original pixel intensity $I_{{{x},{y}}}$ to the Speckle Contrast (SC) for the same pixel position.",
     "additional_formulas": [
+        
+{
+    "title": "Border Handling",
+    "formula": r"P_{{x,y}}(i,j) = \begin{{cases}} I_{{x+i,y+j}} & \text{{if }} 0 \leq x+i < {image_height} \text{{ and }} 0 \leq y+j < {image_width} \\ 0 & \text{{otherwise}} \end{{cases}}",
+    "explanation": r"""
+    To avoid boundary issues, this implementation avoids processing pixels near the image border.
+    Current pixel: ({x}, {y})
+    """
+},
+        
         {
             "title": "Neighborhood Analysis",
             "formula": r"\text{{Kernel Size: }} {kernel_size} \times {kernel_size}"
@@ -164,8 +188,9 @@ def display_analysis_formula(
     else:
         st.warning("Formula placeholder not found.")
 
-
 # Prepares and adjusts variables for formula display based on the analysis type
+
+
 def prepare_variables(kwargs, analysis_type):
     """
     Prepares and adjusts variables for formula display based on the analysis
@@ -207,8 +232,9 @@ def prepare_variables(kwargs, analysis_type):
 
     return variables
 
-
 # Displays the main formula and additional formulas in an expandable section
+
+
 def display_formula(config, variables, formula_placeholder):
     """
     Displays the main formula and additional formulas in an expandable section.
@@ -225,8 +251,9 @@ def display_formula(config, variables, formula_placeholder):
             display_formula_section(config, variables, "main")
             display_additional_formulas(config, variables)
 
-
 # Displays a specific section of the formula (main or additional)
+
+
 def display_formula_section(config, variables, section_key):
     """
     Displays a specific section of the formula (main or additional).
@@ -241,15 +268,18 @@ def display_formula_section(config, variables, section_key):
     explanation_key = "explanation"
 
     try:
-        # Ensure the formula is a string
-        # Convert to string if necessary
+        # Ensure the formula is a string Convert to string if necessary
         st.latex(str(config[formula_key]).format(**variables))
         st.markdown(config[explanation_key].format(**variables))
     except KeyError as e:
         st.error(f"Missing key in {section_key} formula or explanation: {e}")
-
+    except ValueError as e:
+        st.error(f"Formatting error in {section_key} formula: {e}")
 
 # Displays additional formulas in separate tabs
+
+
+@log_action
 def display_additional_formulas(config, variables):
     """
     Displays additional formulas in separate tabs.
@@ -266,8 +296,9 @@ def display_additional_formulas(config, variables):
         with tab:
             display_formula_section(additional_formula, variables, "formula")
 
-
 # Generates a LaTeX representation of the kernel matrix
+
+
 def generate_kernel_matrix(kernel_size, kernel_matrix):
     """
     Generates a LaTeX representation of the kernel matrix.
