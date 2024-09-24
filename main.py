@@ -8,7 +8,7 @@ from typing import List
 
 import streamlit as st
 
-from src.plotting import VisualizationConfig, prepare_comparison_images, run_technique
+from src.plotting import prepare_comparison_images, run_technique
 from src.processing import calculate_processing_details
 from src.sidebar import SidebarUI
 from src.utils import ImageComparison
@@ -29,9 +29,6 @@ def main():
     """Main function to set up the Streamlit app configuration, logo, and run the application."""
     st.set_page_config(**APP_CONFIG)
     st.logo("media/logo.png")
-    if "color_map" not in st.session_state:
-        config = VisualizationConfig()
-        st.session_state.color_map = config.color_map
     if "techniques" not in st.session_state:
         st.session_state.techniques = ["speckle", "nlm"]
 

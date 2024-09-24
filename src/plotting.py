@@ -135,7 +135,6 @@ def update_visualization_config(
         "ui_placeholders": viz_config.ui_placeholders,
         "last_processed_pixel": viz_config.last_processed_pixel,
         "original_pixel_value": viz_config.original_pixel_value,
-        "color_map": viz_config.color_map,
         "technique": viz_config.technique,
         "kernel": viz_config.kernel,
         "search_window": viz_config.search_window,
@@ -159,7 +158,7 @@ def create_image_plot(
     """
     fig, ax = plt.subplots(1, 1, figsize=config.figure_size)
     ax.imshow(plot_image, vmin=config.vmin,
-              vmax=config.vmax, cmap=config.color_map)
+              vmax=config.vmax, cmap=st.session_state.color_map)
     ax.set_title(config.title)
     ax.axis("off")
 
