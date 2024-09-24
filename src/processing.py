@@ -130,7 +130,7 @@ def configure_process_params(
         process_params.analysis_params["use_whole_image"] = technique_params.get(
             "use_whole_image", False
         )
-
+        st.session_state.get("use_full_image")
 
 # --- Dataclass for Processing Details ---
 @dataclass(frozen=True)
