@@ -54,7 +54,8 @@ def apply_speckle_contrast(image, kernel_size, pixels_to_process, start_point):
 
             mean_filter[row, col] = local_mean
             std_dev_filter[row, col] = local_std
-            sc_filter[row, col] = calculate_speckle_contrast(local_std, local_mean)
+            sc_filter[row, col] = calculate_speckle_contrast(
+                local_std, local_mean)
 
     return mean_filter, std_dev_filter, sc_filter
 

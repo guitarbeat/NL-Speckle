@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import streamlit as st
 
-from src.overlay import add_overlays, VisualizationConfig, KernelConfig,SearchWindowConfig
+from src.overlay import add_overlays, VisualizationConfig, KernelConfig, SearchWindowConfig
 from src.formula import display_analysis_formula
 from src.nlm import NLMResult
 from src.processing import (
@@ -30,7 +30,6 @@ def generate_plot_key(filter_name: str, plot_type: str) -> str:
     type."""
     base_key = filter_name.lower().replace(" ", "_")
     return f"zoomed_{base_key}" if plot_type == "zoomed" else base_key
-
 
 
 @dataclass
@@ -77,7 +76,8 @@ def create_process_params(
         }
 
     return ProcessParams(
-        image_array=analysis_params.get("image_array", ImageArray(np.array([]))),
+        image_array=analysis_params.get(
+            "image_array", ImageArray(np.array([]))),
         technique=technique,
         analysis_params=technique_params | common_params,
         show_per_pixel_processing=analysis_params.get(
@@ -143,7 +143,6 @@ def update_visualization_config(
     }
 
     return VisualizationConfig(**updated_config)
-    
 
 
 def create_image_plot(
@@ -159,7 +158,8 @@ def create_image_plot(
         plt.Figure: The created plot figure.
     """
     fig, ax = plt.subplots(1, 1, figsize=config.figure_size)
-    ax.imshow(plot_image, vmin=config.vmin, vmax=config.vmax, cmap=config.color_map)
+    ax.imshow(plot_image, vmin=config.vmin,
+              vmax=config.vmax, cmap=config.color_map)
     ax.set_title(config.title)
     ax.axis("off")
 
@@ -213,6 +213,7 @@ def prepare_filter_options_and_parameters(
 
     return filter_options, specific_params
 
+
 def prepare_comparison_images() -> Optional[Dict[str, np.ndarray]]:
     """
     Prepare images for comparison from different analysis results. Returns:
@@ -261,6 +262,7 @@ def get_zoomed_image_section(
 
     return zoomed_image, new_center_x, new_center_y
 
+
 def visualize_image(
     image: np.ndarray, placeholder, *, config: VisualizationConfig
 ) -> None:
@@ -285,27 +287,29 @@ def visualize_image(
                 config.last_processed_pixel = (new_center_x, new_center_y)
             except Exception as e:
                 placeholder.error(
-                    f"An error occurred while zooming the image: {e}. Please check the logs for details."
+                    f"An error occurred while zooming the image: {
+                        e}. Please check the logs for details."
                 )
                 return
 
         try:
             fig = create_image_plot(image, config)
             placeholder.pyplot(fig)  # Pass the figure object to pyplot
-            plt.close(fig)  # Ensure figure is closed after rendering to free up memory
+            # Ensure figure is closed after rendering to free up memory
+            plt.close(fig)
         except Exception as e:
             placeholder.error(
-                f"An error occurred while creating the image plot: {e}. Please check the logs for details."
+                f"An error occurred while creating the image plot: {
+                    e}. Please check the logs for details."
             )
     except (ValueError, TypeError, KeyError) as e:
         placeholder.error(
-            f"An error occurred while visualizing the image: {e}. Please check the logs for details."
+            f"An error occurred while visualizing the image: {
+                e}. Please check the logs for details."
         )
 
 
 # ---- Annotation Functions---=--#
-
-
 
 
 # --------- Image Processing Functions ----------#
@@ -387,7 +391,8 @@ def create_filter_views(
         # If per-pixel processing is enabled, create zoomed-in views
         if show_per_pixel_processing:
             ui_placeholders[f"zoomed_{filter_key}"] = (
-                columns[i].expander(f"Zoomed-in {filter_name}", expanded=False).empty()
+                columns[i].expander(
+                    f"Zoomed-in {filter_name}", expanded=False).empty()
             )
 
 
@@ -407,7 +412,8 @@ def create_technique_ui_elements(
                 selected_filters, ui_placeholders, show_per_pixel_processing
             )
         else:
-            st.warning("No views selected. Please select at least one view to display.")
+            st.warning(
+                "No views selected. Please select at least one view to display.")
 
         if show_per_pixel_processing:
             ui_placeholders["zoomed_kernel"] = st.empty()
@@ -449,16 +455,19 @@ def visualize_analysis_results(viz_params: VisualizationConfig) -> None:
             viz_params.original_pixel_value,
         )
 
+
 def run_technique(technique: str, tab: Any, analysis_params: Dict[str, Any]) -> None:
     technique_params = st.session_state.get(f"{technique}_params", {})
-    show_per_pixel_processing = analysis_params.get("show_per_pixel_processing", False)
+    show_per_pixel_processing = analysis_params.get(
+        "show_per_pixel_processing", False)
 
     ui_placeholders = create_technique_ui_elements(
         technique, tab, show_per_pixel_processing
     )
     st.session_state[f"{technique}_placeholders"] = ui_placeholders
 
-    process_params = create_process_params(analysis_params, technique, technique_params)
+    process_params = create_process_params(
+        analysis_params, technique, technique_params)
 
     try:
         configure_process_params(technique, process_params, technique_params)
@@ -477,8 +486,10 @@ def run_technique(technique: str, tab: Any, analysis_params: Dict[str, Any]) -> 
         visualize_analysis_results(viz_config)
 
     except (ValueError, TypeError, KeyError) as e:
-        st.error(f"Error for {technique}: {str(e)}. Please check the logs for details.")
-   
+        st.error(f"Error for {technique}: {
+                 str(e)}. Please check the logs for details.")
+
+
 def create_visualization_config(
     image_array: np.ndarray,
     technique: str,
