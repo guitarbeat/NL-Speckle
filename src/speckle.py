@@ -24,7 +24,7 @@ def calculate_speckle_contrast(local_std, local_mean):
     """
     return local_std / local_mean if local_mean != 0 else 0
 
-@st.cache_data
+@st.cache_resource 
 def apply_speckle_contrast(image, kernel_size, pixels_to_process, processing_origin):
     """Applies speckle contrast to the given image."""
     if not isinstance(image, np.ndarray):
