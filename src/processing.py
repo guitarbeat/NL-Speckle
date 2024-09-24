@@ -24,6 +24,16 @@ class ProcessParams:
 
 
 def process_image(params):
+    """Applies an image processing technique to an input image.
+    Parameters:
+        - params (object): An object containing 'technique', 'analysis_params', and 'image_array' attributes.
+    Returns:
+        - tuple: A tuple containing the updated params and the results from the image processing function.
+    Processing Logic:
+        - Default values are retrieved from `st.session_state` and then updated based on `analysis_params`.
+        - Depending on the specified technique, the applicable image processing function (`process_nlm` or `process_speckle`) is called.
+        - Processed results are added to `st.session_state`.
+        - Detailed logging is performed if an exception is encountered."""
     try:
         technique = params.technique
         analysis_params = params.analysis_params
@@ -77,6 +87,17 @@ def process_image(params):
 def normalize_image(
     image: np.ndarray, low_percentile: int = 2, high_percentile: int = 98
 ) -> np.ndarray:
+    """Normalize the intensity range of an image using percentile clipping.
+    Parameters:
+        - image (np.ndarray): The input image to be normalized.
+        - low_percentile (int): Lower percentile bound for intensity clipping.
+        - high_percentile (int): Upper percentile bound for intensity clipping.
+    Returns:
+        - np.ndarray: The normalized image with intensities scaled between 0 and 1.
+    Processing Logic:
+        - Percentiles for clipping are determined from the input image intensities.
+        - Image intensities are clipped to the calculated lower and upper percentiles.
+        - The clipped image intensities are scaled so that the range spans from 0 to 1."""
     p_low, p_high = np.percentile(image, [low_percentile, high_percentile])
     logging.info(
         json.dumps({"action": "normalize_image", "p_low": p_low, "p_high": p_high})
@@ -87,6 +108,17 @@ def normalize_image(
 def extract_kernel_from_image(
     image_array: np.ndarray, end_x: int, end_y: int, kernel_size: int
 ) -> Tuple[np.ndarray, float, int]:
+    """Extract a square kernel from a 2D image array and its central pixel value.
+    Parameters:
+        - image_array (np.ndarray): The input image as a 2D array.
+        - end_x (int): The x-coordinate of the central pixel of the kernel.
+        - end_y (int): The y-coordinate of the central pixel of the kernel.
+        - kernel_size (int): The size of the square kernel to extract.
+    Returns:
+        - Tuple[np.ndarray, float, int]: A tuple containing the kernel as a 2D array, the value of the kernel's central pixel as a float, and the kernel size.
+    Processing Logic:
+        - Validates if the extracted kernel is non-empty.
+        - Ensures the returned kernel has the requested size, applying padding if necessary."""
     half_kernel = kernel_size // 2
     height, width = image_array.shape
 
@@ -144,6 +176,15 @@ class ProcessingDetails:
         """Validate dimensions and coordinates after initialization."""
 
         def _validate_dimensions():
+            """Validates the dimensions for image processing.
+            Parameters:
+                None
+            Returns:
+                - None: This function does not return a value and is used for validation only.
+            Processing Logic:
+                - Ensures the image dimensions are positive.
+                - Ensures the kernel size is not too large for the image dimensions.
+                - Ensures the number of pixels to process is non-negative."""
             if self.image_dimensions[0] <= 0 or self.image_dimensions[1] <= 0:
                 raise ValueError("Image dimensions must be positive.")
             if self.valid_dimensions[0] <= 0 or self.valid_dimensions[1] <= 0:
@@ -156,6 +197,15 @@ class ProcessingDetails:
         _validate_dimensions()
 
         def _validate_coordinates():
+            """Validates if the start and end coordinates are within valid ranges.
+            Parameters:
+                - self: The instance of the class that contains start_point, end_point, and image_dimensions.
+            Raises:
+                - ValueError: If start coordinates are negative or if end coordinates exceed image dimensions.
+            Processing Logic:
+                - start_point and end_point are assumed to be tuples (x, y).
+                - image_dimensions is assumed to be a tuple (width, height).
+                - Validation checks that start is non-negative and end is within image dimensions."""
             if self.start_point[0] < 0 or self.start_point[1] < 0:
                 raise ValueError("Start coordinates must be non-negative.")
             if (
