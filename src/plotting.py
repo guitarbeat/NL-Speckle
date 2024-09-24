@@ -86,9 +86,6 @@ def create_process_params(
     )
 
 
-# --------- Updated Functions ----------#
-
-
 def visualize_filter_and_zoomed(
     filter_name: str, filter_data: np.ndarray, viz_config: VisualizationConfig
 ):
@@ -167,7 +164,6 @@ def create_image_plot(
     return fig
 
 
-# --------- Visualization Functions ----------#
 def prepare_filter_options_and_parameters(
     results: Any, last_processed_pixel: Tuple[int, int]
 ) -> Tuple[Dict[str, np.ndarray], Dict[str, Any]]:
@@ -306,17 +302,6 @@ def visualize_image(
             f"An error occurred while visualizing the image: {
                 e}. Please check the logs for details."
         )
-
-
-# ---- Annotation Functions---=--#
-
-
-# --------- Image Processing Functions ----------#
-
-
-# --------- UI Setup Functions ----------#
-
-# --------- Utility Functions ----------
 
 
 def get_filter_options(technique: str) -> List[str]:
