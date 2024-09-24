@@ -10,99 +10,79 @@ import numpy as np
 
 from src.processing import FilterResult, ProcessingDetails, calculate_processing_details
 
-
 # --- Patch Calculation Functions ---
 
 
-def calculate_patch_difference(
-    center_patch: np.ndarray, comparison_patch: np.ndarray
-) -> float:
+def gaussian_kernel(x: float, sigma: float) -> float:
     """
-    Computes the squared Euclidean distance between two image patches.
-
-    Args:
-        center_patch (np.ndarray): The reference patch at the center.
-        comparison_patch (np.ndarray): The patch to compare against the center.
-
-    Returns:
-        float: The sum of squared differences between the patches.
+The gaussian_kernel function computes the Gaussian kernel value for a given distance and filtering parameter (sigma). This is used to compute the weights based on patch similarity.
     """
-    return np.sum((center_patch - comparison_patch) ** 2)
+    return np.exp(-x**2 / (2 * sigma**2))
 
 
-def calculate_weight(patch_difference: float, filter_strength: float) -> float:
+def patch_distance(patch1: np.ndarray, patch2: np.ndarray) -> float:
     """
-    Calculates the weight for a patch comparison based on patch difference and
-    filter strength.
+The patch_distance function computes the Euclidean distance between two patches. This distance is used to determine the similarity between patches.
     """
-    return np.exp(-patch_difference / (filter_strength**2))
+    return np.sqrt(np.sum((patch1 - patch2)**2))
 
 
-def get_patch(image: np.ndarray, row: int, col: int, half_kernel: int) -> np.ndarray:
-    # sourcery skip: use-itertools-product
+def get_patch(image: np.ndarray, row: int, col: int, patch_size: int) -> np.ndarray:
     """
     Extracts a square patch from the image centered at the given row and column.
     """
-    height, width = image.shape
-    patch = np.zeros(
-        (2 * half_kernel + 1, 2 * half_kernel + 1), dtype=image.dtype)
-
-    for i in range(-half_kernel, half_kernel + 1):
-        for j in range(-half_kernel, half_kernel + 1):
-            patch_row = row + i
-            patch_col = col + j
-            if 0 <= patch_row < height and 0 <= patch_col < width:
-                patch[i + half_kernel, j +
-                      half_kernel] = image[patch_row, patch_col]
-
-    return patch
+    half_patch = patch_size // 2
+    return image[row-half_patch:row+half_patch+1, col-half_patch:col+half_patch+1]
 
 
 # --- NLM Calculation Function ---
-
 
 def calculate_nlm_value(
     row: int,
     col: int,
     image: np.ndarray,
-    kernel_size: int,
-    search_window_size: int,
-    filter_strength: float,
-) -> Tuple[float, float]:  # sourcery skip: use-itertools-product
+    patch_size: int,
+    search_window: int,
+    h: float,
+    use_full_image: bool, # Add this parameter
+) -> Tuple[float, float]:
     """
     Calculates the NLM denoised value for a pixel in the image.
     """
-    if kernel_size is None:
-        raise ValueError("kernel_size cannot be None")
-
     height, width = image.shape
-    half_kernel = kernel_size // 2
-    half_search = search_window_size // 2
-
-    center_patch = get_patch(image, row, col, half_kernel)
-
-    total_weight = 0.0
-    weighted_sum = 0.0
+    pad_size = search_window // 2
+    padded_image = np.pad(image, pad_size, mode='reflect')
     
-    for i in range(max(0, row - half_search), min(height, row + half_search + 1)):
-        for j in range(max(0, col - half_search), min(width, col + half_search + 1)):
-            if i == row and j == col:
+    center_patch = get_patch(padded_image, row+pad_size, col+pad_size, patch_size)
+    
+    weighted_sum = 0.0
+    normalizing_factor = 0.0
+    similarity_map = np.zeros_like(image)
+    
+    if use_full_image:
+        row_range = range(height)
+        col_range = range(width)
+    else:
+        row_range = range(max(0, row - pad_size), min(height, row + pad_size + 1))
+        col_range = range(max(0, col - pad_size), min(width, col + pad_size + 1))
+
+    for k in row_range:
+        for neighbor_col in col_range:
+            if k == row and neighbor_col == col:
                 continue
+            
+            neighbor_patch = get_patch(padded_image, k+pad_size, neighbor_col+pad_size, patch_size)
+            distance = patch_distance(center_patch, neighbor_patch)
+            similarity_map[k, neighbor_col] = distance
 
-            comparison_patch = get_patch(image, i, j, half_kernel)
-            patch_difference = calculate_patch_difference(
-                center_patch, comparison_patch
-            )
-            weight = calculate_weight(patch_difference, filter_strength)
-
-            total_weight += weight
-            weighted_sum += weight * image[i, j]
-
-    nlm_value = weighted_sum / \
-        total_weight if total_weight > 0 else image[row, col]
-
-    return nlm_value, total_weight
-
+            weight = gaussian_kernel(distance, h)
+            
+            weighted_sum += weight * padded_image[k+pad_size, neighbor_col+pad_size]
+            normalizing_factor += weight
+    
+    nlm_value = weighted_sum / normalizing_factor if normalizing_factor > 0 else image[row, col]
+    
+    return nlm_value, normalizing_factor,similarity_map
 
 # --- NLM Application Function ---
 
@@ -110,63 +90,70 @@ def calculate_nlm_value(
 @st.cache_data
 def apply_nlm(
     image: np.ndarray,
-    kernel_size: int,
-    search_window_size: int,
-    filter_strength: float,
+    patch_size: int,
+    search_window: int,
+    h: float,
     pixels_to_process: int,
-    processing_origin: Tuple[int, int],
+    processing_origin: Tuple[int, int]
 ) -> np.ndarray:
     """
     Applies the Non-Local Means algorithm to the entire image.
 
     Args:
-        image (np.ndarray): The input image. kernel_size (int): The size of the
-        patch kernel. search_window_size (int): The size of the search window.
-        filter_strength (float): The filter strength for patch comparison.
-        pixels_to_process (int): The number of pixels to process. processing_origin
-        (Point): The starting point for processing.
+        image (np.ndarray): The input image.
+        patch_size (int): The size of the patch used for similarity comparison.
+        search_window (int): The size of the search window around each pixel.
+        h (float): The filtering parameter controlling the decay of the weights.
+        pixels_to_process (int): The number of pixels to process.
+        processing_origin (Tuple[int, int]): The starting point for processing.
 
     Returns:
         np.ndarray: The denoised image and total weights for normalization.
     """
     height, width = image.shape
-    valid_width = width - kernel_size + 1
+    valid_width = width - patch_size + 1
 
     nonlocal_means = np.zeros_like(image)
     total_weights = np.zeros_like(image)
+    last_similarity_map = None
+
+    use_full_image =  st.session_state.get("use_full_image")
 
     for pixel in range(pixels_to_process):
-        row = processing_origin[1] + pixel // valid_width  # Use indexing
-        col = processing_origin[0] + pixel % valid_width  # Use indexing
+        row = processing_origin[1] + pixel // valid_width
+        col = processing_origin[0] + pixel % valid_width
 
         if row < height and col < width:
-            nlm_value, weight = calculate_nlm_value(
-                row, col, image, kernel_size, search_window_size, filter_strength
+            nlm_value, weight, similarity_map = calculate_nlm_value(
+                row, col, image, patch_size, search_window, h,
+                use_full_image
             )
             nonlocal_means[row, col] = nlm_value
             total_weights[row, col] = weight
+            last_similarity_map = similarity_map
 
-    return nonlocal_means, total_weights
+    return nonlocal_means, total_weights, last_similarity_map
 
 
 # --- Main Processing Function ---
+
 
 def process_nlm(
     image: np.ndarray,
     kernel_size: int,
     pixels_to_process: int,
-    search_window_size: int = 7,
-    filter_strength: float = 0.1,
+    search_window_size: int = 21,
+    filter_strength: float = 10.0,
 ) -> "NLMResult":
     """
     Main function to execute the NLM denoising on the input image.
 
     Args:
-        image (np.ndarray): The input image. kernel_size (int): The size of the
-        patch kernel. pixels_to_process (int): The number of pixels to process.
-        search_window_size (int, optional): The size of the search window.
-        Defaults to 7. filter_strength (float, optional): The filter strength.
-        Defaults to 0.1.
+        image (np.ndarray): The input image.
+        patch_size (int): The size of the patch used for similarity comparison.
+        pixels_to_process (int): The number of pixels to process.
+        search_window (int, optional): The size of the search window around each pixel. Defaults to 21.
+        h (float, optional): The filtering parameter controlling the decay of the weights. Defaults to 10.0.
 
     Returns:
         NLMResult: The result of the NLM denoising.
@@ -177,14 +164,14 @@ def process_nlm(
         )
 
         # Ensure image is a NumPy array before converting
-        nonlocal_means, total_weights = apply_nlm(
+        nonlocal_means, total_weights, last_similarity_map = apply_nlm(
             # Ensure this is a float32 array
             np.asarray(image, dtype=np.float32),
             kernel_size,
             search_window_size,
             filter_strength,
             processing_info.pixels_to_process,
-            processing_info.processing_origin,
+            processing_info.processing_origin,  # Pass the config here
         )
         return NLMResult(
             nonlocal_means=nonlocal_means,
@@ -195,6 +182,7 @@ def process_nlm(
             image_dimensions=processing_info.image_dimensions,
             search_window_size=search_window_size,
             filter_strength=filter_strength,
+            last_similarity_map=last_similarity_map,
         )
     except Exception:
         st.error("An error occurred during NLM processing.")
@@ -214,6 +202,7 @@ class NLMResult(FilterResult):
     normalization_factors: np.ndarray
     search_window_size: int
     filter_strength: float
+    last_similarity_map: List[np.ndarray]
 
     @staticmethod
     def get_filter_options() -> List[str]:
@@ -223,7 +212,7 @@ class NLMResult(FilterResult):
         Returns:
             List[str]: The list of available filter options.
         """
-        return ["Non-Local Means", "Normalization Factors"]
+        return ["Non-Local Means", "Normalization Factors", "Last Similarity Map"]
 
     def get_filter_data(self) -> dict:
         """
@@ -235,4 +224,5 @@ class NLMResult(FilterResult):
         return {
             "Non-Local Means": self.nonlocal_means,
             "Normalization Factors": self.normalization_factors,
+            "Last Similarity Map": self.last_similarity_map,
         }

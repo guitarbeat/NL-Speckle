@@ -42,8 +42,12 @@ class SidebarUI:
             color_map = SidebarUI.select_color_map()
 
         display_options = SidebarUI.setup_display_options(image)
+
         with st.sidebar.expander("NLM Parameters", expanded=True):
             nlm_params = SidebarUI._setup_nlm_options(image)
+
+         # Store the use_full_image flag in session state for future use
+        st.session_state["use_full_image"] = nlm_params.get("use_whole_image")
         with st.sidebar.expander("Advanced Options", expanded=True):
             advanced_options = SidebarUI.setup_advanced_options(image)
 
@@ -288,6 +292,8 @@ class SidebarUI:
             use_whole_image = st.checkbox(
                 "Use whole image as search window", value=False
             )
+
+            st.session_state["use_full_image"] = use_whole_image
 
             # Search window size selection
             if not use_whole_image:
