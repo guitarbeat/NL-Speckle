@@ -334,4 +334,3 @@ class SidebarUI:
                 "filter_strength": 10.0,
                 "use_whole_image": False,
             }
-            }
