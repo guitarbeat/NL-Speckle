@@ -69,7 +69,6 @@ class VisualizationConfig:
     last_processed_pixel: Optional[Tuple[int, int]] = None
     original_pixel_value: float = 0.0
     technique: str = ""
-    color_map: str = "gray"
     title: str = ""
     figure_size: Tuple[int, int] = (8, 8)
     kernel: KernelConfig = field(default_factory=KernelConfig)

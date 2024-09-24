@@ -11,16 +11,16 @@ import streamlit as st
 from PIL import Image
 
 from src.decor import log_action
-from src.plotting import VisualizationConfig
 
 AVAILABLE_COLOR_MAPS = [
     "gray",
-    "viridis",
     "plasma",
     "inferno",
     "magma",
-    "cividis",
     "pink",
+    "hot",
+    "cool",
+    "YlOrRd",
 ]
 PRELOADED_IMAGE_PATHS = {
     "image50.png": "media/image50.png",
@@ -52,7 +52,7 @@ class SidebarUI:
         return {
             "image": image,
             "image_array": np.array(image),
-            "cmap": color_map,
+            "color_map": color_map,
             **display_options,
             **nlm_params,
             **advanced_options,
@@ -166,16 +166,29 @@ class SidebarUI:
     @staticmethod
     def select_color_map() -> str:
         """
-        Select color map for image display.
+        Select color map for image display and update session state.
         """
-        config = VisualizationConfig()
-        return st.sidebar.selectbox(
+    # Initialize color_map in session state if it doesn't exist
+        if "color_map" not in st.session_state:
+            st.session_state.color_map = "gray"  # Default color map
+
+        # Get the current color map from session state or use default
+        current_color_map = st.session_state.get("color_map")
+        
+        # Create the selectbox for color map selection
+        selected_color_map = st.sidebar.selectbox(
             "Select Color Map",
             AVAILABLE_COLOR_MAPS,
-            index=AVAILABLE_COLOR_MAPS.index(
-                st.session_state.get("color_map", config.color_map)
-            ),
+            index=AVAILABLE_COLOR_MAPS.index(current_color_map),
+            key="color_map_select"
         )
+
+        # Update session state if the color map has changed
+        if selected_color_map != current_color_map:
+            st.session_state.color_map = selected_color_map
+            # st.rerun()
+
+        return selected_color_map
 
     @staticmethod
     @log_action
