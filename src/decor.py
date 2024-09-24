@@ -18,10 +18,10 @@ def json_serializable(
 ) -> Union[str, Dict, List]:
     if max_depth <= 0:
         return str(obj)
-
+    
     if callable(obj):
         return f"<function {obj.__name__}>" if hasattr(obj, "__name__") else str(obj)
-    elif hasattr(obj, "__dict__"):
+    if hasattr(obj, "__dict__"):
         return {
             key: json_serializable(value, max_depth - 1, max_length)
             for key, value in obj.__dict__.items()

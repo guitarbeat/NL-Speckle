@@ -12,6 +12,9 @@ import streamlit as st
 # import streamlit_image_coordinates
 from PIL import Image
 
+# Create a Generator object with a seed
+rng = np.random.default_rng(seed=42)
+
 AVAILABLE_COLOR_MAPS = [
     "gray",
     "plasma",
@@ -260,7 +263,7 @@ class SidebarUI:
         Returns:
             np.ndarray: Image with applied Gaussian noise.
         """
-        noise = np.random.normal(mean, std_dev, image_np.shape)
+        noise = rng.random.normal(mean, std_dev, image_np.shape)
         return np.clip(image_np + noise, 0, 1)
 
     @staticmethod

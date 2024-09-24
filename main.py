@@ -33,14 +33,14 @@ def main():
         st.session_state.techniques = ["speckle", "nlm"]
 
     try:
-        setup_app(st)
+        setup_app()
     except (ValueError, TypeError) as e:  # Specify the exceptions you expect
         st.error(
             f"An error occurred: {e}. Please check your input and try again."
         )  # Change here
 
 
-def setup_app(st):
+def setup_app():
     sidebar_params = SidebarUI.setup()
     st.session_state.sidebar_params = sidebar_params
 

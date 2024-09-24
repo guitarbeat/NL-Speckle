@@ -21,9 +21,12 @@ from src.processing import (
 from src.speckle import SpeckleResult
 
 # Constants for Image Visualization
-DEFAULT_SPECKLE_VIEW = ["Speckle Contrast", "Original Image"]
-DEFAULT_NLM_VIEW = ["Non-Local Means", "Original Image"]
+SPECKLE_CONTRAST = "Speckle Contrast"
+ORIGINAL_IMAGE = "Original Image"
+NON_LOCAL_MEANS = "Non-Local Means"
 
+DEFAULT_SPECKLE_VIEW = [SPECKLE_CONTRAST, ORIGINAL_IMAGE]
+DEFAULT_NLM_VIEW = [NON_LOCAL_MEANS, ORIGINAL_IMAGE]
 
 def generate_plot_key(filter_name: str, plot_type: str) -> str:
     """Generate a key for identifying plots based on filter name and plot
