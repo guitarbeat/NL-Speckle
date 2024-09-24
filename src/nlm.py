@@ -87,7 +87,7 @@ def calculate_nlm_value(
 # --- NLM Application Function ---
 
 
-@st.cache_data
+@st.cache_resource 
 def apply_nlm(
     image: np.ndarray,
     patch_size: int,
