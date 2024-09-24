@@ -16,6 +16,18 @@ from typing import Any, Callable, Dict, List, Optional, Union
 def json_serializable(
     obj: Any, max_depth: int = 10, max_length: int = 100
 ) -> Union[str, Dict, List]:
+    """Converts a Python object to a JSON-serializable format, limiting the recursion depth and the maximum number of elements in lists/tuples.
+    Parameters:
+        - obj (Any): The object to be serialized.
+        - max_depth (int): Maximum allowed recursion depth for serializing nested objects.
+        - max_length (int): Maximum number of elements to serialize in lists or tuples.
+    Returns:
+        - Union[str, Dict, List]: Object converted into a JSON-serializable representation.
+    Processing Logic:
+        - If an object is callable, represent it as a string with its name if possible.
+        - Limit the number of serialized list or tuple elements to `max_length`, appending "..." if the original length exceeds this limit.
+        - Convert an object's __dict__ attribute into a dictionary with keys and values processed recursively.
+        - Basic types (int, float, str, bool, None) are returned as-is."""
     if max_depth <= 0:
         return str(obj)
 
@@ -51,11 +63,47 @@ def log_action(
     max_length: int = 10,
     detailed_logging: bool = True,
 ) -> Callable:
+    """Decorate a function to log its execution details.
+    Parameters:
+        - action_name (Optional[str]): An optional name for the action to log; defaults to the function name.
+        - log_level (int): Logging level for the log messages; defaults to logging.INFO.
+        - exclude_args (Optional[List[str]]): A list of argument names to exclude from logging.
+        - max_depth (int): Maximum depth for serializing nested structures; defaults to 2.
+        - max_length (int): Maximum length of any value to be serialized; defaults to 10.
+        - detailed_logging (bool): Flag to determine if arg and return value details should be logged.
+    Returns:
+        - Callable: A decorated function that logs execution details when called.
+    Processing Logic:
+        - The wrapper function measures time and captures function call details including arguments, result and exceptions.
+        - It logs start, end, and exception contexts separately, serialized as JSON.
+        - Error handling within the logging to ensure the original function's exception is re-raised after logging.
+        - Serialization depth and length can be adjusted to prevent overly verbose logs."""
     exclude_args = exclude_args or []
 
     def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
+        """Enhances a function with logging of execution details and errors.
+        Parameters:
+            - func (Callable): The function to be decorated and logged.
+        Returns:
+            - Callable: The decorated function with added logging functionality.
+        Processing Logic:
+            - Captures the start time before the function execution.
+            - Constructs a context dictionary with function details and arguments.
+            - Logs the function call and its parameters before execution if detailed_logging is enabled.
+            - Measures and logs the execution time, result, and function completion status.
+            - Captures and logs any exceptions raised during function execution along with the stack trace."""
         def wrapper(*args: Any, **kwargs: Any) -> Any:
+            """Logs the execution and result of the wrapped function.
+            Parameters:
+                - *args (Any): Variable length argument list provided to the wrapped function.
+                - **kwargs (Any): Arbitrary keyword arguments provided to the wrapped function.
+            Returns:
+                - Any: The return value from the wrapped function.
+            Processing Logic:
+                - Context dictionary is populated with function details and arguments if detailed_logging is enabled.
+                - Execution time is measured and logged alongside function execution details.
+                - In case of exception in the function, the error details are logged and the exception is re-raised."""
             start_time = time.time()
             action = action_name or func.__name__
 

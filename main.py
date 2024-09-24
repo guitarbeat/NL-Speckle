@@ -41,6 +41,17 @@ def main():
 
 
 def setup_app(st):
+    """Initializes the app with configurations and parameters for image processing.
+    Parameters:
+        - st (streamlit): The Streamlit instance used to access session state and UI elements.
+    Returns:
+        - None: This function does not return any value but updates the session state with parameters.
+    Processing Logic:
+        - Retrieves sidebar parameters and stores them in the session state.
+        - Sets up tabs for different image processing techniques and stores them.
+        - Calculates processing details based on the parameters and image array.
+        - Constructs a dictionary of parameters needed for image processing techniques and stores it.
+        - For each selected image processing technique, it runs the technique in the corresponding tab."""
     sidebar_params = SidebarUI.setup()
     st.session_state.sidebar_params = sidebar_params
 

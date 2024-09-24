@@ -23,6 +23,16 @@ class ProcessParams:
 
 
 def process_image(params):
+    """Processes an image using a specified technique and analysis parameters.
+    Parameters:
+        - params (object): An object that must have 'technique', 'analysis_params', and 'image_array.data' attributes.
+    Returns:
+        - tuple: A tuple containing params object and the results of the image processing.
+    Processing Logic:
+        - Default values for processing parameters are obtained from the session state.
+        - Technique-specific processing is performed according to the 'technique' parameter.
+        - Processed data and parameters are updated in the session state.
+        - In case of an error, logs the error and rethrows it."""
     try:
         technique = params.technique
         analysis_params = params.analysis_params
@@ -78,6 +88,17 @@ def process_image(params):
 def normalize_image(
     image: np.ndarray, low_percentile: int = 2, high_percentile: int = 98
 ) -> np.ndarray:
+    """Normalize the pixel values of an image between 0 and 1 based on percentile thresholds.
+    Parameters:
+        - image (np.ndarray): Input image as a NumPy array.
+        - low_percentile (int, optional): Lower percentile threshold for normalization. Defaults to 2.
+        - high_percentile (int, optional): Upper percentile threshold for normalization. Defaults to 98.
+    Returns:
+        - np.ndarray: The normalized image with values between 0 and 1.
+    Processing Logic:
+        - The function calculates low and high intensity cut-offs based on the provided percentiles.
+        - Intensities below the low percentile are set to 0, and above the high percentile are set to 1.
+        - It linearly rescales the pixel values between 0 and 1 based on these percentile thresholds."""
     p_low, p_high = np.percentile(image, [low_percentile, high_percentile])
     logging.info(
         json.dumps({"action": "normalize_image",
@@ -89,6 +110,18 @@ def normalize_image(
 def extract_kernel_from_image(
     image_array: np.ndarray, end_x: int, end_y: int, kernel_size: int
 ) -> Tuple[np.ndarray, float, int]:
+    """Extract a square kernel of defined size from a specified location in an image array.
+    Parameters:
+        - image_array (np.ndarray): The input image from which the kernel is to be extracted.
+        - end_x (int): The x-coordinate (width dimension) of the kernel's center within the image array.
+        - end_y (int): The y-coordinate (height dimension) of the kernel's center within the image array.
+        - kernel_size (int): The size of one side of the square kernel to be extracted; must be an odd number.
+    Returns:
+        - Tuple[np.ndarray, float, int]: A tuple containing the kernel array as a numpy ndarray, the pixel value at the kernel's center as a float, and the kernel size as an int.
+    Processing Logic:
+        - The function ensures the kernel extraction is bounded within the image dimensions and handles edge cases by padding if necessary.
+        - The padding replicates the edge values when the kernel extends beyond the borders of the image.
+        - The function raises an error with detailed information if the extracted kernel is empty."""
     half_kernel = kernel_size // 2
     height, width = image_array.shape
 
@@ -148,6 +181,15 @@ class ProcessingDetails:
         """Validate dimensions and coordinates after initialization."""
 
         def _validate_dimensions():
+            """Validates the dimensions for processing an image.
+            Parameters:
+                None
+            Returns:
+                - None: This method does not return any value but raises ValueError if any validation fails.
+            Processing Logic:
+                - Ensures that both dimensions of the image are positive.
+                - Validates if the kernel size is smaller than the image dimensions.
+                - Checks that the number of pixels to process is not negative."""
             if self.image_dimensions[0] <= 0 or self.image_dimensions[1] <= 0:
                 raise ValueError("Image dimensions must be positive.")
             if self.valid_dimensions[0] <= 0 or self.valid_dimensions[1] <= 0:
@@ -161,6 +203,10 @@ class ProcessingDetails:
         _validate_dimensions()
 
         def _validate_coordinates():
+            """Validates if the processing coordinates are within the image boundaries.
+            Processing Logic:
+            - Checks if the start coordinates are non-negative.
+            - Checks if the end coordinates do not exceed the image dimensions."""
             if self.processing_origin[0] < 0 or self.processing_origin[1] < 0:
                 raise ValueError("Start coordinates must be non-negative.")
             if (
