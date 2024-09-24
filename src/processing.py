@@ -61,14 +61,16 @@ def process_image(params):
             raise ValueError(f"Unknown technique: {technique}")
 
         st.session_state.update(
-            {"processed_pixels": pixels_to_process, f"{technique}_results": results}
+            {"processed_pixels": pixels_to_process,
+                f"{technique}_results": results}
         )
         return params, results
 
     except Exception as e:
         logging.error(
             json.dumps(
-                {"action": "process_image", "technique": technique, "error": str(e)}
+                {"action": "process_image",
+                    "technique": technique, "error": str(e)}
             )
         )
         raise
@@ -79,7 +81,8 @@ def normalize_image(
 ) -> np.ndarray:
     p_low, p_high = np.percentile(image, [low_percentile, high_percentile])
     logging.info(
-        json.dumps({"action": "normalize_image", "p_low": p_low, "p_high": p_high})
+        json.dumps({"action": "normalize_image",
+                   "p_low": p_low, "p_high": p_high})
     )
     return np.clip(image, p_low, p_high) - p_low / (p_high - p_low)
 
@@ -90,8 +93,10 @@ def extract_kernel_from_image(
     half_kernel = kernel_size // 2
     height, width = image_array.shape
 
-    y_start, y_end = max(0, end_y - half_kernel), min(height, end_y + half_kernel + 1)
-    x_start, x_end = max(0, end_x - half_kernel), min(width, end_x + half_kernel + 1)
+    y_start, y_end = max(
+        0, end_y - half_kernel), min(height, end_y + half_kernel + 1)
+    x_start, x_end = max(0, end_x - half_kernel), min(width,
+                                                      end_x + half_kernel + 1)
     kernel_values = image_array[y_start:y_end, x_start:x_end]
 
     if kernel_values.size == 0:
@@ -108,8 +113,10 @@ def extract_kernel_from_image(
         kernel_values = np.pad(
             kernel_values,
             (
-                (max(0, half_kernel - end_y), max(0, end_y + half_kernel + 1 - height)),
-                (max(0, half_kernel - end_x), max(0, end_x + half_kernel + 1 - width)),
+                (max(0, half_kernel - end_y),
+                 max(0, end_y + half_kernel + 1 - height)),
+                (max(0, half_kernel - end_x),
+                 max(0, end_x + half_kernel + 1 - width)),
             ),
             mode="edge",
         )
@@ -151,7 +158,8 @@ class ProcessingDetails:
                     "Kernel size is too large for the given image dimensions."
                 )
             if self.pixels_to_process < 0:
-                raise ValueError("Number of pixels to process must be non-negative.")
+                raise ValueError(
+                    "Number of pixels to process must be non-negative.")
 
         _validate_dimensions()
 
@@ -179,9 +187,11 @@ def calculate_processing_details(
     )
 
     if valid_height <= 0 or valid_width <= 0:
-        raise ValueError("Kernel size is too large for the given image dimensions.")
+        raise ValueError(
+            "Kernel size is too large for the given image dimensions.")
 
-    pixels_to_process = min(valid_height * valid_width, max_pixels or float("inf"))
+    pixels_to_process = min(valid_height * valid_width,
+                            max_pixels or float("inf"))
     end_y, end_x = divmod(pixels_to_process - 1, valid_width)
     end_y, end_x = end_y + half_kernel, end_x + half_kernel
 

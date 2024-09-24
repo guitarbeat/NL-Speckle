@@ -84,7 +84,8 @@ def log_action(
                         max_length,
                     )
 
-                logging.log(log_level, json.dumps(json_serializable(context), indent=2))
+                logging.log(log_level, json.dumps(
+                    json_serializable(context), indent=2))
             except Exception as e:
                 logging.error(f"Error in log_action serialization: {str(e)}")
 
@@ -101,8 +102,10 @@ def log_action(
                     }
                 )
                 if detailed_logging:
-                    context["result"] = json_serializable(result, max_depth, max_length)
-                logging.log(log_level, json.dumps(json_serializable(context), indent=2))
+                    context["result"] = json_serializable(
+                        result, max_depth, max_length)
+                logging.log(log_level, json.dumps(
+                    json_serializable(context), indent=2))
                 return result
             except Exception as e:
                 end_time = time.time()
@@ -116,7 +119,8 @@ def log_action(
                         "exec_time": f"{execution_time:.3f}s",
                     }
                 )
-                logging.exception(json.dumps(json_serializable(context), indent=2))
+                logging.exception(json.dumps(
+                    json_serializable(context), indent=2))
                 raise
 
         return wrapper

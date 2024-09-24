@@ -236,12 +236,14 @@ def display_formula_section(config, variables, section_key):
         formula. section_key: The key for the section to display ('main' or
         'additional').
     """
-    formula_key = "formula" if section_key == "formula" else f"{section_key}_formula"
+    formula_key = "formula" if section_key == "formula" else f"{
+        section_key}_formula"
     explanation_key = "explanation"
 
     try:
         # Ensure the formula is a string
-        st.latex(str(config[formula_key]).format(**variables))  # Convert to string if necessary
+        # Convert to string if necessary
+        st.latex(str(config[formula_key]).format(**variables))
         st.markdown(config[explanation_key].format(**variables))
     except KeyError as e:
         st.error(f"Missing key in {section_key} formula or explanation: {e}")
@@ -257,7 +259,8 @@ def display_additional_formulas(config, variables):
         formula.
     """
     st.write("Additional Formulas:")
-    tab_labels = [formula["title"] for formula in config["additional_formulas"]]
+    tab_labels = [formula["title"]
+                  for formula in config["additional_formulas"]]
     tabs = st.tabs(tab_labels)
     for tab, additional_formula in zip(tabs, config["additional_formulas"]):
         with tab:

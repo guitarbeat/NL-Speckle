@@ -54,14 +54,16 @@ def get_patch(image: np.ndarray, row: int, col: int, half_kernel: int) -> np.nda
     Extracts a square patch from the image centered at the given row and column.
     """
     height, width = image.shape
-    patch = np.zeros((2 * half_kernel + 1, 2 * half_kernel + 1), dtype=image.dtype)
+    patch = np.zeros(
+        (2 * half_kernel + 1, 2 * half_kernel + 1), dtype=image.dtype)
 
     for i in range(-half_kernel, half_kernel + 1):
         for j in range(-half_kernel, half_kernel + 1):
             patch_row = row + i
             patch_col = col + j
             if 0 <= patch_row < height and 0 <= patch_col < width:
-                patch[i + half_kernel, j + half_kernel] = image[patch_row, patch_col]
+                patch[i + half_kernel, j +
+                      half_kernel] = image[patch_row, patch_col]
 
     return patch
 
@@ -107,7 +109,8 @@ def calculate_nlm_value(
             total_weight += weight
             weighted_sum += weight * image[i, j]
 
-    nlm_value = weighted_sum / total_weight if total_weight > 0 else image[row, col]
+    nlm_value = weighted_sum / \
+        total_weight if total_weight > 0 else image[row, col]
 
     return nlm_value, total_weight
 
@@ -186,7 +189,8 @@ def process_nlm(
 
         # Ensure image is a NumPy array before converting
         nonlocal_means, total_weights = apply_nlm(
-            np.asarray(image, dtype=np.float32),  # Ensure this is a float32 array
+            # Ensure this is a float32 array
+            np.asarray(image, dtype=np.float32),
             kernel_size,
             search_window_size,
             filter_strength,
@@ -205,7 +209,8 @@ def process_nlm(
             filter_strength=filter_strength,
         )
     except Exception as e:
-        logger.error("Error in process_nlm: %s: %s", type(e).__name__, e, exc_info=True)
+        logger.error("Error in process_nlm: %s: %s",
+                     type(e).__name__, e, exc_info=True)
         raise
 
 

@@ -40,7 +40,8 @@ def create_visualization_config(
         analysis_params=analysis_params,
         results=results,
         ui_placeholders=st.session_state.get(f"{technique}_placeholders", {}),
-        last_processed_pixel=(last_processed_pixel[0], last_processed_pixel[1]),
+        last_processed_pixel=(
+            last_processed_pixel[0], last_processed_pixel[1]),
         kernel_size=kernel_size,
         kernel_matrix=kernel_matrix,
         original_pixel_value=original_pixel_value,
@@ -78,8 +79,10 @@ class ImageComparison:
                             img1, img2, image_choice_1, image_choice_2, cmap_name
                         )
                     else:
-                        st.error("Please select two different images for comparison.")
-                        ImageComparison.display_difference_map(img1, img2, cmap_name)
+                        st.error(
+                            "Please select two different images for comparison.")
+                        ImageComparison.display_difference_map(
+                            img1, img2, cmap_name)
                 else:
                     st.info("Select two images to compare.")
         except (KeyError, ValueError, TypeError) as e:

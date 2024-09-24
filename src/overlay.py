@@ -36,8 +36,7 @@ class KernelConfig:
     grid_line_style: str = ":"
     center_pixel_color: str = "green"
     center_pixel_outline_width: int = 1
-    kernel_matrix: Optional[np.ndarray] = None  
-    
+    kernel_matrix: Optional[np.ndarray] = None
 
 
 @dataclass
@@ -74,7 +73,8 @@ class VisualizationConfig:
     title: str = ""
     figure_size: Tuple[int, int] = (8, 8)
     kernel: KernelConfig = field(default_factory=KernelConfig)
-    search_window: SearchWindowConfig = field(default_factory=SearchWindowConfig)
+    search_window: SearchWindowConfig = field(
+        default_factory=SearchWindowConfig)
     pixel_value: PixelValueConfig = field(default_factory=PixelValueConfig)
 
     def __post_init__(self):
@@ -301,8 +301,10 @@ def get_search_window_dims(image: np.ndarray, config: VisualizationConfig) -> Tu
 
     window_left = max(0, last_processed_pixel_x - half_window_size) - 0.5
     window_top = max(0, last_processed_pixel_y - half_window_size) - 0.5
-    window_right = min(image_width, last_processed_pixel_x + half_window_size + 1)
-    window_bottom = min(image_height, last_processed_pixel_y + half_window_size + 1)
+    window_right = min(
+        image_width, last_processed_pixel_x + half_window_size + 1)
+    window_bottom = min(
+        image_height, last_processed_pixel_y + half_window_size + 1)
 
     window_width = window_right - window_left
     window_height = window_bottom - window_top

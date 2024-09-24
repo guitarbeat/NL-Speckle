@@ -11,7 +11,8 @@ import streamlit as st
 from PIL import Image
 
 from src.decor import log_action
-from src.plotting import VisualizationConfig  # Import the VisualizationConfig class
+# Import the VisualizationConfig class
+from src.plotting import VisualizationConfig
 
 AVAILABLE_COLOR_MAPS = [
     "gray",
@@ -82,7 +83,8 @@ class SidebarUI:
                     st.sidebar.warning("Please upload an image.")
                     return None
                 loaded_image = Image.open(uploaded_file).convert("L")
-            st.sidebar.image(loaded_image, caption="Input Image", use_column_width=True)
+            st.sidebar.image(
+                loaded_image, caption="Input Image", use_column_width=True)
             return loaded_image
         except (FileNotFoundError, IOError) as e:
             st.sidebar.error(f"Error loading image: {e}. Please try again.")
@@ -111,7 +113,8 @@ class SidebarUI:
             image.height - kernel_size + 1
         )
 
-        pixels_to_process = SidebarUI.setup_pixel_processing(total_pixels) if show_per_pixel else total_pixels
+        pixels_to_process = SidebarUI.setup_pixel_processing(
+            total_pixels) if show_per_pixel else total_pixels
 
         return {
             "show_per_pixel_processing": show_per_pixel,
@@ -197,7 +200,8 @@ class SidebarUI:
 
         image_np = np.array(image) / 255.0
         if apply_gaussian_noise:
-            image_np = SidebarUI._apply_gaussian_noise(image_np, **noise_params)
+            image_np = SidebarUI._apply_gaussian_noise(
+                image_np, **noise_params)
         if normalization_option == "Percentile":
             image_np = SidebarUI._normalize_percentile(image_np)
         return {
