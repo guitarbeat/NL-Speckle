@@ -31,8 +31,27 @@ PRELOADED_IMAGE_PATHS = {
 
 @dataclass
 class SidebarUI:
+    """
+    Manages a sidebar user interface (UI) for an image processing application with customizable settings.
+    Parameters:
+        - None
+    Processing Logic:
+        - The setup method initiates the sidebar UI by calling other static methods to gather user inputs on image source and processing options.
+        - The select_image_source method handles the logic for choosing between preloaded images or uploading a new image.
+        - The setup_display_options method reads user inputs and calculates parameters for the image display.
+        - Advanced options related to image normalization and noise addition are set in the setup_advanced_options method.
+    """
     @staticmethod
     def setup() -> Optional[Dict[str, Any]]:
+        """Initializes the sidebar for the Streamlit app with various configuration options.
+        Parameters:
+            - None
+        Returns:
+            - Optional[Dict[str, Any]]: A dictionary containing all selected options for image processing, or None if no image is selected.
+        Processing Logic:
+            - The function sequentially opens multiple expanders where users can choose options related to image processing.
+            - Parameters for Non-Local Means (NLM) are set in a dedicated 'NLM Parameters' expander.
+            - 'use_full_image' is set based on 'use_whole_image' option from NLM parameters and stored in session state."""
         st.sidebar.title("Image Processing Settings")
 
         with st.sidebar.expander("Image Selector", expanded=True):
@@ -95,6 +114,16 @@ class SidebarUI:
 
     @staticmethod
     def setup_display_options(image: Image.Image) -> Dict[str, Any]:
+        """Configure and return display options based on user input for image processing.
+        Parameters:
+            - image (Image.Image): The image to be processed.
+        Returns:
+            - Dict[str, Any]: A dictionary containing the display options such as kernel size and pixels to process.
+        Processing Logic:
+            - Adjusts the `kernel_size` value based on user interaction with a sidebar slider widget.
+            - Determines whether to show per-pixel processing steps based on a sidebar checkbox.
+            - Calculates `total_pixels` that need processing based on image dimensions and kernel size.
+            - If per-pixel processing is enabled, uses a method to decide on the number of `pixels_to_process`."""
         kernel_size = st.session_state.get("kernel_size", 3)
         kernel_size = st.sidebar.slider(
             "Kernel Size",
@@ -127,6 +156,14 @@ class SidebarUI:
 
     @staticmethod
     def setup_pixel_processing(total_pixels: int) -> int:
+        """Initializes pixel processing controls and synchronizes sliders.
+        Parameters:
+            - total_pixels (int): The total number of pixels to be processed.
+        Returns:
+            - int: The current count of pixels to process based on slider percentage.
+        Processing Logic:
+            - Initializes session state variables if they do not exist.
+            - Updates the exact pixel count or percentage based on the other's slider change."""
         if "exact_pixel_count" not in st.session_state:
             st.session_state.exact_pixel_count = total_pixels
         if "percentage_slider" not in st.session_state:
