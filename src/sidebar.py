@@ -8,6 +8,8 @@ from typing import Any, Dict, Optional
 
 import numpy as np
 import streamlit as st
+
+# import streamlit_image_coordinates
 from PIL import Image
 
 AVAILABLE_COLOR_MAPS = [
@@ -34,19 +36,16 @@ class SidebarUI:
         st.sidebar.title("Image Processing Settings")
 
         with st.sidebar.expander("Image Selector", expanded=True):
-            image = SidebarUI.select_image_source()
+            image, color_map = SidebarUI.select_image_source()
             if image is None:
                 return None
-
-            st.sidebar.markdown("### 🎨 Color Map")
-            color_map = SidebarUI.select_color_map()
 
         display_options = SidebarUI.setup_display_options(image)
 
         with st.sidebar.expander("NLM Parameters", expanded=True):
             nlm_params = SidebarUI._setup_nlm_options(image)
 
-         # Store the use_full_image flag in session state for future use
+        # Store the use_full_image flag in session state for future use
         st.session_state["use_full_image"] = nlm_params.get("use_whole_image")
         with st.sidebar.expander("Advanced Options", expanded=True):
             advanced_options = SidebarUI.setup_advanced_options(image)
@@ -85,20 +84,17 @@ class SidebarUI:
                     st.sidebar.warning("Please upload an image.")
                     return None
                 loaded_image = Image.open(uploaded_file).convert("L")
-            st.sidebar.image(
-                loaded_image, caption="Input Image", use_column_width=True)
-            return loaded_image
+
+            st.sidebar.image(loaded_image, caption="Input Image", use_column_width=True)
+            color_map = SidebarUI.select_color_map()
+
+            return loaded_image, color_map
         except (FileNotFoundError, IOError) as e:
             st.sidebar.error(f"Error loading image: {e}. Please try again.")
             return None
 
     @staticmethod
     def setup_display_options(image: Image.Image) -> Dict[str, Any]:
-        st.sidebar.markdown("### 🖥️ Display Options")
-        show_per_pixel = st.sidebar.checkbox(
-            "Show Per-Pixel Processing Steps", value=True, key="show_per_pixel"
-        )
-
         kernel_size = st.session_state.get("kernel_size", 3)
         kernel_size = st.sidebar.slider(
             "Kernel Size",
@@ -110,12 +106,17 @@ class SidebarUI:
         )
         st.session_state.kernel_size = kernel_size
 
+        show_per_pixel = st.sidebar.checkbox(
+            "Show Per-Pixel Processing Steps", value=True, key="show_per_pixel"
+        )
         total_pixels = (image.width - kernel_size + 1) * (
             image.height - kernel_size + 1
         )
-
-        pixels_to_process = SidebarUI.setup_pixel_processing(
-            total_pixels) if show_per_pixel else total_pixels
+        pixels_to_process = (
+            SidebarUI.setup_pixel_processing(total_pixels)
+            if show_per_pixel
+            else total_pixels
+        )
 
         return {
             "show_per_pixel_processing": show_per_pixel,
@@ -169,19 +170,19 @@ class SidebarUI:
         """
         Select color map for image display and update session state.
         """
-    # Initialize color_map in session state if it doesn't exist
+        # Initialize color_map in session state if it doesn't exist
         if "color_map" not in st.session_state:
             st.session_state.color_map = "gray"  # Default color map
 
         # Get the current color map from session state or use default
         current_color_map = st.session_state.get("color_map")
-        
+
         # Create the selectbox for color map selection
         selected_color_map = st.sidebar.selectbox(
             "Select Color Map",
             AVAILABLE_COLOR_MAPS,
             index=AVAILABLE_COLOR_MAPS.index(current_color_map),
-            key="color_map_select"
+            key="color_map_select",
         )
 
         # Update session state if the color map has changed
@@ -212,8 +213,7 @@ class SidebarUI:
 
         image_np = np.array(image) / 255.0
         if apply_gaussian_noise:
-            image_np = SidebarUI._apply_gaussian_noise(
-                image_np, **noise_params)
+            image_np = SidebarUI._apply_gaussian_noise(image_np, **noise_params)
         if normalization_option == "Percentile":
             image_np = SidebarUI._normalize_percentile(image_np)
         return {
@@ -334,4 +334,4 @@ class SidebarUI:
                 "filter_strength": 10.0,
                 "use_whole_image": False,
             }
-
+            }
