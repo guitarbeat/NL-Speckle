@@ -471,6 +471,7 @@ def run_technique(technique: str, tab: Any, analysis_params: Dict[str, Any]) -> 
 
     try:
         configure_process_params(technique, process_params, technique_params)
+        
         _, results = process_image(process_params)
         st.session_state[f"{technique}_results"] = results
 

@@ -142,8 +142,8 @@ class ProcessingDetails:
 
     image_dimensions: Tuple[int, int]
     valid_dimensions: Tuple[int, int]
-    start_point: Tuple[int, int]
-    end_point: Tuple[int, int]
+    processing_origin: Tuple[int, int]
+    processing_end: Tuple[int, int]
     pixels_to_process: int
     kernel_size: int
 
@@ -164,11 +164,11 @@ class ProcessingDetails:
         _validate_dimensions()
 
         def _validate_coordinates():
-            if self.start_point[0] < 0 or self.start_point[1] < 0:
+            if self.processing_origin[0] < 0 or self.processing_origin[1] < 0:
                 raise ValueError("Start coordinates must be non-negative.")
             if (
-                self.end_point[0] >= self.image_dimensions[0]
-                or self.end_point[1] >= self.image_dimensions[1]
+                self.processing_end[0] >= self.image_dimensions[0]
+                or self.processing_end[1] >= self.image_dimensions[1]
             ):
                 raise ValueError("End coordinates exceed image boundaries.")
 
@@ -198,8 +198,8 @@ def calculate_processing_details(
     return ProcessingDetails(
         image_dimensions=(image_width, image_height),  # Tuple
         valid_dimensions=(valid_width, valid_height),
-        start_point=(half_kernel, half_kernel),
-        end_point=(end_x, end_y),
+        processing_origin=(half_kernel, half_kernel),
+        processing_end=(end_x, end_y),
         pixels_to_process=pixels_to_process,
         kernel_size=kernel_size,
     )

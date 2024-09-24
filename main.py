@@ -65,7 +65,7 @@ def setup_app(st):
         "image_array": sidebar_params["image_array"],
         "show_per_pixel_processing": sidebar_params["show_per_pixel_processing"],
         "total_pixels": details.valid_dimensions[0] * details.valid_dimensions[1],
-        "pixels_to_process": details.pixels_to_process,
+        "pixels_to_process": sidebar_params.get("pixels_to_process"),
         "image_dimensions": details.image_dimensions,
         "kernel_size": kernel_size,
         "search_window_size": sidebar_params.get("search_window_size"),
@@ -77,7 +77,7 @@ def setup_app(st):
     st.session_state.analysis_params = params
 
     techniques: List[str] = st.session_state.get("techniques", [])
-
+    
     for technique, tab in zip(techniques, tabs):  # Change here
         if tab is not None:
             with tab:

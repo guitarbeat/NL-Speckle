@@ -4,13 +4,13 @@ This module provides functions for calculating speckle contrast in images.
 Functions: - calculate_mean(local_window): Calculate the mean intensity within a
 local window. - calculate_speckle_contrast(local_std, local_mean): Calculate the
 speckle contrast. - apply_speckle_contrast(image, kernel_size,
-pixels_to_process, start_point):
+pixels_to_process, processing_origin):
     Apply speckle contrast to an image.
 """
 
 from dataclasses import dataclass
 from typing import List
-
+import streamlit as st
 import numpy as np
 
 
@@ -24,8 +24,8 @@ def calculate_speckle_contrast(local_std, local_mean):
     """
     return local_std / local_mean if local_mean != 0 else 0
 
-
-def apply_speckle_contrast(image, kernel_size, pixels_to_process, start_point):
+@st.cache_data
+def apply_speckle_contrast(image, kernel_size, pixels_to_process, processing_origin):
     """Applies speckle contrast to the given image."""
     if not isinstance(image, np.ndarray):
         raise TypeError(f"Expected numpy array, got {type(image)}")
@@ -40,8 +40,8 @@ def apply_speckle_contrast(image, kernel_size, pixels_to_process, start_point):
     valid_width = width - kernel_size + 1
 
     for pixel in range(pixels_to_process):
-        row = start_point[1] + pixel // valid_width
-        col = start_point[0] + pixel % valid_width
+        row = processing_origin[1] + pixel // valid_width
+        col = processing_origin[0] + pixel % valid_width
         if row < height and col < width:
             row_start = max(0, row - half_kernel)
             row_end = min(height, row + half_kernel + 1)
@@ -72,15 +72,12 @@ def process_speckle(image, kernel_size, pixels_to_process):
             image, kernel_size, pixels_to_process
         )
 
-        print(f"Image shape: {image.shape}, dtype: {image.dtype}")
-        print(f"Processing info: {processing_info}")
-
-        start_y, start_x = processing_info.start_point
+        start_y, start_x = processing_info.processing_origin
 
         mean_filter, std_dev_filter, sc_filter = apply_speckle_contrast(
             image, kernel_size, pixels_to_process, (start_x, start_y)
         )
-
+        
         return SpeckleResult(
             mean_filter=mean_filter,
             std_dev_filter=std_dev_filter,
@@ -88,7 +85,7 @@ def process_speckle(image, kernel_size, pixels_to_process):
             start_pixel_mean=mean_filter[start_y, start_x],
             start_pixel_std_dev=std_dev_filter[start_y, start_x],
             start_pixel_speckle_contrast=sc_filter[start_y, start_x],
-            processing_end_coord=processing_info.end_point,
+            processing_end_coord=processing_info.processing_end,
             kernel_size=kernel_size,
             pixels_processed=processing_info.pixels_to_process,
             image_dimensions=processing_info.image_dimensions,

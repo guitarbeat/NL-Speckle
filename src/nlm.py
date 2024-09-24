@@ -6,7 +6,7 @@ algorithm functions.
 import logging
 from dataclasses import dataclass
 from typing import List, Tuple
-
+import streamlit as st
 import numpy as np
 
 from src.processing import FilterResult, ProcessingDetails, calculate_processing_details
@@ -118,13 +118,14 @@ def calculate_nlm_value(
 # --- NLM Application Function ---
 
 
+@st.cache_data
 def apply_nlm(
     image: np.ndarray,
     kernel_size: int,
     search_window_size: int,
     filter_strength: float,
     pixels_to_process: int,
-    start_point: Tuple[int, int],
+    processing_origin: Tuple[int, int],
 ) -> np.ndarray:
     """
     Applies the Non-Local Means algorithm to the entire image.
@@ -133,7 +134,7 @@ def apply_nlm(
         image (np.ndarray): The input image. kernel_size (int): The size of the
         patch kernel. search_window_size (int): The size of the search window.
         filter_strength (float): The filter strength for patch comparison.
-        pixels_to_process (int): The number of pixels to process. start_point
+        pixels_to_process (int): The number of pixels to process. processing_origin
         (Point): The starting point for processing.
 
     Returns:
@@ -146,8 +147,8 @@ def apply_nlm(
     total_weights = np.zeros_like(image)
 
     for pixel in range(pixels_to_process):
-        row = start_point[1] + pixel // valid_width  # Use indexing
-        col = start_point[0] + pixel % valid_width  # Use indexing
+        row = processing_origin[1] + pixel // valid_width  # Use indexing
+        col = processing_origin[0] + pixel % valid_width  # Use indexing
 
         if row < height and col < width:
             nlm_value, weight = calculate_nlm_value(
@@ -160,7 +161,6 @@ def apply_nlm(
 
 
 # --- Main Processing Function ---
-
 
 def process_nlm(
     image: np.ndarray,
@@ -195,13 +195,12 @@ def process_nlm(
             search_window_size,
             filter_strength,
             processing_info.pixels_to_process,
-            processing_info.start_point,
+            processing_info.processing_origin,
         )
-
         return NLMResult(
             nonlocal_means=nonlocal_means,
             normalization_factors=total_weights,
-            processing_end_coord=processing_info.end_point,
+            processing_end_coord=processing_info.processing_end,
             kernel_size=kernel_size,
             pixels_processed=processing_info.pixels_to_process,
             image_dimensions=processing_info.image_dimensions,
