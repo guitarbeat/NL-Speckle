@@ -10,8 +10,6 @@ import numpy as np
 import streamlit as st
 from PIL import Image
 
-from src.decor import log_action
-
 AVAILABLE_COLOR_MAPS = [
     "gray",
     "plasma",
@@ -94,7 +92,7 @@ class SidebarUI:
     def setup_display_options(image: Image.Image) -> Dict[str, Any]:
         st.sidebar.markdown("### 🖥️ Display Options")
         show_per_pixel = st.sidebar.checkbox(
-            "Show Per-Pixel Processing Steps", value=False, key="show_per_pixel"
+            "Show Per-Pixel Processing Steps", value=True, key="show_per_pixel"
         )
 
         kernel_size = st.session_state.get("kernel_size", 3)
@@ -123,7 +121,6 @@ class SidebarUI:
         }
 
     @staticmethod
-    @log_action
     def setup_pixel_processing(total_pixels: int) -> int:
         if "exact_pixel_count" not in st.session_state:
             st.session_state.exact_pixel_count = total_pixels
@@ -154,9 +151,9 @@ class SidebarUI:
         with col2:
             st.number_input(
                 "Exact Pixels",
-                min_value=0,
+                min_value=1,
                 max_value=total_pixels,
-                value=st.session_state.exact_pixel_count,
+                value=min(st.session_state.exact_pixel_count, total_pixels),
                 step=1,
                 key="exact_pixel_count",
                 on_change=update_percentage,
@@ -191,7 +188,6 @@ class SidebarUI:
         return selected_color_map
 
     @staticmethod
-    @log_action
     def setup_advanced_options(image: Image.Image) -> Dict[str, Any]:
         """
         Set up advanced options and return selected values.

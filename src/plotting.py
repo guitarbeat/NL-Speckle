@@ -441,18 +441,22 @@ def visualize_analysis_results(viz_params: VisualizationConfig) -> None:
             filter_data = filter_options[filter_name]
             visualize_filter_and_zoomed(filter_name, filter_data, viz_params)
 
-    if viz_params.show_per_pixel_processing:
-        last_processed_x, last_processed_y = viz_params.last_processed_pixel
-        display_analysis_formula(
-            specific_params,
-            viz_params.ui_placeholders,
-            viz_params.technique,
-            last_processed_x,
-            last_processed_y,
-            viz_params.kernel.size,
-            viz_params.kernel.kernel_matrix,
-            viz_params.original_pixel_value,
-        )
+    last_processed_x, last_processed_y = viz_params.last_processed_pixel
+    specific_params['Centered at'] = f"({last_processed_x}, {last_processed_y})"
+    # adding 'image_height' and 'image_width' to specific_params
+    specific_params['image_height'] = viz_params.image_array.data.shape[0]
+    specific_params['image_width'] = viz_params.image_array.data.shape[1]
+    last_processed_x, last_processed_y = viz_params.last_processed_pixel
+    display_analysis_formula(
+        specific_params,
+        viz_params.ui_placeholders,
+        viz_params.technique,
+        last_processed_x,
+        last_processed_y,
+        viz_params.kernel.size,
+        viz_params.kernel.kernel_matrix,
+        viz_params.original_pixel_value,
+    )
 
 
 def run_technique(technique: str, tab: Any, analysis_params: Dict[str, Any]) -> None:

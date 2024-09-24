@@ -3,7 +3,6 @@ This module provides the implementation of Non-Local Means (NLM) denoising
 algorithm functions.
 """
 
-import logging
 from dataclasses import dataclass
 from typing import List, Tuple
 import streamlit as st
@@ -11,8 +10,6 @@ import numpy as np
 
 from src.processing import FilterResult, ProcessingDetails, calculate_processing_details
 
-# --- Logger Setup ---
-logger = logging.getLogger(__name__)
 
 # --- Patch Calculation Functions ---
 
@@ -37,13 +34,6 @@ def calculate_weight(patch_difference: float, filter_strength: float) -> float:
     """
     Calculates the weight for a patch comparison based on patch difference and
     filter strength.
-
-    Args:
-        patch_difference (float): The difference between patches.
-        filter_strength (float): The strength of the NLM filter.
-
-    Returns:
-        float: The calculated weight for the patch.
     """
     return np.exp(-patch_difference / (filter_strength**2))
 
@@ -93,8 +83,7 @@ def calculate_nlm_value(
 
     total_weight = 0.0
     weighted_sum = 0.0
-
-    # Replace itertools.product with nested loops
+    
     for i in range(max(0, row - half_search), min(height, row + half_search + 1)):
         for j in range(max(0, col - half_search), min(width, col + half_search + 1)):
             if i == row and j == col:
@@ -207,9 +196,8 @@ def process_nlm(
             search_window_size=search_window_size,
             filter_strength=filter_strength,
         )
-    except Exception as e:
-        logger.error("Error in process_nlm: %s: %s",
-                     type(e).__name__, e, exc_info=True)
+    except Exception:
+        st.error("An error occurred during NLM processing.")
         raise
 
 
