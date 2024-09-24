@@ -28,6 +28,21 @@ from matplotlib.collections import LineCollection
 
 @dataclass
 class KernelConfig:
+    """
+    Manages configuration settings for a visualization of a kernel.
+    Parameters:
+        - size (int): Size of the kernel, defaults to 3.
+        - outline_color (str): Color of the kernel's outline, defaults to "red".
+        - outline_width (int): Width of the kernel's outline, defaults to 1.
+        - grid_line_color (str): Color of the grid lines within the kernel, defaults to "red".
+        - grid_line_width (int): Width of the grid lines, defaults to 1.
+        - grid_line_style (str): Style of the grid lines (e.g., ":", "-"), defaults to ":".
+        - center_pixel_color (str): Color of the center pixel, defaults to "green".
+        - center_pixel_outline_width (int): Outline width of the center pixel, defaults to 1.
+        - kernel_matrix (Optional[np.ndarray]): Optional matrix representation of the kernel, defaults to None.
+    Processing Logic:
+        - The class does not contain processing logic; it's a configuration container with default settings.
+    """
     size: int = 3
     outline_color: str = "red"
     outline_width: int = 1

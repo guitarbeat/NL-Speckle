@@ -399,6 +399,17 @@ def create_filter_views(
 def create_technique_ui_elements(
     technique: str, tab: Any, show_per_pixel_processing: bool
 ) -> Dict[str, Any]:
+    """Creates and organizes UI elements for a given image processing technique.
+    Parameters:
+        - technique (str): The name of the image processing technique.
+        - tab (Any): The tab in which UI elements will be created.
+        - show_per_pixel_processing (bool): Flag to show per-pixel processing elements.
+    Returns:
+        - Dict[str, Any]: A dictionary containing placeholders for UI elements.
+    Processing Logic:
+        - Raises a ValueError if 'technique' is not a non-empty string.
+        - Uses the 'tab' context manager to populate UI elements within a specific tab.
+        - Conditionally creates a zoomed-in kernel display based on 'show_per_pixel_processing'."""
     if not technique or not isinstance(technique, str):
         raise ValueError("Technique must be a non-empty string.")
 
@@ -457,6 +468,18 @@ def visualize_analysis_results(viz_params: VisualizationConfig) -> None:
 
 
 def run_technique(technique: str, tab: Any, analysis_params: Dict[str, Any]) -> None:
+    """Execute an image processing technique with provided parameters and visualizes the results.
+    Parameters:
+        - technique (str): The name of the image processing technique to be executed.
+        - tab (Any): Streamlit container in which UI elements will be created.
+        - analysis_params (Dict[str, Any]): Dictionary containing parameters for analysis.
+    Returns:
+        - None: This function does not return any value.
+    Processing Logic:
+        - Retrieve default parameters for the specified technique from the session state.
+        - Generate UI elements specific to the technique and update the session state placeholders.
+        - Create and configure process parameters combining default settings and analysis_params.
+        - Process the image and catch exceptions, displaying an error if they occur."""
     technique_params = st.session_state.get(f"{technique}_params", {})
     show_per_pixel_processing = analysis_params.get(
         "show_per_pixel_processing", False)
@@ -498,6 +521,20 @@ def create_visualization_config(
     ui_placeholders: Dict[str, Any],
     show_per_pixel_processing: bool,
 ) -> VisualizationConfig:
+    """Creates a configuration for visualization based on the image processing technique and results.
+    Parameters:
+        - image_array (np.ndarray): The input image array to be visualized.
+        - technique (str): The image processing technique used (e.g., 'speckle', 'NLM').
+        - analysis_params (Dict[str, Any]): Parameters used for analysis.
+        - results (Union[SpeckleResult, NLMResult]): The results object from the image processing.
+        - ui_placeholders (Dict[str, Any]): Placeholder values for the UI components.
+        - show_per_pixel_processing (bool): Flag to determine if per-pixel processing is shown.
+    Returns:
+        - VisualizationConfig: An object containing all visualization configuration.
+    Processing Logic:
+        - Extracts kernel and pixel information from the last processed coordinates in the results.
+        - Builds a config_params dict with all required information for visualization.
+        - Conditionally adds search_window configuration for NLMResult types."""
     last_processed_x, last_processed_y = results.get_last_processed_coordinates()
     kernel_matrix, original_pixel_value, kernel_size = extract_kernel_from_image(
         image_array,
