@@ -38,14 +38,14 @@ NLM_FORMULA_CONFIG = {
     """,
     "additional_formulas": [
 
-{
-    "title": "Border Handling",
-    "formula": r"P_{{x,y}}(i,j) = \begin{{cases}} I_{{x+i,y+j}} & \text{{if }} 0 \leq x+i < {image_height} \text{{ and }} 0 \leq y+j < {image_width} \\ 0 & \text{{otherwise}} \end{{cases}}",
-    "explanation": r"""
+        {
+            "title": "Border Handling",
+            "formula": r"P_{{x,y}}(i,j) = \begin{{cases}} I_{{x+i,y+j}} & \text{{if }} 0 \leq x+i < {image_height} \text{{ and }} 0 \leq y+j < {image_width} \\ 0 & \text{{otherwise}} \end{{cases}}",
+            "explanation": r"""
     To avoid boundary issues, this implementation avoids processing pixels near the image border.
     Current pixel: ({x}, {y})
     """
-},
+        },
 
         {
             "title": "Neighborhood Analysis",
@@ -97,16 +97,16 @@ SPECKLE_FORMULA_CONFIG = {
     "main_formula": r"I_{{{x},{y}}} = {original_value:.3f} \quad \rightarrow \quad SC_{{{x},{y}}} = \frac{{\sigma_{{{x},{y}}}}}{{\mu_{{{x},{y}}}}} = \frac{{{std:.3f}}}{{{mean:.3f}}} = {sc:.3f}",
     "explanation": r"This formula shows the transition from the original pixel intensity $I_{{{x},{y}}}$ to the Speckle Contrast (SC) for the same pixel position.",
     "additional_formulas": [
-        
-{
-    "title": "Border Handling",
-    "formula": r"P_{{x,y}}(i,j) = \begin{{cases}} I_{{x+i,y+j}} & \text{{if }} 0 \leq x+i < {image_height} \text{{ and }} 0 \leq y+j < {image_width} \\ 0 & \text{{otherwise}} \end{{cases}}",
-    "explanation": r"""
+
+        {
+            "title": "Border Handling",
+            "formula": r"P_{{x,y}}(i,j) = \begin{{cases}} I_{{x+i,y+j}} & \text{{if }} 0 \leq x+i < {image_height} \text{{ and }} 0 \leq y+j < {image_width} \\ 0 & \text{{otherwise}} \end{{cases}}",
+            "explanation": r"""
     To avoid boundary issues, this implementation avoids processing pixels near the image border.
     Current pixel: ({x}, {y})
     """
-},
-        
+        },
+
         {
             "title": "Neighborhood Analysis",
             "formula": r"\text{{Kernel Size: }} {kernel_size} \times {kernel_size}"
