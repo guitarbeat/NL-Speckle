@@ -50,7 +50,7 @@ def process_image(params):
                 kernel_size=kernel_size,
                 pixels_to_process=pixels_to_process,
                 search_window_size=search_window_size,
-                filter_strength=filter_strength,
+                h=filter_strength,
             )
         elif technique == "speckle":
             results = process_speckle(

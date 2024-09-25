@@ -2,7 +2,6 @@
 This module provides plotting functionalities using Matplotlib and Streamlit.
 """
 
-
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
 import matplotlib.pyplot as plt
@@ -434,6 +433,10 @@ def visualize_analysis_results(viz_params: VisualizationConfig) -> None:
     # adding 'image_height' and 'image_width' to specific_params
     specific_params['image_height'] = viz_params.image_array.data.shape[0]
     specific_params['image_width'] = viz_params.image_array.data.shape[1]
+    specific_params['half_kernel'] = viz_params.kernel.size // 2
+    specific_params['valid_height'] = viz_params.image_array.data.shape[0] - viz_params.kernel.size + 1
+    specific_params['valid_width'] = viz_params.image_array.data.shape[1] - viz_params.kernel.size + 1
+    specific_params['search_window_size'] = viz_params.search_window.size
     last_processed_x, last_processed_y = viz_params.last_processed_pixel
     display_analysis_formula(
         specific_params,
