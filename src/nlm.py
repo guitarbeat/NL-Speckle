@@ -98,6 +98,7 @@ def calculate_nlm_value(
 
 
     weighted_intensity_sum_xy = 0.0 # sum_{(i,j) in Ω_{x,y}} I_{i,j} * w_{x,y}(i,j)
+    weighted_intensity_squared_sum_xy = 0.0 # for non-local std
     C_xy = 0.0 # C_{x,y}
     similarity_map = np.zeros_like(image)
 
@@ -132,15 +133,24 @@ def calculate_nlm_value(
             neighbor_pixel = padded_image[i + half_search, j + half_search]
 
             weighted_intensity_sum_xy += weight_xy_ij * neighbor_pixel
+            weighted_intensity_squared_sum_xy += weight_xy_ij * (neighbor_pixel ** 2)
             C_xy += weight_xy_ij
 
     # Calculate the final denoised value
     NLM_xy = (
         weighted_intensity_sum_xy / C_xy if C_xy > 0 else image[x, y]
     )
-    
+    # Calculate non-local standard deviation
+    if C_xy > 0:
+        variance_xy = (weighted_intensity_squared_sum_xy / C_xy) - (NLM_xy ** 2)
+        NLstd_xy = np.sqrt(max(0, variance_xy))  # max to avoid negative values due to floating-point errors
+        # Calculate non-local speckle contrast
+        NLSC_xy = NLstd_xy / NLM_xy if NLM_xy > 0 else 0
+    else:
+        NLstd_xy = 0
+        NLSC_xy = 0
 
-    return NLM_xy, C_xy, similarity_map
+    return NLM_xy, C_xy, similarity_map, NLstd_xy, NLSC_xy
 
 # --- NLM Application Function ---
 
@@ -174,6 +184,9 @@ def apply_nlm_to_image(
 
     NLM_image = np.zeros_like(image)
     C_xy_image = np.zeros_like(image)
+    NLstd_image = np.zeros_like(image)
+    NLSC_xy_image = np.zeros_like(image)
+    
     use_full_image = st.session_state.get("use_full_image")
 
     for pixel in range(pixels_to_process):
@@ -181,15 +194,17 @@ def apply_nlm_to_image(
         y = processing_origin[0] + pixel % valid_width
 
         if x < height and y < width:
-            NLM_xy, C_xy, similarity_map = calculate_nlm_value(
+            NLM_xy, C_xy, similarity_map, NLstd_xy,NLSC_xy = calculate_nlm_value(
                 x, y, image, patch_size, search_window_size, h, use_full_image
             )
             NLM_image[x, y] = NLM_xy
+            NLstd_image[x, y] = NLstd_xy
+            NLSC_xy_image[x, y] = NLSC_xy
             C_xy_image[x, y] = C_xy
             last_similarity_map = similarity_map
     
     
-    return NLM_image, C_xy_image, last_similarity_map
+    return NLM_image, NLstd_image,NLSC_xy_image, C_xy_image, last_similarity_map
 
 # --- Main Processing Function ---
 
@@ -224,7 +239,7 @@ def process_nlm(
         )
 
         # Apply NLM denoising
-        nonlocal_means, C_xys, last_similarity_map = apply_nlm_to_image(
+        NLM_image,NLstd_image,NLSC_xy_image, C_xy_image, last_similarity_map = apply_nlm_to_image(
             np.asarray(image, dtype=np.float32),
             kernel_size,
             search_window_size,
@@ -235,8 +250,10 @@ def process_nlm(
         
         # Return the results
         return NLMResult(
-            nonlocal_means=nonlocal_means,
-            normalization_factors=C_xys,
+            nonlocal_means=NLM_image,
+            normalization_factors=C_xy_image,
+            nonlocal_std=NLstd_image,
+            nonlocal_speckle = NLSC_xy_image,
             processing_end_coord=processing_info.processing_end,
             kernel_size=kernel_size,
             pixels_processed=processing_info.pixels_to_process,
@@ -263,6 +280,8 @@ class NLMResult(FilterResult):
     search_window_size: int
     filter_strength: float
     last_similarity_map: List[np.ndarray]
+    nonlocal_stds: np.ndarray
+    nonlocal_speckle: np.ndarray
 
     @staticmethod
     def get_filter_options() -> List[str]:
@@ -272,7 +291,7 @@ class NLMResult(FilterResult):
         Returns:
             List[str]: The list of available filter options
         """
-        return ["Non-Local Means", "Normalization Factors", "Last Similarity Map"]
+        return ["Non-Local Means", "Normalization Factors", "Last Similarity Map", "Non-Local Standard Deviation", "Non-Local Speckle"]
 
     def get_filter_data(self) -> dict:
         """
@@ -285,4 +304,6 @@ class NLMResult(FilterResult):
             "Non-Local Means": self.nonlocal_means,
             "Normalization Factors": self.normalization_factors,
             "Last Similarity Map": self.last_similarity_map,
+            "Non-Local Standard Deviation": self.nonlocal_stds,
+            "Non-Local Speckle": self.nonlocal_speck
         }
