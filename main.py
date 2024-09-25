@@ -14,6 +14,8 @@ from src.utils import ImageComparison
 import cProfile
 
 
+# Initialize profiler globally
+profiler = cProfile.Profile()
 
 
 APP_CONFIG = {
@@ -39,6 +41,10 @@ def main():
         )  # Change here
 
 def setup_app():
+    
+    # Start profiling
+    profiler.enable()
+    
     sidebar_params = SidebarUI.setup()
     st.session_state.sidebar_params = sidebar_params
 
@@ -85,6 +91,15 @@ def setup_app():
     with tabs[2]:
         comparison_images = prepare_comparison_images()
         ImageComparison.handle(tabs[2], st.session_state.color_map, comparison_images)
+        
+        # Stop profiling and save results
+    profiler.disable()
+    profiler.dump_stats("profile_results.prof")
+
 
 if __name__ == "__main__":
-    cProfile.run("main()", "profile_results.prof")
+    # Manually run the app with profiler enabled
+    profiler.enable()
+    main()
+    profiler.disable()
+    profiler.dump_stats("profile_results.prof")
