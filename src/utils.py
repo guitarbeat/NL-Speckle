@@ -2,53 +2,10 @@
 Utility functions and classes for image processing and comparison.
 """
 
-from typing import Any, Dict, Tuple
-
 import matplotlib.pyplot as plt
 import numpy as np
 import streamlit as st
 from streamlit_image_comparison import image_comparison
-
-
-# Import necessary modules
-from src.plotting import VisualizationConfig
-
-
-def create_visualization_config(
-    image_array: np.ndarray,
-    technique: str,
-    analysis_params: Dict[str, Any],
-    results: Any,
-    last_processed_pixel: Tuple[int, int],
-    kernel_matrix: np.ndarray,
-    kernel_size: int,
-    original_pixel_value: float,
-    show_per_pixel_processing: bool,
-) -> VisualizationConfig:
-    """Utility to create a VisualizationConfig object."""
-    return VisualizationConfig(
-        vmin=None,
-        vmax=None,
-        zoom=False,
-        show_kernel=show_per_pixel_processing,
-        show_per_pixel_processing=show_per_pixel_processing,
-        search_window_size=analysis_params.get("search_window_size"),
-        use_full_image=analysis_params.get("use_whole_image", False),
-        image_array=image_array,
-        analysis_params=analysis_params,
-        results=results,
-        ui_placeholders=st.session_state.get(f"{technique}_placeholders", {}),
-        last_processed_pixel=(
-            last_processed_pixel[0], last_processed_pixel[1]),
-        kernel_size=kernel_size,
-        kernel_matrix=kernel_matrix,
-        original_pixel_value=original_pixel_value,
-        color_map=st.session_state.get("color_map", "gray"),
-        title=f"{technique.upper()} Analysis Result",
-        figure_size=(8, 8),
-        technique=technique,
-    )
-
 
 class ImageComparison:
     """Class for handling image comparison functionality."""
