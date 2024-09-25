@@ -9,88 +9,89 @@ from src.decor import log_action
 
 NLM_FORMULA_CONFIG = {
     "title": "Non-Local Means (NLM) Denoising",
-    "variables": {
-        "h": "{filter_strength}",
-        "patch_size": "{kernel_size}",
-        "search_size": "{search_window_size}",
-    },
     "main_formula": (
         r"I_{{{x},{y}}} = {original_value:.3f} \quad \rightarrow \quad "
-        r"NLM_{{{x},{y}}} = \frac{{1}}{{W_{{{x},{y}}}}} "
-        r"\sum_{{i,j \in \Omega_{{{x},{y}}}}} "
-        r"I_{{i,j}} \cdot w_{{{x},{y}}}(i,j) = {nlm_value:.3f}"
+        r"NLM_{{{x},{y}}} = \frac{{1}}{{C_{{{x},{y}}}}} "
+        r"\sum_{{(i,j) \in \Omega_{{{x},{y}}}}} "
+        r"I_{{i,j}} \cdot w_{{{x},{y}}}(i,j) = {nlm_value:.0f}"
     ),
     "explanation": r"""
-    The Non-Local Means (NLM) algorithm denoises each pixel by replacing it with
-    a weighted average of pixels from the entire image (or a large search
-    window). The weights are determined by the similarity of small patches
-    around each pixel:
-    
-    1. Patch Comparison: For each pixel $(x,y)$, compare the patch
-       $P_{{{x},{y}}}$ to patches $P_{{i,j}}$ around other pixels $(i,j)$.
-    2. Weight Calculation: Based on the patch similarity, calculate a weight
-       $w_{{{x},{y}}}(i,j)$ for each comparison.
-    3. Weighted Average: Use these weights to compute the NLM value
-       $NLM_{{{x},{y}}}$, a weighted average of pixel intensities $I_{{i,j}}$.
-    
-    This process transitions the original pixel intensity $I_{{{x},{y}}}$ to the
-    non-local mean value $NLM_{{{x},{y}}}$.
-    """,
-    "additional_formulas": [
+The Non-Local Means (NLM) algorithm denoises each pixel by replacing it with a 
+weighted average of pixels from a search window. The weights are based on the 
+similarity of patches around each pixel:
 
+1. For each pixel $(x,y)$, compare its patch $P_{{{x},{y}}}$ to patches $P_{{i,j}}$ 
+   around other pixels $(i,j)$ in the search window $\Omega_{{{x},{y}}}$.
+2. Calculate a weight $w_{{{x},{y}}}(i,j)$ for each comparison based on patch similarity.
+3. Compute the NLM value $NLM_{{{x},{y}}}$ as a weighted average of intensities $I_{{i,j}}$
+   using these weights, normalized by $C_{{{x},{y}}}$.
+
+This process replaces the original intensity $I_{{{x},{y}}}$ with the NLM value $NLM_{{{x},{y}}}$.
+""",
+    "additional_formulas": [
         {
             "title": "Border Handling",
-            "formula": r"P_{{x,y}}(i,j) = \begin{{cases}} I_{{x+i,y+j}} & \text{{if }} 0 \leq x+i < {image_height} \text{{ and }} 0 \leq y+j < {image_width} \\ 0 & \text{{otherwise}} \end{{cases}}",
+            "formula": r"P_{{x,y}}(i,j) = \begin{{cases}} I_{{x+i,y+j}} & \text{{if }} (x+i,y+j) \in \text{{valid region}} \\ 0 & \text{{otherwise}} \end{{cases}} \quad \text{{for }} i,j \in [-{half_kernel}, {half_kernel}]",
             "explanation": r"""
-    To avoid boundary issues, this implementation avoids processing pixels near the image border.
-    Current pixel: ({x}, {y})
-    """
-        },
+To avoid boundary issues, the algorithm only processes pixels within the valid region, which excludes pixels near the image border.
 
+For a pixel at position $(x,y)$:
+- The patch $P_{{x,y}}$ is defined using the kernel size {kernel_size} × {kernel_size}
+- The valid processing region is determined by the kernel size:
+  - Valid region: [{half_kernel}, {image_height} - {half_kernel}) × [{half_kernel}, {image_width} - {half_kernel})
+  - Valid region size: {valid_height} × {valid_width}
+
+The patch is constructed by considering pixels within the range $[-{half_kernel}, {half_kernel}]$ relative to the current pixel position.
+"""
+        },
         {
-            "title": "Neighborhood Analysis",
+            "title": "Patch Analysis",
             "formula": (
-                r"\quad\quad\text{{Centered at: }}({x}, {y})"
+                r"\quad\quad\text{{Patch }} P_{{{x},{y}}} \text{{ centered at: }}({{x}},{{y}})"
                 r"\\\\"
                 r"{kernel_matrix}"
             ),
             "explanation": (
-                r"Analysis of a ${patch_size}\times{patch_size}$ patch $P_{{{x},{y}}}$ "
-                r"centered at $(x,y)$ for patch comparison. Matrix shows pixel values, "
-                r"with the central value (bold) being the denoised pixel."
+                r"The ${kernel_size} \times {kernel_size}$ patch $P_{{x,y}}$ centered at $({{x}}, {{y}})$ "
+                r"is compared to other patches $P_{{i,j}}$ in the search window. The matrix shows "
+                r"pixel values, with the **central value** being the pixel to be denoised."
             ),
         },
-
         {
-            "title": "Weight Calculation",  # Maybe change this to "Patch Similarity"?
-            "formula": r"w_{{{x},{y}}}(i,j) = e^{{-\frac{{\|P_{{{x},{y}}} - P_{{i,j}}\|^2}}{{h^2}}}}",
+            "title": "Weight Calculation",
+            "formula": r"w_{{{x},{y}}}(i,j) = e^{{\displaystyle -\frac{{|P_{{x,y}} - P_{{i,j}}|^2}}{{h^2}}}} = e^{{\displaystyle -\frac{{|P_{{{x},{y}}} - P_{{i,j}}|^2}}{{{filter_strength:.0f}^2}}}}",
             "explanation": r"""
-            Weight calculation for pixel $(i,j)$ when denoising $(x,y)$ based on
-            patch similarity, using a Gaussian weighting function: -
-            $w_{{({x},{y})}}(i,j)$: Weight for pixel $(i,j)$ -
-            $P_{{({x},{y})}}$, $P_{{(i,j)}}$: Patches centered at $(x,y)$ and
-            $(i,j)$ - $\|P_{{({x},{y})}} - P_{{(i,j)}}\|^2$: Squared difference
-            between patches - $h = {h}$: Smoothing parameter - Similar patches
-            yield higher weights
-            """,
+The weight $w(x,y,i,j)$ for pixel $(i,j)$ when denoising $(x,y)$ is calculated using a Gaussian function:
+
+- $P_{{x,y}}$, $P_{{i,j}}$: Patches centered at $(x,y)$ and $(i,j)$
+- $|P_{{x,y}} - P_{{i,j}}|^2$: Sum of squared differences between patches
+- $h = {h:.0f}$: Filtering parameter controlling the decay of the weights
+  - Larger $h$ includes more dissimilar patches, leading to stronger smoothing
+  - Smaller $h$ restricts to very similar patches, preserving more details
+
+Similar patches yield higher weights, while dissimilar patches are assigned lower weights.
+""",
         },
         {
             "title": "Normalization Factor",
-            "formula": r"W_{{{x},{y}}} = \sum_{{i,j \in \Omega_{{{x},{y}}}}} w_{{{x},{y}}}(i,j)",
-            "explanation": r"Sum of all weights for pixel $(x,y)$, ensuring the final weighted average preserves overall image brightness.",
+            "formula": r"{{C_{{{x},{y}}}}} = \sum_{{i,j \in \Omega(x,y)}} w_{{{x},{y}}}(i,j)",
+            "explanation": r"Sum of all weights for pixel $(x,y)$, denoted as $C(x,y)$, ensuring the final weighted average preserves overall image brightness.",
         },
         {
             "title": "Search Window",
-            "formula": r"\Omega_{{{x},{y}}} = \begin{{cases}} \text{{Full Image}} & \text{{if search\_size = 'full'}} \\ {search_window_size} \times {search_window_size} \text{{ window}} & \text{{otherwise}} \end{{cases}}",
-            "explanation": r"Search window $\Omega_{{({x},{y})}}$ for finding similar patches. {search_window_description}",
+            "formula": r"\Omega(x,y) = \begin{{cases}} I & \text{{if search\_size = 'full'}} \\ [(x-s,y-s), (x+s,y+s)] \cap \text{{valid region}} & \text{{otherwise}} \end{{cases}}",
+            "explanation": r"The search window $\Omega(x,y)$ defines the neighborhood around pixel $(x,y)$ in which similar patches are searched for. $I$ denotes the full image and $s$ is {search_window_size} pixels. {search_window_description}",
         },
         {
             "title": "NLM Calculation",
-            "formula": r"NLM_{{{x},{y}}} = \frac{{1}}{{W_{{{x},{y}}}}} \sum_{{i,j \in \Omega_{{{x},{y}}}}} I_{{i,j}} \cdot w_{{{x},{y}}}(i,j) = {nlm_value:.3f}",
-            "explanation": r"Final NLM value for pixel $(x,y)$: weighted average of pixel intensities $I_{{i,j}}$ in the search window, normalized by the sum of weights $W_{{{x},{y}}}$.",
+            "formula": r"NLM_{{{x},{y}}} = \frac{{1}}{{C_{{{x},{y}}}}} "
+            r"\sum_{{i,j \in \Omega_{{{x},{y}}}}}"
+            r"I_{{i,j}} \cdot w_{{{x},{y}}}(i,j) = {nlm_value:.3f}",
+            "explanation": r"Final NLM value for pixel $(x,y)$: weighted average of pixel intensities $I_{{i,j}}$ in the search window, normalized by the sum of weights $C(x,y)$.",
         },
     ],
 }
+
 
 SPECKLE_FORMULA_CONFIG = {
     "title": "Speckle Contrast Calculation",
@@ -100,11 +101,18 @@ SPECKLE_FORMULA_CONFIG = {
 
         {
             "title": "Border Handling",
-            "formula": r"P_{{x,y}}(i,j) = \begin{{cases}} I_{{x+i,y+j}} & \text{{if }} 0 \leq x+i < {image_height} \text{{ and }} 0 \leq y+j < {image_width} \\ 0 & \text{{otherwise}} \end{{cases}}",
+            "formula": r"P_{{x,y}}(i,j) = \begin{{cases}} I_{{x+i,y+j}} & \text{{if }} (x+i,y+j) \in \text{{valid region}} \\ 0 & \text{{otherwise}} \end{{cases}} \quad \text{{for }} i,j \in [-{half_kernel}, {half_kernel}]",
             "explanation": r"""
-    To avoid boundary issues, this implementation avoids processing pixels near the image border.
-    Current pixel: ({x}, {y})
-    """
+To avoid boundary issues, the algorithm only processes pixels within the valid region, which excludes pixels near the image border.
+
+For a pixel at position $(x,y)$:
+- The patch $P_{{x,y}}$ is defined using the kernel size {kernel_size} × {kernel_size}
+- The valid processing region is determined by the kernel size:
+  - Valid region: [{half_kernel}, {image_height} - {half_kernel}) × [{half_kernel}, {image_width} - {half_kernel})
+  - Valid region size: {valid_height} × {valid_width}
+
+The patch is constructed by considering pixels within the range $[-{half_kernel}, {half_kernel}]$ relative to the current pixel position.
+"""
         },
 
         {
@@ -115,20 +123,23 @@ SPECKLE_FORMULA_CONFIG = {
             "{kernel_matrix}",
             "explanation": r"Analysis of a ${kernel_size}\times{kernel_size}$ neighborhood centered at pixel $({x},{y})$. The matrix shows pixel values, with the central value (in bold) being the processed pixel.",
         },
+
         {
-            "title": "Mean Calculation",
+            "title": "Mean Filter",
             "formula": r"\mu_{{{x},{y}}} = \frac{{1}}{{N}} \sum_{{i,j \in K_{{{x},{y}}}}} I_{{i,j}} = \frac{{1}}{{{kernel_size}^2}} \sum_{{i,j \in K_{{{x},{y}}}}} I_{{i,j}} = {mean:.3f}",
-            "explanation": r"Mean ($\mu$) calculation: average intensity of all pixels in the kernel $K$ centered at $({x},{y})$. $N = {kernel_size}^2 = {total_pixels}$.",
+            "explanation": r"The mean intensity $\mu_{{{x},{y}}}$ at pixel $({x},{y})$ is calculated by summing the intensities $I_{{i,j}}$ of all pixels within the kernel $K$ centered at $({x},{y})$, and dividing by the total number of pixels $N = {kernel_size}^2 = {total_pixels}$ in the kernel.",
         },
+
         {
             "title": "Standard Deviation Calculation",
             "formula": r"\sigma_{{{x},{y}}} = \sqrt{{\frac{{1}}{{N}} \sum_{{i,j \in K_{{{x},{y}}}}} (I_{{i,j}} - \mu_{{{x},{y}}})^2}} = \sqrt{{\frac{{1}}{{{kernel_size}^2}} \sum_{{i,j \in K_{{{x},{y}}}}} (I_{{i,j}} - {mean:.3f})^2}} = {std:.3f}",
-            "explanation": r"Standard deviation ($\sigma$) calculation: measure of intensity spread around the mean for all pixels in the kernel $K$ centered at $({x},{y})$.",
+            "explanation": r"The standard deviation $\sigma_{{{x},{y}}}$ at pixel $({x},{y})$ measures the spread of intensities around the mean $\mu_{{{x},{y}}}$. It is calculated by taking the square root of the average squared difference between each pixel intensity $I_{{i,j}}$ in the kernel $K$ and the mean intensity $\mu_{{{x},{y}}}$.",
         },
+
         {
             "title": "Speckle Contrast Calculation",
             "formula": r"SC_{{{x},{y}}} = \frac{{\sigma_{{{x},{y}}}}}{{\mu_{{{x},{y}}}}} = \frac{{{std:.3f}}}{{{mean:.3f}}} = {sc:.3f}",
-            "explanation": r"Speckle Contrast (SC): ratio of standard deviation to mean intensity within the kernel centered at $({x},{y})$.",
+            "explanation": r"Speckle Contrast (SC): ratio of standard deviation $\sigma_{{{x},{y}}}$ to mean intensity $\mu_{{{x},{y}}}$ within the kernel centered at $({x},{y})$.",
         },
     ],
 }

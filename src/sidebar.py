@@ -109,7 +109,7 @@ class SidebarUI:
         )
         st.session_state.kernel_size = kernel_size
 
-        show_per_pixel = st.sidebar.checkbox(
+        show_per_pixel = st.toggle(
             "Show Per-Pixel Processing Steps", value=True, key="show_per_pixel"
         )
         total_pixels = (image.width - kernel_size + 1) * (
@@ -145,7 +145,7 @@ class SidebarUI:
                 (st.session_state.exact_pixel_count / total_pixels) * 100
             )
 
-        col1, col2 = st.sidebar.columns(2)
+        col1, col2 = st.columns(2)
         with col1:
             st.slider(
                 "Percentage",
@@ -319,7 +319,7 @@ class SidebarUI:
             filter_strength = st.slider(
                 "Filter Strength (h)",
                 min_value=0.1,
-                max_value=20.0,
+                max_value=100.0,
                 value=10.0,
                 step=0.1,
                 format="%.1f",
