@@ -2,7 +2,6 @@
 
 
 import json
-import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
@@ -66,12 +65,7 @@ def process_image(params):
         return params, results
 
     except Exception as e:
-        logging.error(
-            json.dumps(
-                {"action": "process_image",
-                    "technique": technique, "error": str(e)}
-            )
-        )
+        st.error(f"Error in process_image: {type(e).__name__}: {str(e)}")
         raise
 
 
@@ -79,10 +73,6 @@ def normalize_image(
     image: np.ndarray, low_percentile: int = 2, high_percentile: int = 98
 ) -> np.ndarray:
     p_low, p_high = np.percentile(image, [low_percentile, high_percentile])
-    logging.info(
-        json.dumps({"action": "normalize_image",
-                   "p_low": p_low, "p_high": p_high})
-    )
     return np.clip(image, p_low, p_high) - p_low / (p_high - p_low)
 
 

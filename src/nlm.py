@@ -10,6 +10,10 @@ import numpy as np
 import streamlit as st
 
 from src.processing import FilterResult, ProcessingDetails, calculate_processing_details
+from memory_profiler import profile
+@profile
+
+
 
 # --- Patch Calculation Functions ---
 
@@ -154,6 +158,7 @@ def calculate_nlm_value(
 
 # --- NLM Application Function ---
 
+@profile
 @st.cache_resource
 def apply_nlm_to_image(
     image: np.ndarray,
@@ -280,7 +285,7 @@ class NLMResult(FilterResult):
     search_window_size: int
     filter_strength: float
     last_similarity_map: List[np.ndarray]
-    nonlocal_stds: np.ndarray
+    nonlocal_std: np.ndarray
     nonlocal_speckle: np.ndarray
 
     @staticmethod
@@ -304,6 +309,6 @@ class NLMResult(FilterResult):
             "Non-Local Means": self.nonlocal_means,
             "Normalization Factors": self.normalization_factors,
             "Last Similarity Map": self.last_similarity_map,
-            "Non-Local Standard Deviation": self.nonlocal_stds,
-            "Non-Local Speckle": self.nonlocal_speck
+            "Non-Local Standard Deviation": self.nonlocal_std,
+            "Non-Local Speckle": self.nonlocal_speckle
         }

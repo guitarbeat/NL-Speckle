@@ -3,7 +3,6 @@ This module serves as the main entry point for the Streamlit application.
 It imports necessary utilities and plotting functions for image comparison.
 """
 
-import logging
 from typing import List
 
 import streamlit as st
@@ -12,10 +11,10 @@ from src.plotting import prepare_comparison_images, run_technique
 from src.processing import calculate_processing_details
 from src.sidebar import SidebarUI
 from src.utils import ImageComparison
+import cProfile
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+
+
 
 APP_CONFIG = {
     "page_title": "Speckle Contrast Visualization",
@@ -38,7 +37,6 @@ def main():
         st.error(
             f"An error occurred: {e}. Please check your input and try again."
         )  # Change here
-
 
 def setup_app():
     sidebar_params = SidebarUI.setup()
@@ -88,6 +86,5 @@ def setup_app():
         comparison_images = prepare_comparison_images()
         ImageComparison.handle(tabs[2], st.session_state.color_map, comparison_images)
 
-
 if __name__ == "__main__":
-    main()
+    cProfile.run("main()", "profile_results.prof")

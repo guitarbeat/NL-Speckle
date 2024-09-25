@@ -5,7 +5,6 @@ mathematical concepts.
 """
 
 import streamlit as st
-from src.decor import log_action
 
 NLM_FORMULA_CONFIG = {
     "title": "Non-Local Means (NLM) Denoising",
@@ -289,8 +288,6 @@ def display_formula_section(config, variables, section_key):
 
 # Displays additional formulas in separate tabs
 
-
-@log_action
 def display_additional_formulas(config, variables):
     """
     Displays additional formulas in separate tabs.
