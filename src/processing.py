@@ -37,8 +37,7 @@ def process_image(params):
                 "pixels_to_process": pixels_to_process,
                 "search_window_size": search_window_size,
                 "filter_strength": filter_strength,
-            }
-        )
+        })
 
         from src.nlm import process_nlm
         from src.speckle import process_speckle
@@ -121,6 +120,7 @@ def configure_process_params(
             "use_whole_image", False
         )
         st.session_state.get("use_full_image")
+        
 
 # --- Dataclass for Processing Details ---
 @dataclass(frozen=True)

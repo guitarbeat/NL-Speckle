@@ -5,18 +5,15 @@ algorithm functions.
 
 from dataclasses import dataclass
 from typing import List, Tuple
-
+from numba import njit, float32, int32
 import numpy as np
 import streamlit as st
-
 from src.processing import FilterResult, ProcessingDetails, calculate_processing_details
-from memory_profiler import profile
-@profile
-
-
+from src.decor import timeit
 
 # --- Patch Calculation Functions ---
-
+@st.cache_data
+@njit(float32(float32, float32))
 def calculate_weight(P_diff_squared_xy_ij: float, h: float) -> float:
     # sourcery skip: inline-immediately-returned-variable
     """
@@ -32,6 +29,8 @@ def calculate_weight(P_diff_squared_xy_ij: float, h: float) -> float:
     weight_xy_ij = np.exp(-(P_diff_squared_xy_ij) / (h**2))
     return weight_xy_ij
 
+@st.cache_data
+@njit(float32(float32[:,:], float32[:,:]))
 def calculate_patch_distance(P_xy: np.ndarray, P_ij: np.ndarray) -> float:
     # sourcery skip: inline-immediately-returned-variable
     """
@@ -47,6 +46,8 @@ def calculate_patch_distance(P_xy: np.ndarray, P_ij: np.ndarray) -> float:
     P_diff_squared_xy_ij = (np.sum((P_xy - P_ij) ** 2))
     return P_diff_squared_xy_ij
 
+@st.cache_data
+@njit(float32[:,:](float32[:,:], int32, int32, int32))
 def extract_patch(image: np.ndarray, x: int, y: int, patch_size: int) -> np.ndarray:
     # sourcery skip: inline-immediately-returned-variable
     """
@@ -66,7 +67,7 @@ def extract_patch(image: np.ndarray, x: int, y: int, patch_size: int) -> np.ndar
     return P_xy
 
 # --- NLM Calculation Function ---
-
+@st.cache_data
 def calculate_nlm_value(
     x: int,
     y: int,
@@ -97,10 +98,7 @@ def calculate_nlm_value(
     height, width = image.shape
     half_search = search_window // 2 
     padded_image = np.pad(image, half_search, mode="reflect") # this is padding the image with values from the border
-
     P_xy = extract_patch(padded_image, x + half_search, y + half_search, patch_size) 
-
-
     weighted_intensity_sum_xy = 0.0 # sum_{(i,j) in Ω_{x,y}} I_{i,j} * w_{x,y}(i,j)
     weighted_intensity_squared_sum_xy = 0.0 # for non-local std
     C_xy = 0.0 # C_{x,y}
@@ -158,8 +156,8 @@ def calculate_nlm_value(
 
 # --- NLM Application Function ---
 
-@profile
-@st.cache_resource
+@timeit
+@st.cache_resource()
 def apply_nlm_to_image(
     image: np.ndarray,
     patch_size: int,
@@ -193,11 +191,9 @@ def apply_nlm_to_image(
     NLSC_xy_image = np.zeros_like(image)
     
     use_full_image = st.session_state.get("use_full_image")
-
     for pixel in range(pixels_to_process):
         x = processing_origin[1] + pixel // valid_width
         y = processing_origin[0] + pixel % valid_width
-
         if x < height and y < width:
             NLM_xy, C_xy, similarity_map, NLstd_xy,NLSC_xy = calculate_nlm_value(
                 x, y, image, patch_size, search_window_size, h, use_full_image
@@ -206,12 +202,8 @@ def apply_nlm_to_image(
             NLstd_image[x, y] = NLstd_xy
             NLSC_xy_image[x, y] = NLSC_xy
             C_xy_image[x, y] = C_xy
-            last_similarity_map = similarity_map
-    
-    
+            last_similarity_map = similarity_map 
     return NLM_image, NLstd_image,NLSC_xy_image, C_xy_image, last_similarity_map
-
-# --- Main Processing Function ---
 
 def process_nlm(
     image: np.ndarray,
@@ -242,7 +234,7 @@ def process_nlm(
         processing_info: ProcessingDetails = calculate_processing_details(
             image, kernel_size, pixels_to_process
         )
-
+        
         # Apply NLM denoising
         NLM_image,NLstd_image,NLSC_xy_image, C_xy_image, last_similarity_map = apply_nlm_to_image(
             np.asarray(image, dtype=np.float32),
@@ -252,7 +244,7 @@ def process_nlm(
             processing_info.pixels_to_process,
             processing_info.processing_origin,
         )
-        
+
         # Return the results
         return NLMResult(
             nonlocal_means=NLM_image,
