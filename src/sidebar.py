@@ -52,6 +52,9 @@ class SidebarUI:
         st.session_state["use_full_image"] = nlm_params.get("use_whole_image")
         with st.sidebar.expander("Advanced Options", expanded=True):
             advanced_options = SidebarUI.setup_advanced_options(image)
+            
+        st.session_state["use_sat"] = advanced_options.get("use_sat")
+        st.write(f"Use Summed Area Tables Value is {st.session_state.get('use_sat')}")
 
         return {
             "image": image,
@@ -60,7 +63,6 @@ class SidebarUI:
             **display_options,
             **nlm_params,
             **advanced_options,
-            "use_full_image": nlm_params.get("use_whole_image", False),
         }
 
     @staticmethod
@@ -90,6 +92,13 @@ class SidebarUI:
 
             st.sidebar.image(loaded_image, caption="Input Image", use_column_width=True)
             color_map = SidebarUI.select_color_map()
+            
+            # Initialize the session state attribute if it doesn't exist
+            if 'image_file' not in st.session_state:
+                st.session_state.image_file = None
+            # Save the image filename to the session state
+            st.session_state.image_file = uploaded_file.name if image_source_type == "Upload Image" else selected_image_name
+            # confirm
 
             return loaded_image, color_map
         except (FileNotFoundError, IOError) as e:
@@ -110,7 +119,7 @@ class SidebarUI:
         st.session_state.kernel_size = kernel_size
 
         show_per_pixel = st.toggle(
-            "Show Per-Pixel Processing Steps", value=True, key="show_per_pixel"
+            "Show Per-Pixel Processing Steps", value=False, key="show_per_pixel"
         )
         total_pixels = (image.width - kernel_size + 1) * (
             image.height - kernel_size + 1
@@ -213,7 +222,13 @@ class SidebarUI:
         noise_params = (
             SidebarUI._setup_gaussian_noise_params() if apply_gaussian_noise else {}
         )
-
+        # Add SAT toggle here
+        use_sat = st.sidebar.toggle(
+            "Use Summed-Area Tables (SAT)",
+            value=False,
+            help="Enable Summed-Area Tables for faster Speckle Contrast calculation"
+        )
+        
         image_np = np.array(image) / 255.0
         if apply_gaussian_noise:
             image_np = SidebarUI._apply_gaussian_noise(image_np, **noise_params)
@@ -223,6 +238,7 @@ class SidebarUI:
             "image_np": image_np,
             "add_noise": apply_gaussian_noise,
             "normalization_option": normalization_option,
+            "use_sat": use_sat,
         }
 
     @staticmethod

@@ -15,7 +15,8 @@ import numpy as np
 
 
 from src.processing import FilterResult, ProcessingDetails, calculate_processing_details
-
+from src.decor import timeit
+# from src.sat import calculate_summed_area_table, get_area_sum
 
 def calculate_speckle_contrast(local_std, local_mean):
     """
@@ -24,14 +25,15 @@ def calculate_speckle_contrast(local_std, local_mean):
     """
     return local_std / local_mean if local_mean != 0 else 0
 
-@st.cache_resource 
+@timeit
+@st.cache_resource()
 def apply_speckle_contrast(image, kernel_size, pixels_to_process, processing_origin):
     """Applies speckle contrast to the given image."""
     if not isinstance(image, np.ndarray):
         raise TypeError(f"Expected numpy array, got {type(image)}")
     if image.ndim != 2:
         raise ValueError(f"Expected 2D array, got {image.ndim}D array")
-
+    
     height, width = image.shape
     mean_filter = np.zeros((height, width), dtype=np.float32)
     std_dev_filter = np.zeros((height, width), dtype=np.float32)
@@ -39,6 +41,9 @@ def apply_speckle_contrast(image, kernel_size, pixels_to_process, processing_ori
     half_kernel = kernel_size // 2
     valid_width = width - kernel_size + 1
 
+    # with st.sidebar.status(f"Applying speckle contrast on {st.session_state.image_file}", expanded=True) as status:
+
+              
     for pixel in range(pixels_to_process):
         row = processing_origin[1] + pixel // valid_width
         col = processing_origin[0] + pixel % valid_width
@@ -47,8 +52,10 @@ def apply_speckle_contrast(image, kernel_size, pixels_to_process, processing_ori
             row_end = min(height, row + half_kernel + 1)
             col_start = max(0, col - half_kernel)
             col_end = min(width, col + half_kernel + 1)
-            local_window = image[row_start:row_end, col_start:col_end]
+            
 
+       
+            local_window = image[row_start:row_end, col_start:col_end]
             local_mean = np.mean(local_window)
             local_std = np.std(local_window)
 
@@ -56,14 +63,18 @@ def apply_speckle_contrast(image, kernel_size, pixels_to_process, processing_ori
             std_dev_filter[row, col] = local_std
             sc_filter[row, col] = calculate_speckle_contrast(
                 local_std, local_mean)
+                
+        #     status.update(label=f"We've processed {pixel} pixels so far. {pixels_to_process - pixel} pixels left.")     
+        # status.update(label=f"Speckle contrast calculation on {st.session_state.image_file} complete!", state="complete")
 
     return mean_filter, std_dev_filter, sc_filter
-
 
 def process_speckle(image, kernel_size, pixels_to_process):
     """
     Processes a speckle image to calculate speckle contrast and related metrics.
     """
+    # use_sat = st.session_state.get("use_sat")
+    # st.write(f"Use Summed Area Tables Value is {use_sat}")
     try:
         if not isinstance(image, np.ndarray):
             image = np.array(image)
@@ -75,7 +86,7 @@ def process_speckle(image, kernel_size, pixels_to_process):
         start_y, start_x = processing_info.processing_origin
 
         mean_filter, std_dev_filter, sc_filter = apply_speckle_contrast(
-            image, kernel_size, pixels_to_process, (start_x, start_y)
+            image, kernel_size, pixels_to_process, (start_x, start_y), 
         )
         
         return SpeckleResult(

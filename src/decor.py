@@ -11,6 +11,20 @@ import logging
 import time
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Union
+import streamlit as st
+from functools import wraps
+
+def timeit(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        start_time = time.perf_counter()
+        result = func(*args, **kwargs)
+        end_time = time.perf_counter()
+        print(f'Function {func.__name__} took {end_time - start_time:.6f} seconds to execute on {st.session_state.image_file}')
+        print(f"    SAT = use_sat = {st.session_state.get("use_sat")}")
+        return result
+    return wrapper
+
 
 
 def json_serializable(

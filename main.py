@@ -11,12 +11,6 @@ from src.plotting import prepare_comparison_images, run_technique
 from src.processing import calculate_processing_details
 from src.sidebar import SidebarUI
 from src.utils import ImageComparison
-import cProfile
-
-
-# Initialize profiler globally
-profiler = cProfile.Profile()
-
 
 APP_CONFIG = {
     "page_title": "Speckle Contrast Visualization",
@@ -24,12 +18,14 @@ APP_CONFIG = {
     "page_icon": "favicon.png",
     "initial_sidebar_state": "expanded",
 }
+# In your main app or a utility function
 
 
 def main():
     """Main function to set up the Streamlit app configuration, logo, and run the application."""
     st.set_page_config(**APP_CONFIG)
     st.logo("media/logo.png")
+
     if "techniques" not in st.session_state:
         st.session_state.techniques = ["speckle", "nlm"]
 
@@ -42,9 +38,6 @@ def main():
 
 def setup_app():
     
-    # Start profiling
-    profiler.enable()
-    
     sidebar_params = SidebarUI.setup()
     st.session_state.sidebar_params = sidebar_params
 
@@ -52,6 +45,7 @@ def setup_app():
     st.session_state.tabs = tabs
 
     kernel_size = sidebar_params.get("kernel_size", 5)
+    
     pixels_to_process = (
         None
         if sidebar_params["show_per_pixel_processing"]
@@ -61,7 +55,7 @@ def setup_app():
     details = calculate_processing_details(
         sidebar_params["image_array"], kernel_size, pixels_to_process
     )
-
+    
     params = {
         "image_array": sidebar_params["image_array"],
         "show_per_pixel_processing": sidebar_params["show_per_pixel_processing"],
@@ -91,15 +85,8 @@ def setup_app():
     with tabs[2]:
         comparison_images = prepare_comparison_images()
         ImageComparison.handle(tabs[2], st.session_state.color_map, comparison_images)
-        
-        # Stop profiling and save results
-    profiler.disable()
-    profiler.dump_stats("profile_results.prof")
+
 
 
 if __name__ == "__main__":
-    # Manually run the app with profiler enabled
-    profiler.enable()
     main()
-    profiler.disable()
-    profiler.dump_stats("profile_results.prof")
