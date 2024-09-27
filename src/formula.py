@@ -179,16 +179,7 @@ def display_analysis_formula(
         "total_pixels": kernel_size * kernel_size,
     }
 
-    # Add default values for potentially missing keys
-    default_values = {
-        "nlm_value": 0.0,
-        "std": 0.0,
-        "mean": 0.0,
-        "sc": 0.0,
-    }
-
-    variables |= default_values
-    variables |= specific_params
+    variables.update(specific_params)
 
     formula_config = (
         NLM_FORMULA_CONFIG if analysis_type == "nlm" else SPECKLE_FORMULA_CONFIG
@@ -318,7 +309,6 @@ def generate_kernel_matrix(kernel_size, kernel_matrix):
         The LaTeX representation of the kernel matrix.
     """
     center = kernel_size // 2
-    # center_value = kernel_matrix[center][center]
     center_value = kernel_matrix[center, center]
 
     matrix_rows = [
@@ -326,7 +316,6 @@ def generate_kernel_matrix(kernel_size, kernel_matrix):
             (
                 rf"\mathbf{{{center_value:.3f}}}"
                 if i == center and j == center
-                # else r"{:.3f}".format(kernel_matrix[i][j])
                 else f"{kernel_matrix[i, j]:.3f}"
             )
             for j in range(kernel_size)

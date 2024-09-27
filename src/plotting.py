@@ -8,16 +8,16 @@ import matplotlib.pyplot as plt
 import numpy as np
 import streamlit as st
 
-from src.overlay import add_overlays, VisualizationConfig, KernelConfig, SearchWindowConfig
 from src.formula import display_analysis_formula
 from src.nlm import NLMResult
-from src.processing import (
-    ProcessParams,
-    configure_process_params,
-    extract_kernel_from_image,
-    process_image,
-)
 from src.speckle import SpeckleResult
+
+from src.overlay import (
+    KernelConfig,
+    add_overlays,
+    VisualizationConfig,
+    SearchWindowConfig,
+)
 
 # Constants for Image Visualization
 SPECKLE_CONTRAST = "Speckle Contrast"
@@ -26,6 +26,7 @@ NON_LOCAL_MEANS = "Non-Local Means"
 
 DEFAULT_SPECKLE_VIEW = [SPECKLE_CONTRAST, ORIGINAL_IMAGE]
 DEFAULT_NLM_VIEW = [NON_LOCAL_MEANS, ORIGINAL_IMAGE]
+
 
 def generate_plot_key(filter_name: str, plot_type: str) -> str:
     """Generate a key for identifying plots based on filter name and plot
@@ -51,17 +52,8 @@ class ImageArray:
 
 def create_process_params(
     analysis_params: Dict[str, Any], technique: str, technique_params: Dict[str, Any]
-) -> ProcessParams:
-    """Create process parameters based on analysis and technique.
-
-    Args:
-        analysis_params (Dict[str, Any]): Parameters for analysis. technique
-        (str): The technique to be used. technique_params (Dict[str, Any]):
-        Parameters specific to the technique.
-
-    Returns:
-        ProcessParams: The created process parameters.
-    """
+) -> Dict[str, Any]:
+    """Create process parameters based on analysis and technique."""
     common_params = {
         "kernel_size": st.session_state.get("kernel_size", 3),
         "pixels_to_process": analysis_params.get("pixels_to_process", 0),
@@ -72,20 +64,21 @@ def create_process_params(
     }
 
     if technique == "nlm":
-        common_params |= {
-            "search_window_size": analysis_params.get("search_window_size"),
-            "filter_strength": analysis_params.get("filter_strength"),
-        }
+        common_params.update(
+            {
+                "search_window_size": analysis_params.get("search_window_size"),
+                "filter_strength": analysis_params.get("filter_strength"),
+            }
+        )
 
-    return ProcessParams(
-        image_array=analysis_params.get(
-            "image_array", ImageArray(np.array([]))),
-        technique=technique,
-        analysis_params=technique_params | common_params,
-        show_per_pixel_processing=analysis_params.get(
+    return {
+        "image_array": analysis_params.get("image_array", np.array([])),
+        "technique": technique,
+        "analysis_params": {**technique_params, **common_params},
+        "show_per_pixel_processing": analysis_params.get(
             "show_per_pixel_processing", False
         ),
-    )
+    }
 
 
 def visualize_filter_and_zoomed(
@@ -126,7 +119,9 @@ def update_visualization_config(
         "vmin": None if filter_name == "Original Image" else np.min(filter_data),
         "vmax": None if filter_name == "Original Image" else np.max(filter_data),
         "zoom": (plot_type == "zoomed"),
-        "show_kernel": (viz_config.show_per_pixel_processing if plot_type == "main" else True),
+        "show_kernel": (
+            viz_config.show_per_pixel_processing if plot_type == "main" else True
+        ),
         "show_per_pixel_processing": (plot_type == "zoomed"),
         "image_array": viz_config.image_array,
         "analysis_params": viz_config.analysis_params,
@@ -156,8 +151,9 @@ def create_image_plot(
         plt.Figure: The created plot figure.
     """
     fig, ax = plt.subplots(1, 1, figsize=config.figure_size)
-    ax.imshow(plot_image, vmin=config.vmin,
-              vmax=config.vmax, cmap=st.session_state.color_map)
+    ax.imshow(
+        plot_image, vmin=config.vmin, vmax=config.vmax, cmap=st.session_state.color_map
+    )
     ax.set_title(config.title)
     ax.axis("off")
 
@@ -377,8 +373,7 @@ def create_filter_views(
         # If per-pixel processing is enabled, create zoomed-in views
         if show_per_pixel_processing:
             ui_placeholders[f"zoomed_{filter_key}"] = (
-                columns[i].expander(
-                    f"Zoomed-in {filter_name}", expanded=False).empty()
+                columns[i].expander(f"Zoomed-in {filter_name}", expanded=False).empty()
             )
 
 
@@ -398,8 +393,7 @@ def create_technique_ui_elements(
                 selected_filters, ui_placeholders, show_per_pixel_processing
             )
         else:
-            st.warning(
-                "No views selected. Please select at least one view to display.")
+            st.warning("No views selected. Please select at least one view to display.")
 
         if show_per_pixel_processing:
             ui_placeholders["zoomed_kernel"] = st.empty()
@@ -429,15 +423,26 @@ def visualize_analysis_results(viz_params: VisualizationConfig) -> None:
             visualize_filter_and_zoomed(filter_name, filter_data, viz_params)
 
     last_processed_x, last_processed_y = viz_params.last_processed_pixel
-    specific_params['Centered at'] = f"({last_processed_x}, {last_processed_y})"
-    # adding 'image_height' and 'image_width' to specific_params
-    specific_params['image_height'] = viz_params.image_array.data.shape[0]
-    specific_params['image_width'] = viz_params.image_array.data.shape[1]
-    specific_params['half_kernel'] = viz_params.kernel.size // 2
-    specific_params['valid_height'] = viz_params.image_array.data.shape[0] - viz_params.kernel.size + 1
-    specific_params['valid_width'] = viz_params.image_array.data.shape[1] - viz_params.kernel.size + 1
-    specific_params['search_window_size'] = viz_params.search_window.size
-    last_processed_x, last_processed_y = viz_params.last_processed_pixel
+    specific_params["Centered at"] = f"({last_processed_x}, {last_processed_y})"
+    specific_params["image_height"] = viz_params.image_array.data.shape[0]
+    specific_params["image_width"] = viz_params.image_array.data.shape[1]
+    specific_params["half_kernel"] = viz_params.kernel.size // 2
+    specific_params["valid_height"] = (
+        viz_params.image_array.data.shape[0] - viz_params.kernel.size + 1
+    )
+    specific_params["valid_width"] = (
+        viz_params.image_array.data.shape[1] - viz_params.kernel.size + 1
+    )
+    specific_params["search_window_size"] = viz_params.search_window.size
+
+    # Add processed values
+    if viz_params.technique == "nlm":
+        specific_params["nlm_value"] = viz_params.results.nonlocal_means[last_processed_y, last_processed_x]
+    else:  # speckle
+        specific_params["mean"] = viz_params.results.mean_filter[last_processed_y, last_processed_x]
+        specific_params["std"] = viz_params.results.std_dev_filter[last_processed_y, last_processed_x]
+        specific_params["sc"] = viz_params.results.speckle_contrast_filter[last_processed_y, last_processed_x]
+
     display_analysis_formula(
         specific_params,
         viz_params.ui_placeholders,
@@ -450,27 +455,32 @@ def visualize_analysis_results(viz_params: VisualizationConfig) -> None:
     )
 
 
-def run_technique(technique: str, tab: Any, analysis_params: Dict[str, Any]) -> None:
+def run_technique(
+    technique: str, tab: Any, analysis_params: Dict[str, Any], nl_speckle_result: Any
+) -> None:
     technique_params = st.session_state.get(f"{technique}_params", {})
-    show_per_pixel_processing = analysis_params.get(
-        "show_per_pixel_processing", False)
+    show_per_pixel_processing = analysis_params.get("show_per_pixel_processing", False)
 
     ui_placeholders = create_technique_ui_elements(
         technique, tab, show_per_pixel_processing
     )
     st.session_state[f"{technique}_placeholders"] = ui_placeholders
 
-    process_params = create_process_params(
-        analysis_params, technique, technique_params)
+    process_params = create_process_params(analysis_params, technique, technique_params)
 
     try:
-        configure_process_params(technique, process_params, technique_params)
-        
-        _, results = process_image(process_params)
+        # Instead of processing the image again, use the results from nl_speckle_result
+        if technique == "nlm":
+            results = nl_speckle_result.nlm_result
+        elif technique == "speckle":
+            results = nl_speckle_result.speckle_result
+        else:
+            raise ValueError(f"Unknown technique: {technique}")
+
         st.session_state[f"{technique}_results"] = results
 
         viz_config = create_visualization_config(
-            process_params.image_array,
+            process_params["image_array"],
             technique,
             analysis_params,
             results,
@@ -481,44 +491,60 @@ def run_technique(technique: str, tab: Any, analysis_params: Dict[str, Any]) -> 
         visualize_analysis_results(viz_config)
 
     except (ValueError, TypeError, KeyError) as e:
-        st.error(f"Error for {technique}: {
-                 str(e)}. Please check the logs for details.")
+        st.error(f"Error for {technique}: {str(e)}. Please check the logs for details.")
 
 
 def create_visualization_config(
     image_array: np.ndarray,
     technique: str,
     analysis_params: Dict[str, Any],
-    results: Union[SpeckleResult, NLMResult],
+    results: Union[NLMResult, SpeckleResult],
     ui_placeholders: Dict[str, Any],
     show_per_pixel_processing: bool,
 ) -> VisualizationConfig:
-    last_processed_x, last_processed_y = results.get_last_processed_coordinates()
-    kernel_matrix, original_pixel_value, kernel_size = extract_kernel_from_image(
-        image_array,
-        last_processed_x,
-        last_processed_y,
-        analysis_params.get("kernel_size", 3),
-    )
+    half_kernel = results.kernel_size // 2
+    height, width = image_array.shape
+    end_x, end_y = results.processing_end_coord
+
+    # Extract the kernel matrix from the image
+    y_start = max(0, end_y - half_kernel)
+    y_end = min(height, end_y + half_kernel + 1)
+    x_start = max(0, end_x - half_kernel)
+    x_end = min(width, end_x + half_kernel + 1)
+    kernel_matrix = image_array[y_start:y_end, x_start:x_end].copy()
+
+    # Pad the kernel if necessary
+    if kernel_matrix.shape != (results.kernel_size, results.kernel_size):
+        pad_top = max(0, half_kernel - end_y)
+        pad_bottom = max(0, end_y + half_kernel + 1 - height)
+        pad_left = max(0, half_kernel - end_x)
+        pad_right = max(0, end_x + half_kernel + 1 - width)
+        kernel_matrix = np.pad(
+            kernel_matrix,
+            ((pad_top, pad_bottom), (pad_left, pad_right)),
+            mode="constant",
+            constant_values=0
+        )
 
     config_params = {
-        "image_array": ImageArray(image_array),
+        "image_array": ImageArray(data=image_array),
         "technique": technique,
-        "analysis_params": analysis_params,
         "results": results,
-        "last_processed_pixel": (last_processed_x, last_processed_y),
-        "original_pixel_value": original_pixel_value,
-        "show_per_pixel_processing": show_per_pixel_processing,
         "ui_placeholders": ui_placeholders,
-        "kernel": KernelConfig(kernel_matrix=kernel_matrix, size=kernel_size),
+        "show_per_pixel_processing": show_per_pixel_processing,
+        "processing_end": results.processing_end_coord,
+        "kernel": KernelConfig(
+            size=results.kernel_size,
+            origin=(half_kernel, half_kernel),
+            kernel_matrix=kernel_matrix,
+        ),
+        "search_window": SearchWindowConfig(
+            size=results.search_window_size if technique == "nlm" else None,
+            use_full_image=analysis_params.get("use_full_image", False),
+        ),
+        "last_processed_pixel": results.processing_end_coord,
+        "pixels_to_process": results.pixels_processed,
+        "original_pixel_value": image_array[end_y, end_x],  # Changed from original_value to original_pixel_value
     }
-
-    if isinstance(results, NLMResult):
-        config_params["search_window"] = SearchWindowConfig(
-            size=results.search_window_size,
-            use_full_image=analysis_params.get("use_full_image", False)
-        )
-    else:
-        config_params["search_window"] = SearchWindowConfig()
 
     return VisualizationConfig(**config_params)

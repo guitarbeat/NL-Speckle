@@ -28,15 +28,16 @@ from matplotlib.collections import LineCollection
 
 @dataclass
 class KernelConfig:
-    size: int = 3
-    outline_color: str = "red"
-    outline_width: int = 1
-    grid_line_color: str = "red"
-    grid_line_width: int = 1
-    grid_line_style: str = ":"
-    center_pixel_color: str = "green"
-    center_pixel_outline_width: int = 1
+    size: int
+    origin: Tuple[int, int]
     kernel_matrix: Optional[np.ndarray] = None
+    outline_color: str = "red"
+    outline_width: float = 2.0
+    grid_line_color: str = "red"
+    grid_line_style: str = ":"
+    grid_line_width: float = 0.5
+    center_pixel_color: str = "green"
+    center_pixel_outline_width: float = 2.0
 
 
 @dataclass
@@ -44,7 +45,7 @@ class SearchWindowConfig:
     size: Optional[int] = None
     outline_color: str = "blue"
     outline_width: float = 2.0
-    use_full_image: bool = False
+    use_full_image: bool = True
 
 
 @dataclass
@@ -67,14 +68,15 @@ class VisualizationConfig:
     results: Optional[Any] = None
     ui_placeholders: Dict[str, Any] = field(default_factory=dict)
     last_processed_pixel: Optional[Tuple[int, int]] = None
-    original_pixel_value: float = 0.0
+    original_pixel_value: float = 0.0  # Changed from original_value to original_pixel_value
     technique: str = ""
     title: str = ""
     figure_size: Tuple[int, int] = (8, 8)
     kernel: KernelConfig = field(default_factory=KernelConfig)
-    search_window: SearchWindowConfig = field(
-        default_factory=SearchWindowConfig)
+    search_window: SearchWindowConfig = field(default_factory=SearchWindowConfig)
     pixel_value: PixelValueConfig = field(default_factory=PixelValueConfig)
+    processing_end: Tuple[int, int] = field(default_factory=tuple)
+    pixels_to_process: int = 0
 
     def __post_init__(self):
         """Post-initialization validation."""
@@ -86,36 +88,33 @@ class VisualizationConfig:
             raise ValueError("vmin cannot be greater than vmax.")
 
 
-def add_overlays(subplot: plt.Axes, image: np.ndarray, config: VisualizationConfig) -> None:
+def add_overlays(
+    subplot: plt.Axes, image: np.ndarray, config: VisualizationConfig
+) -> None:
     """
     Add overlays to the plot based on the technique and configuration.
 
     Args:
-        subplot (plt.Axes): The subplot to add overlays to. image (np.ndarray):
-        The image being plotted. config (VisualizationConfig): Configuration
-        parameters.
+        subplot (plt.Axes): The subplot to add overlays to.
+        image (np.ndarray): The image being plotted.
+        config (VisualizationConfig): Configuration parameters.
     """
     if config.show_kernel:
-        add_kernel_overlay(subplot, config)
+        if config.title == "Original Image":
+            add_kernel_rectangle(subplot, config)
+            add_kernel_grid_lines(subplot, config)
 
-        if config.technique == "nlm" and config.search_window.size is not None:
-            add_search_window_overlay(subplot, image, config)
+            if config.technique == "nlm" and config.search_window.size is not None:
+                add_search_window_overlay(subplot, image, config)
+        
+        # Always highlight the center pixel, regardless of the image type
+        highlight_center_pixel(subplot, config)
 
     if config.zoom and config.show_per_pixel_processing:
         add_pixel_value_overlay(subplot, image, config)
 
 
-def add_kernel_overlay(subplot: plt.Axes, config: VisualizationConfig) -> None:
-    """
-    Add kernel overlay to the plot.
 
-    Args:
-        subplot (plt.Axes): The subplot to add the kernel overlay to. config
-        (VisualizationConfig): Configuration parameters.
-    """
-    add_kernel_rectangle(subplot, config)
-    add_kernel_grid_lines(subplot, config)
-    highlight_center_pixel(subplot, config)
 
 
 def add_kernel_rectangle(subplot: plt.Axes, config: VisualizationConfig) -> None:
@@ -183,7 +182,9 @@ def highlight_center_pixel(subplot: plt.Axes, config: VisualizationConfig) -> No
     )
 
 
-def add_search_window_overlay(subplot: plt.Axes, image: np.ndarray, config: VisualizationConfig) -> None:
+def add_search_window_overlay(
+    subplot: plt.Axes, image: np.ndarray, config: VisualizationConfig
+) -> None:
     """
     Add search window overlay for the NLM technique to the subplot.
 
@@ -207,7 +208,9 @@ def add_search_window_overlay(subplot: plt.Axes, image: np.ndarray, config: Visu
     )
 
 
-def add_pixel_value_overlay(subplot: plt.Axes, image: np.ndarray, config: VisualizationConfig) -> None:
+def add_pixel_value_overlay(
+    subplot: plt.Axes, image: np.ndarray, config: VisualizationConfig
+) -> None:
     """
     Add pixel value overlay for the zoomed view to the subplot.
 
@@ -245,7 +248,9 @@ def get_kernel_top_left(config: VisualizationConfig) -> Tuple[float, float]:
     )
 
 
-def generate_kernel_grid_lines(config: VisualizationConfig) -> List[List[Tuple[float, float]]]:
+def generate_kernel_grid_lines(
+    config: VisualizationConfig,
+) -> List[List[Tuple[float, float]]]:
     """
     Generate the grid lines for the kernel.
 
@@ -278,7 +283,9 @@ def generate_kernel_grid_lines(config: VisualizationConfig) -> List[List[Tuple[f
     return vertical_lines + horizontal_lines
 
 
-def get_search_window_dims(image: np.ndarray, config: VisualizationConfig) -> Tuple[float, float, float, float]:
+def get_search_window_dims(
+    image: np.ndarray, config: VisualizationConfig
+) -> Tuple[float, float, float, float]:
     """
     Calculate the dimensions of the search window.
 
@@ -290,9 +297,11 @@ def get_search_window_dims(image: np.ndarray, config: VisualizationConfig) -> Tu
         Tuple[float, float, float, float]: The left, top, width, and height of
         the search window.
     """
+    import streamlit as st
+
     image_height, image_width = image.shape[:2]
 
-    if config.search_window.use_full_image:
+    if st.session_state.get("use_full_image"):
         return -0.5, -0.5, image_width, image_height
 
     half_window_size = config.search_window.size // 2
@@ -300,10 +309,8 @@ def get_search_window_dims(image: np.ndarray, config: VisualizationConfig) -> Tu
 
     window_left = max(0, last_processed_pixel_x - half_window_size) - 0.5
     window_top = max(0, last_processed_pixel_y - half_window_size) - 0.5
-    window_right = min(
-        image_width, last_processed_pixel_x + half_window_size + 1)
-    window_bottom = min(
-        image_height, last_processed_pixel_y + half_window_size + 1)
+    window_right = min(image_width, last_processed_pixel_x + half_window_size + 1)
+    window_bottom = min(image_height, last_processed_pixel_y + half_window_size + 1)
 
     window_width = window_right - window_left
     window_height = window_bottom - window_top
