@@ -9,8 +9,7 @@ import numpy as np
 import streamlit as st
 
 from src.formula import display_analysis_formula
-from src.nlm import NLMResult
-from src.speckle import SpeckleResult
+from src.classes import SpeckleResult, NLMResult
 from src.overlay import KernelConfig, add_overlays, VisualizationConfig, SearchWindowConfig
 
 # Constants for Image Visualization
@@ -304,9 +303,24 @@ def run_technique(
     process_params = create_process_params(analysis_params, technique, technique_params)
 
     try:
+        if nl_speckle_result is None:
+            st.warning(f"{technique.upper()} processing not started. Please initiate the analysis.")
+            return
+
         if technique == "nlm":
-            results = nl_speckle_result.nlm_result
+            if not hasattr(nl_speckle_result, 'nlm_result') or nl_speckle_result.nlm_result is None:
+                if hasattr(nl_speckle_result, 'speckle_result') and nl_speckle_result.speckle_result is not None:
+                    st.warning("NLM processing not complete. Showing partial results from Speckle analysis.")
+                    results = nl_speckle_result.speckle_result
+                else:
+                    st.warning("Neither NLM nor Speckle results are available. Please wait for processing to complete.")
+                    return
+            else:
+                results = nl_speckle_result.nlm_result
         elif technique == "speckle":
+            if not hasattr(nl_speckle_result, 'speckle_result') or nl_speckle_result.speckle_result is None:
+                st.warning("Speckle processing not complete. Please wait.")
+                return
             results = nl_speckle_result.speckle_result
         else:
             raise ValueError(f"Unknown technique: {technique}")

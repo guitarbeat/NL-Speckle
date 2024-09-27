@@ -1,180 +1,144 @@
 import os
-from dataclasses import dataclass, field
-from typing import List, Tuple, Dict, Any
-
+import asyncio
+import glob
 import numpy as np
-
 import streamlit as st
+from typing import Tuple, Optional
+from contextlib import contextmanager
+from src.classes import NLSpeckleResult, get_checkpoint_path
+from src.process import process_speckle, process_nlm
 
-from src.nlm import process_nlm, NLMResult
-from src.speckle import process_speckle, SpeckleResult
+class ProcessingManager:
+    def __init__(self, image: np.ndarray, kernel_size: int, pixels_to_process: int, 
+                 nlm_search_window_size: int = 21, nlm_h: float = 10.0):
+        self.image, self.height, self.width, self.pixels_to_process = self._prepare_image(image, kernel_size, pixels_to_process)
+        self.kernel_size = kernel_size
+        self.nlm_search_window_size = nlm_search_window_size
+        self.nlm_h = nlm_h
+        self.checkpoint_file = self._get_checkpoint_file()
 
-
-from dill import dumps, loads
-
-os.makedirs("checkpoints", exist_ok=True)
-
-
-@dataclass
-class NLSpeckleResult:
-    nlm_result: NLMResult
-    speckle_result: SpeckleResult
-    additional_images: Dict[str, np.ndarray] = field(default_factory=dict)
-    processing_end_coord: Tuple[int, int] = field(default=(0, 0))
-    kernel_size: int = field(default=0)
-    pixels_processed: int = field(default=0)
-    image_dimensions: Tuple[int, int] = field(default=(0, 0))
-    nlm_search_window_size: int = field(default=0)
-    nlm_h: float = field(default=0.0)
-
-    def add_image(self, name: str, image: np.ndarray):
-        self.additional_images[name] = image
-
-    def get_all_images(self) -> Dict[str, np.ndarray]:
-        images = {}
-        for prefix, result in [("NLM", self.nlm_result), ("Speckle", self.speckle_result)]:
-            images.update({f"{prefix} {k}": v for k,
-                          v in result.get_filter_data().items()})
-        return {**images, **self.additional_images}
-
-    def get_filter_options(self) -> List[str]:
-        return [f"{prefix} {option}" for prefix, result in [("NLM", self.nlm_result), ("Speckle", self.speckle_result)]
-                for option in result.get_filter_options()] + list(self.additional_images.keys())
-
-    def get_filter_data(self) -> Dict[str, Any]:
-        return self.get_all_images()
-
-    def get_last_processed_coordinates(self) -> Tuple[int, int]:
-        return self.processing_end_coord
-
-    def save_checkpoint(self, filename: str):
-        os.makedirs(os.path.dirname(filename), exist_ok=True)
-        with open(filename, 'wb') as f:
-            # Use dill.dumps to serialize the entire object, including class definition
-            serialized_data = dumps(self, recurse=True)
-            f.write(serialized_data)
-
-    @classmethod
-    def load_checkpoint(cls, filename: str) -> 'NLSpeckleResult':
-        if not os.path.exists(filename):
-            raise FileNotFoundError(f"Checkpoint file not found: {filename}")
-        with open(filename, 'rb') as f:
-            # Use dill.loads to deserialize the object, including class definition
-            serialized_data = f.read()
-            return loads(serialized_data)
-
-    @classmethod
-    def combine(cls, nlm_results: List[NLMResult], speckle_results: List[SpeckleResult],
-                kernel_size: int, pixels_processed: int, image_dimensions: Tuple[int, int],
-                nlm_search_window_size: int, nlm_h: float) -> 'NLSpeckleResult':
-        return cls(
-            nlm_result=NLMResult.combine(nlm_results),
-            speckle_result=SpeckleResult.combine(speckle_results),
-            processing_end_coord=(0, 0),
-            kernel_size=kernel_size,
-            pixels_processed=pixels_processed,
-            image_dimensions=image_dimensions,
-            nlm_search_window_size=nlm_search_window_size,
-            nlm_h=nlm_h
-        )
-
-
-def process_nl_speckle(
-    image: np.ndarray,
-    kernel_size: int,
-    pixels_to_process: int,
-    nlm_search_window_size: int = 21,
-    nlm_h: float = 10.0
-) -> NLSpeckleResult:
-    try:
+    def _prepare_image(self, image: np.ndarray, kernel_size: int, pixels_to_process: int) -> Tuple[np.ndarray, int, int, int]:
         image = image.astype(np.float32)
         height, width = image.shape
-        valid_height, valid_width = height - kernel_size + 1, width - kernel_size + 1
-        pixels_to_process = min(pixels_to_process, valid_height * valid_width)
+        valid_pixels = (height - kernel_size + 1) * (width - kernel_size + 1)
+        return image, height, width, min(pixels_to_process, valid_pixels)
 
-        # Create a unique filename based on parameters
+    def _get_checkpoint_file(self) -> str:
         image_name = os.path.splitext(st.session_state.image_file)[0]
-        checkpoint_filename = f"k{kernel_size}_p{pixels_to_process}_w{
-            nlm_search_window_size}_h{nlm_h}.joblib"
-        checkpoint_dir = os.path.join("checkpoints", image_name)
-        final_file = os.path.join(checkpoint_dir, checkpoint_filename)
+        return get_checkpoint_path(image_name, self.kernel_size, self.pixels_to_process, 
+                                   self.nlm_search_window_size, self.nlm_h)
 
-        os.makedirs(checkpoint_dir, exist_ok=True)
-
-        if os.path.exists(final_file):
-            loaded_result = NLSpeckleResult.load_checkpoint(final_file)
-            st.info(f"Loading previously calculated results from: {
-                    final_file}")
-            loaded_result.add_image("Loaded From", np.array([final_file]))
-            return loaded_result
-
+    @contextmanager
+    def _processing_status(self):
         with st.status("Processing image...", expanded=True) as status:
             progress_bar = st.progress(0)
+            yield status, progress_bar
 
-            speckle_result = process_speckle(
-                image, kernel_size, pixels_to_process)
-            update_progress(status, progress_bar,
-                            pixels_to_process // 2, pixels_to_process)
+    def _update_progress(self, status, progress_bar, current: int, total: int):
+        progress = current / total
+        status.update(label=f"Processing: {progress:.1%} complete")
+        progress_bar.progress(progress)
 
-            nlm_result = process_nlm(
-                image, kernel_size, pixels_to_process, nlm_search_window_size, nlm_h)
-            update_progress(status, progress_bar,
-                            pixels_to_process, pixels_to_process)
+    def process(self) -> Optional[NLSpeckleResult]:
+        try:
+            if os.path.exists(self.checkpoint_file):
+                return self._load_checkpoint()
 
-            final_result = create_final_result(
-                speckle_result,
-                nlm_result,
-                kernel_size,
-                pixels_to_process,
-                (height, width),
-                nlm_search_window_size,
-                nlm_h
-            )
-            finalize_results(final_result, checkpoint_filename, status)
+            with self._processing_status() as (status, progress_bar):
+                speckle_result = self._run_speckle_processing(status, progress_bar)
+                nlm_result = self._run_nlm_processing(status, progress_bar)
+                final_result = self._create_final_result(speckle_result, nlm_result)
+                self._save_and_cleanup_checkpoints(final_result, status)
 
-        return final_result
+            return final_result
+        except Exception as e:
+            self._handle_error(e)
+            return None
+
+    def _run_speckle_processing(self, status, progress_bar) -> np.ndarray:
+        result = process_speckle(self.image, self.kernel_size, self.pixels_to_process)
+        if result is None:
+            raise ValueError("Speckle processing failed to produce a result")
+        self._update_progress(status, progress_bar, self.pixels_to_process // 2, self.pixels_to_process)
+        
+        st.session_state.nl_speckle_result = self._create_partial_result(result)
+        return result
+
+    def _run_nlm_processing(self, status, progress_bar) -> np.ndarray:
+        result = process_nlm(self.image, self.kernel_size, self.pixels_to_process, 
+                             self.nlm_search_window_size, self.nlm_h)
+        if result is None:
+            raise ValueError("NLM processing failed to produce a result")
+        self._update_progress(status, progress_bar, self.pixels_to_process, self.pixels_to_process)
+        return result
+
+    def _create_final_result(self, speckle_result: np.ndarray, nlm_result: np.ndarray) -> NLSpeckleResult:
+        return NLSpeckleResult(
+            nlm_result=nlm_result,
+            speckle_result=speckle_result,
+            additional_images={},
+            processing_end_coord=self._calculate_processing_end(),
+            kernel_size=self.kernel_size,
+            pixels_processed=self.pixels_to_process,
+            image_dimensions=(self.height, self.width),
+            nlm_search_window_size=self.nlm_search_window_size,
+            nlm_h=self.nlm_h
+        )
+
+    def _create_partial_result(self, speckle_result: np.ndarray) -> NLSpeckleResult:
+        return NLSpeckleResult(
+            speckle_result=speckle_result,
+            nlm_result=None,
+            additional_images={},
+            processing_end_coord=self._calculate_processing_end(),
+            kernel_size=self.kernel_size,
+            pixels_processed=self.pixels_to_process,
+            image_dimensions=(self.height, self.width),
+            nlm_search_window_size=self.nlm_search_window_size,
+            nlm_h=self.nlm_h
+        )
+
+    def _calculate_processing_end(self) -> Tuple[int, int]:
+        valid_width = self.width - self.kernel_size + 1
+        end_y, end_x = divmod(self.pixels_to_process - 1, valid_width)
+        return (min(end_x + self.kernel_size // 2, self.width - 1), 
+                min(end_y + self.kernel_size // 2, self.height - 1))
+
+    def _load_checkpoint(self) -> NLSpeckleResult:
+        loaded_result = NLSpeckleResult.load_checkpoint(self.checkpoint_file)
+        return loaded_result.add_image("Loaded From", np.array([self.checkpoint_file]))
+
+    async def _async_cleanup_checkpoints(self, matching_checkpoints: list[str]):
+        tasks = [asyncio.to_thread(os.remove, old) for old in matching_checkpoints if old != self.checkpoint_file]
+        await asyncio.gather(*tasks)
+
+    def _save_and_cleanup_checkpoints(self, final_result: NLSpeckleResult, status):
+        try:
+            final_result.save_checkpoint(self.checkpoint_file)
+            status.update(label="Checkpoint saved. Cleaning up old checkpoints...", state="running")
+            
+            checkpoint_dir = os.path.dirname(self.checkpoint_file)
+            pattern = os.path.basename(self.checkpoint_file).replace(str(final_result.pixels_processed), '*')
+            matching_checkpoints = glob.glob(os.path.join(checkpoint_dir, pattern))
+            
+            asyncio.run(self._async_cleanup_checkpoints(matching_checkpoints))
+            
+            status.update(label="Processing complete!", state="complete")
+        except Exception as e:
+            st.error(f"Error in saving checkpoint: {str(e)}")
+            status.update(label="Processing complete, but failed to save checkpoint.", state="error")
+
+    def _handle_error(self, e: Exception):
+        error_message = f"Error in process_nl_speckle: {type(e).__name__}: {str(e)}"
+        image_info = f"Image shape: {self.image.shape}, Image size: {self.image.size}, Image dtype: {self.image.dtype}"
+        st.error(f"{error_message}\n{image_info}")
+        raise
+
+def process_nl_speckle(image: np.ndarray, kernel_size: int, pixels_to_process: int, 
+                       nlm_search_window_size: int = 21, nlm_h: float = 10.0) -> Optional[NLSpeckleResult]:
+    try:
+        manager = ProcessingManager(image, kernel_size, pixels_to_process, nlm_search_window_size, nlm_h)
+        return manager.process()
     except Exception as e:
-        handle_error(e, image)
-
-# Helper functions for process_nl_speckle
-
-
-def update_progress(status, progress_bar, current, total):
-    progress = current / total
-    percentage = round(progress * 100, 1)
-    status.update(label=f"Processing: {percentage}% complete")
-    progress_bar.progress(progress)
-
-
-def create_final_result(speckle_result, nlm_result, kernel_size, pixels_processed, image_dimensions, nlm_search_window_size, nlm_h):
-    height, width = image_dimensions
-    valid_width = width - kernel_size + 1
-    end_y, end_x = divmod(pixels_processed - 1, valid_width)
-    processing_end = (min(end_x + kernel_size // 2, width - 1),
-                      min(end_y + kernel_size // 2, height - 1))
-
-    return NLSpeckleResult(
-        nlm_result=nlm_result,
-        speckle_result=speckle_result,
-        processing_end_coord=processing_end,
-        kernel_size=kernel_size,
-        pixels_processed=pixels_processed,
-        image_dimensions=image_dimensions,
-        nlm_search_window_size=nlm_search_window_size,
-        nlm_h=nlm_h
-    )
-
-
-def finalize_results(final_result, checkpoint_filename, status):
-    image_name = os.path.splitext(st.session_state.image_file)[0]
-    checkpoint_dir = os.path.join("checkpoints", image_name)
-    final_file = os.path.join(checkpoint_dir, checkpoint_filename)
-    final_result.save_checkpoint(final_file)
-    status.update(label="Processing complete!", state="complete")
-
-
-def handle_error(e, image):
-    st.error(f"Error in process_nl_speckle: {type(e).__name__}: {str(e)}")
-    st.error(f"Image shape: {image.shape}, Image size: {
-             image.size}, Image dtype: {image.dtype}")
-    raise
+        st.error(f"Error in process_nl_speckle: {type(e).__name__}: {str(e)}")
+        raise
