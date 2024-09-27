@@ -3,12 +3,11 @@ This module defines the SidebarUI class and related constants for the Streamlit
 application. It includes available color maps and preloaded image paths.
 """
 
-from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple
-
 import numpy as np
 import streamlit as st
 from PIL import Image
+from dataclasses import dataclass
+from typing import Any, Dict, Optional, Tuple
 
 from src.config import AVAILABLE_COLOR_MAPS, PRELOADED_IMAGE_PATHS
 
@@ -19,18 +18,10 @@ rng = np.random.default_rng(seed=42)
 class SidebarUI:
     @staticmethod
     def setup() -> Optional[Dict[str, Any]]:
-
-    
         # Apply custom CSS for better spacing and wider sidebar
-        st.sidebar.markdown("""
-            <style>
-                [data-testid="stSidebar"] {
-                    min-width: 300px;
-                }
-            </style>
-        """, unsafe_allow_html=True)
+        SidebarUI._apply_custom_css()
 
-        # Simplified structure with clear sections
+        # Main setup logic
         image, color_map = SidebarUI._image_selection()
         if image is None:
             return None
@@ -40,12 +31,30 @@ class SidebarUI:
         advanced_options = SidebarUI._advanced_options(image)
 
         # Update session state
+        SidebarUI._update_session_state(nlm_params, advanced_options, display_options)
+
+        return SidebarUI._create_return_dict(image, color_map, display_options, nlm_params, advanced_options)
+
+    @staticmethod
+    def _apply_custom_css():
+        st.sidebar.markdown("""
+            <style>
+                [data-testid="stSidebar"] {
+                    min-width: 300px;
+                }
+            </style>
+        """, unsafe_allow_html=True)
+
+    @staticmethod
+    def _update_session_state(nlm_params, advanced_options, display_options):
         st.session_state.update({
             "use_full_image": nlm_params["use_whole_image"],
             "use_sat": advanced_options["use_sat"],
-            "pixels_to_process": display_options["pixels_to_process"]  # Add this line
+            "pixels_to_process": display_options["pixels_to_process"]
         })
 
+    @staticmethod
+    def _create_return_dict(image, color_map, display_options, nlm_params, advanced_options):
         return {
             "image": image,
             "image_array": np.array(image),
@@ -54,6 +63,8 @@ class SidebarUI:
             **nlm_params,
             **advanced_options,
         }
+
+    # Image selection methods
     @staticmethod
     def _image_selection() -> Tuple[Optional[Image.Image], str]:
         with st.sidebar.expander("🖼️ Image Selector", expanded=True):
@@ -95,6 +106,7 @@ class SidebarUI:
         color_map = SidebarUI._select_color_map()
         return image, color_map
 
+    # Display options methods
     @staticmethod
     def _display_options(image: Image.Image) -> Dict[str, Any]:
         with st.sidebar.expander("🔧 Display Options", expanded=True):
@@ -185,6 +197,7 @@ class SidebarUI:
 
         return selected_color_map
 
+    # Advanced options methods
     @staticmethod
     def _advanced_options(image: Image.Image) -> Dict[str, Any]:
         with st.sidebar.expander("🔬 Advanced Options", expanded=False):
@@ -255,6 +268,7 @@ class SidebarUI:
         image_np = (image_np - p_low) / (p_high - p_low)
         return image_np
 
+    # NLM options method
     @staticmethod
     def _nlm_options(image: Image.Image) -> Dict[str, Any]:
         with st.sidebar.expander("🔍 NLM Options", expanded=False):

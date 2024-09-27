@@ -15,26 +15,44 @@ from src.images import process_nl_speckle
 
 def main():
     """Main function to set up the Streamlit app configuration, logo, and run the application."""
+    setup_streamlit_config()
+    
+    try:
+        setup_app()
+    except (ValueError, TypeError) as e:
+        st.error(f"An error occurred: {e}. Please check your input and try again.")
+
+def setup_streamlit_config():
+    """Set up Streamlit configuration and logo."""
     st.set_page_config(**APP_CONFIG)
     st.logo("media/logo.png")
-
+    
     if "techniques" not in st.session_state:
         st.session_state.techniques = ["speckle", "nlm"]
 
-    try:
-        setup_app()
-    except (ValueError, TypeError) as e:  # Specify the exceptions you expect
-        st.error(
-            f"An error occurred: {e}. Please check your input and try again."
-        )
-
 def setup_app():
+    """Set up the main application components."""
+    sidebar_params = setup_sidebar()
+    tabs = setup_tabs()
+    params = prepare_analysis_params(sidebar_params)
+    
+    process_image(params)
+    display_results(tabs, params)
+
+def setup_sidebar():
+    """Set up the sidebar and return its parameters."""
     sidebar_params = SidebarUI.setup()
     st.session_state.sidebar_params = sidebar_params
+    return sidebar_params
 
+def setup_tabs():
+    """Set up the tabs for the application."""
     tabs = st.tabs(["Speckle", "NL-Means", "Image Comparison"])
     st.session_state.tabs = tabs
+    return tabs
 
+def prepare_analysis_params(sidebar_params):
+    """Prepare the analysis parameters based on sidebar inputs."""
     kernel_size = sidebar_params.get("kernel_size", 5)
     
     pixels_to_process = st.session_state.pixels_to_process  # Use this instead
@@ -51,9 +69,10 @@ def setup_app():
         "use_full_image": sidebar_params.get("use_full_image", False),
     }
 
-    st.session_state.analysis_params = params
+    return params
 
-    # Process the image using NL-Speckle
+def process_image(params):
+    """Process the image using NL-Speckle."""
     nl_speckle_result = process_nl_speckle(
         image=params["image_array"],
         kernel_size=params["kernel_size"],
@@ -61,9 +80,10 @@ def setup_app():
         nlm_search_window_size=params["search_window_size"],
         nlm_h=params["filter_strength"]
     )
-
     st.session_state.nl_speckle_result = nl_speckle_result
 
+def display_results(tabs, params):
+    """Display the results in the appropriate tabs."""
     techniques: List[str] = st.session_state.get("techniques", [])
     
     for technique, tab in zip(techniques, tabs):
@@ -73,7 +93,7 @@ def setup_app():
                     technique,
                     tab,
                     params,
-                    nl_speckle_result
+                    st.session_state.nl_speckle_result
                 )
 
     with tabs[2]:

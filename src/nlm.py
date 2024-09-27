@@ -3,59 +3,35 @@ This module provides the implementation of Non-Local Means (NLM) denoising
 algorithm functions.
 """
 
-from typing import Tuple
 import numpy as np
 import streamlit as st
+from typing import Tuple, List, Dict
 from dataclasses import dataclass
-from typing import List, Dict
-from src.utils import BaseResult
 from functools import lru_cache
 from multiprocessing import Pool
+from src.utils import BaseResult
 
 # --- Patch Calculation Functions ---
 
 @lru_cache(maxsize=None)
 def calculate_weight(P_diff_squared_xy_ij: float, h: float) -> float:
-    weight_xy_ij = np.exp(-(P_diff_squared_xy_ij) / (h**2))
-    return weight_xy_ij
+    return np.exp(-(P_diff_squared_xy_ij) / (h**2))
 
 def calculate_patch_distance(P_xy: np.ndarray, P_ij: np.ndarray) -> float:
-    P_diff_squared_xy_ij = (np.sum((P_xy - P_ij) ** 2))
-    return P_diff_squared_xy_ij
+    return np.sum((P_xy - P_ij) ** 2)
 
 def extract_patch(image: np.ndarray, x: int, y: int, patch_size: int) -> np.ndarray:
     half_patch = patch_size // 2
-    P_xy = image[x - half_patch : x + half_patch + 1, y - half_patch : y + half_patch + 1]
-    return P_xy
+    return image[x - half_patch : x + half_patch + 1, y - half_patch : y + half_patch + 1]
 
-# --- NLM Calculation Function ---
+# --- NLM Calculation Functions ---
 
 def calculate_nlm(weighted_intensity_sum: float, C: float, original_pixel_value: float) -> float:
-    """
-    Calculate the Non-Local Means value for a pixel.
-
-    Args:
-        weighted_intensity_sum (float): Sum of weighted intensities
-        C (float): Normalization factor
-        original_pixel_value (float): Original pixel value
-
-    Returns:
-        float: Non-Local Means value
-    """
+    """Calculate the Non-Local Means value for a pixel."""
     return weighted_intensity_sum / C if C > 0 else original_pixel_value
 
 def calculate_nlstd(weighted_intensity_sum: float, weighted_intensity_squared_sum: float, C: float) -> float:
-    """
-    Calculate the Non-Local Standard Deviation.
-
-    Args:
-        weighted_intensity_sum (float): Sum of weighted intensities
-        weighted_intensity_squared_sum (float): Sum of weighted squared intensities
-        C (float): Normalization factor
-
-    Returns:
-        float: Non-Local Standard Deviation
-    """
+    """Calculate the Non-Local Standard Deviation."""
     if C > 0:
         mean = weighted_intensity_sum / C
         variance = (weighted_intensity_squared_sum / C) - (mean ** 2)
@@ -63,19 +39,10 @@ def calculate_nlstd(weighted_intensity_sum: float, weighted_intensity_squared_su
     return 0
 
 def calculate_nlsc(nlstd: float, nlm: float) -> float:
-    """
-    Calculate the Non-Local Speckle Contrast.
-
-    Args:
-        nlstd (float): Non-Local Standard Deviation
-        nlm (float): Non-Local Means value
-
-    Returns:
-        float: Non-Local Speckle Contrast
-    """
+    """Calculate the Non-Local Speckle Contrast."""
     return nlstd / nlm if nlm > 0 else 0
 
-# --- NLM Application Function ---
+# --- NLM Core Processing Functions ---
 
 def calculate_c_xy(image: np.ndarray, x: int, y: int, patch_size: int, search_window_size: int, h: float, use_full_image: bool) -> Tuple[float, float, float, np.ndarray]:
     height, width = image.shape
@@ -141,7 +108,7 @@ def process_pixel(args):
 
     return x, y, NLM_xy, C_xy, NLstd_xy, NLSC_xy, similarity_map
 
-@st.cache_resource()
+
 def apply_nlm_to_image(
     image: np.ndarray,
     patch_size: int,
@@ -202,51 +169,48 @@ def process_nlm(
     h: float = 10.0,
     start_pixel: int = 0
 ) -> "NLMResult":
-    try:
-        height, width = image.shape
-        half_kernel = kernel_size // 2
-        valid_height, valid_width = height - kernel_size + 1, width - kernel_size + 1
-        total_valid_pixels = valid_height * valid_width
-        
-        # Ensure we don't process beyond the valid pixels
-        end_pixel = min(start_pixel + pixels_to_process, total_valid_pixels)
-        pixels_to_process = end_pixel - start_pixel
+    height, width = image.shape
+    half_kernel = kernel_size // 2
+    valid_height, valid_width = height - kernel_size + 1, width - kernel_size + 1
+    total_valid_pixels = valid_height * valid_width
+    
+    # Ensure we don't process beyond the valid pixels
+    end_pixel = min(start_pixel + pixels_to_process, total_valid_pixels)
+    pixels_to_process = end_pixel - start_pixel
 
-        # Calculate starting coordinates
-        start_y, start_x = divmod(start_pixel, valid_width)
-        start_y += half_kernel
-        start_x += half_kernel
+    # Calculate starting coordinates
+    start_y, start_x = divmod(start_pixel, valid_width)
+    start_y += half_kernel
+    start_x += half_kernel
 
-        NLM_image, NLstd_image, NLSC_xy_image, C_xy_image, last_similarity_map = apply_nlm_to_image(
-            np.asarray(image, dtype=np.float32),
-            kernel_size,
-            search_window_size,
-            h,
-            pixels_to_process,
-            (start_x, start_y)
-        )
+    NLM_image, NLstd_image, NLSC_xy_image, C_xy_image, last_similarity_map = apply_nlm_to_image(
+        np.asarray(image, dtype=np.float32),
+        kernel_size,
+        search_window_size,
+        h,
+        pixels_to_process,
+        (start_x, start_y)
+    )
 
-        # Calculate processing end coordinates
-        end_y, end_x = divmod(end_pixel - 1, valid_width)
-        end_y, end_x = end_y + half_kernel, end_x + half_kernel
-        processing_end = (min(end_x, width - 1), min(end_y, height - 1))
+    # Calculate processing end coordinates
+    end_y, end_x = divmod(end_pixel - 1, valid_width)
+    end_y, end_x = end_y + half_kernel, end_x + half_kernel
+    processing_end = (min(end_x, width - 1), min(end_y, height - 1))
 
-        return NLMResult(
-            nonlocal_means=NLM_image,
-            normalization_factors=C_xy_image,
-            nonlocal_std=NLstd_image,
-            nonlocal_speckle=NLSC_xy_image,
-            processing_end_coord=processing_end,
-            kernel_size=kernel_size,
-            pixels_processed=pixels_to_process,
-            image_dimensions=(height, width),
-            search_window_size=search_window_size,
-            filter_strength=h,
-            last_similarity_map=last_similarity_map,
-        )
-    except Exception as e:
-        st.error(f"An error occurred during NLM processing: {str(e)}")
-        raise
+    return NLMResult(
+        nonlocal_means=NLM_image,
+        normalization_factors=C_xy_image,
+        nonlocal_std=NLstd_image,
+        nonlocal_speckle=NLSC_xy_image,
+        processing_end_coord=processing_end,
+        kernel_size=kernel_size,
+        pixels_processed=pixels_to_process,
+        image_dimensions=(height, width),
+        search_window_size=search_window_size,
+        filter_strength=h,
+        last_similarity_map=last_similarity_map,
+    )
+
 
 # --- Data Class for NLM Results ---
 

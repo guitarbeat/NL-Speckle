@@ -10,7 +10,7 @@ import joblib
 from dataclasses import dataclass
 from typing import List, Tuple
 
-
+# Data structures
 @dataclass
 class BaseResult:
     processing_end_coord: Tuple[int, int]
@@ -39,7 +39,7 @@ class BaseResult:
     def load_checkpoint(cls, filename: str) -> 'BaseResult':
         return joblib.load(filename)
 
-
+# Image processing and comparison
 class ImageComparison:
     """Class for handling image comparison functionality."""
 
@@ -53,8 +53,6 @@ class ImageComparison:
                 return
 
             available_images = list(images.keys())
-            # st.write(f"Debug: Available images: {available_images}")
-
             image_choice_1, image_choice_2 = ImageComparison._get_image_choices(available_images)
             
             if image_choice_1 and image_choice_2:
@@ -83,14 +81,12 @@ class ImageComparison:
             key="image_choice_2"
         )
         
-        # st.write(f"Debug: Selected images: '{image_choice_1}', '{image_choice_2}'")
         return image_choice_1, image_choice_2
 
     @staticmethod
     def _compare_images(images, image_choice_1, image_choice_2, cmap_name):
         try:
             img1, img2 = images[image_choice_1], images[image_choice_2]
-            # st.write(f"Debug: Image shapes: {img1.shape}, {img2.shape}")
             
             normalized_images = ImageComparison._normalize_and_colorize([img1, img2], cmap_name)
             if normalized_images:

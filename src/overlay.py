@@ -1,23 +1,9 @@
 """
-The above code defines data classes and functions for visualizing image
-processing techniques with overlays such as kernels, search windows, and pixel
-values.
-
-:param subplot: The `subplot` parameter in the provided code refers to a subplot
-    within a Matplotlib
-figure. Subplots are used to arrange multiple plots within a single figure. In
-this context, the `subplot` parameter is of type `plt.Axes`, which represents an
-individual plot or subplot within a Matplotlib :type subplot: plt.Axes :param
-image: The code you provided defines several data classes and functions related
-to image processing visualization. Here's a brief overview of the key
-components: :type image: np.ndarray :param config: The `config` parameter in the
-provided code represents a configuration object that holds various settings for
-image visualization and analysis. Here are the key attributes of the
-`VisualizationConfig` data class: :type config: VisualizationConfig
+This module defines data classes and functions for visualizing image processing techniques
+with overlays such as kernels, search windows, and pixel values.
 """
 
 import itertools
-
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Tuple, List
 
@@ -25,7 +11,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.collections import LineCollection
 
-
+# Data Classes
 @dataclass
 class KernelConfig:
     size: int
@@ -88,6 +74,7 @@ class VisualizationConfig:
             raise ValueError("vmin cannot be greater than vmax.")
 
 
+# Main overlay function
 def add_overlays(
     subplot: plt.Axes, image: np.ndarray, config: VisualizationConfig
 ) -> None:
@@ -117,6 +104,7 @@ def add_overlays(
 
 
 
+# Kernel-related functions
 def add_kernel_rectangle(subplot: plt.Axes, config: VisualizationConfig) -> None:
     """
     Add the main kernel rectangle to the subplot.
@@ -182,56 +170,6 @@ def highlight_center_pixel(subplot: plt.Axes, config: VisualizationConfig) -> No
     )
 
 
-def add_search_window_overlay(
-    subplot: plt.Axes, image: np.ndarray, config: VisualizationConfig
-) -> None:
-    """
-    Add search window overlay for the NLM technique to the subplot.
-
-    Args:
-        subplot (plt.Axes): The subplot to add the search window overlay to.
-        image (np.ndarray): The image being plotted. config
-        (VisualizationConfig): Configuration parameters.
-    """
-    window_left, window_top, window_width, window_height = get_search_window_dims(
-        image, config
-    )
-    subplot.add_patch(
-        plt.Rectangle(
-            (window_left, window_top),
-            window_width,
-            window_height,
-            edgecolor=config.search_window.outline_color,
-            linewidth=config.search_window.outline_width,
-            facecolor="none",
-        )
-    )
-
-
-def add_pixel_value_overlay(
-    subplot: plt.Axes, image: np.ndarray, config: VisualizationConfig
-) -> None:
-    """
-    Add pixel value overlay for the zoomed view to the subplot.
-
-    Args:
-        subplot (plt.Axes): The subplot to add the pixel value overlay to. image
-        (np.ndarray): The image being plotted. config (VisualizationConfig):
-        Configuration parameters.
-    """
-    image_height, image_width = image.shape[:2]
-    for i, j in itertools.product(range(image_height), range(image_width)):
-        subplot.text(
-            j,
-            i,
-            f"{image[i, j]:.2f}",
-            ha="center",
-            va="center",
-            color=config.pixel_value.text_color,
-            fontsize=config.pixel_value.font_size,
-        )
-
-
 def get_kernel_top_left(config: VisualizationConfig) -> Tuple[float, float]:
     """
     Calculate the top-left coordinates of the kernel.
@@ -283,6 +221,33 @@ def generate_kernel_grid_lines(
     return vertical_lines + horizontal_lines
 
 
+# Search window-related functions
+def add_search_window_overlay(
+    subplot: plt.Axes, image: np.ndarray, config: VisualizationConfig
+) -> None:
+    """
+    Add search window overlay for the NLM technique to the subplot.
+
+    Args:
+        subplot (plt.Axes): The subplot to add the search window overlay to.
+        image (np.ndarray): The image being plotted. config
+        (VisualizationConfig): Configuration parameters.
+    """
+    window_left, window_top, window_width, window_height = get_search_window_dims(
+        image, config
+    )
+    subplot.add_patch(
+        plt.Rectangle(
+            (window_left, window_top),
+            window_width,
+            window_height,
+            edgecolor=config.search_window.outline_color,
+            linewidth=config.search_window.outline_width,
+            facecolor="none",
+        )
+    )
+
+
 def get_search_window_dims(
     image: np.ndarray, config: VisualizationConfig
 ) -> Tuple[float, float, float, float]:
@@ -316,3 +281,27 @@ def get_search_window_dims(
     window_height = window_bottom - window_top
 
     return window_left, window_top, window_width, window_height
+
+# Pixel value-related functions
+def add_pixel_value_overlay(
+    subplot: plt.Axes, image: np.ndarray, config: VisualizationConfig
+) -> None:
+    """
+    Add pixel value overlay for the zoomed view to the subplot.
+
+    Args:
+        subplot (plt.Axes): The subplot to add the pixel value overlay to. image
+        (np.ndarray): The image being plotted. config (VisualizationConfig):
+        Configuration parameters.
+    """
+    image_height, image_width = image.shape[:2]
+    for i, j in itertools.product(range(image_height), range(image_width)):
+        subplot.text(
+            j,
+            i,
+            f"{image[i, j]:.2f}",
+            ha="center",
+            va="center",
+            color=config.pixel_value.text_color,
+            fontsize=config.pixel_value.font_size,
+        )

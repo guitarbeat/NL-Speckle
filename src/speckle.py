@@ -5,9 +5,10 @@ Functions:
 - calculate_speckle_contrast(local_std, local_mean): Calculate the speckle contrast.
 - apply_speckle_contrast(image, kernel_size, pixels_to_process, processing_origin):
     Apply speckle contrast to an image.
+- process_speckle(image, kernel_size, pixels_to_process, start_pixel): Process speckle contrast for an image.
 """
 
-
+# Imports
 import streamlit as st
 import numpy as np
 from multiprocessing import Pool
@@ -17,6 +18,7 @@ from dataclasses import dataclass
 from typing import List, Dict
 from src.utils import BaseResult
 
+# Helper functions
 def calculate_speckle_contrast(local_std, local_mean):
     """
     Speckle Contrast (SC): ratio of standard deviation to mean intensity within
@@ -43,7 +45,7 @@ def process_pixel(args, image, kernel_size):
         return row, col, local_mean, local_std, sc
     return None
 
-@st.cache_resource()
+# Main processing functions
 def apply_speckle_contrast(image, kernel_size, pixels_to_process, processing_origin):
     """Applies speckle contrast to the given image using parallel processing."""
     if not isinstance(image, np.ndarray):
@@ -91,47 +93,45 @@ def apply_speckle_contrast(image, kernel_size, pixels_to_process, processing_ori
     return mean_filter, std_dev_filter, sc_filter
 
 def process_speckle(image, kernel_size, pixels_to_process, start_pixel=0):
-    try:
-        if not isinstance(image, np.ndarray):
-            image = np.array(image)
 
-        height, width = image.shape
-        half_kernel = kernel_size // 2
-        valid_height, valid_width = height - kernel_size + 1, width - kernel_size + 1
-        pixels_to_process = min(pixels_to_process, valid_height * valid_width)
+    if not isinstance(image, np.ndarray):
+        image = np.array(image)
 
-        # Calculate starting coordinates
-        start_y, start_x = divmod(start_pixel, valid_width)
-        start_y += half_kernel
-        start_x += half_kernel
+    height, width = image.shape
+    half_kernel = kernel_size // 2
+    valid_height, valid_width = height - kernel_size + 1, width - kernel_size + 1
+    pixels_to_process = min(pixels_to_process, valid_height * valid_width)
 
-        mean_filter, std_dev_filter, sc_filter = apply_speckle_contrast(
-            image, 
-            kernel_size, 
-            pixels_to_process, 
-            (start_x, start_y)
-        )
+    # Calculate starting coordinates
+    start_y, start_x = divmod(start_pixel, valid_width)
+    start_y += half_kernel
+    start_x += half_kernel
 
-        # Calculate processing end coordinates
-        end_pixel = start_pixel + pixels_to_process
-        end_y, end_x = divmod(end_pixel - 1, valid_width)
-        end_y, end_x = end_y + half_kernel, end_x + half_kernel
-        processing_end = (min(end_x, width - 1), min(end_y, height - 1))
+    mean_filter, std_dev_filter, sc_filter = apply_speckle_contrast(
+        image, 
+        kernel_size, 
+        pixels_to_process, 
+        (start_x, start_y)
+    )
 
-        return SpeckleResult(
-            mean_filter=mean_filter,
-            std_dev_filter=std_dev_filter,
-            speckle_contrast_filter=sc_filter,
-            processing_end_coord=processing_end,
-            kernel_size=kernel_size,
-            pixels_processed=pixels_to_process,
-            image_dimensions=(height, width),
-        )
-    except Exception as e:
-        st.error(f"Error in process_speckle: {type(e).__name__}: {str(e)}")
-        raise
+    # Calculate processing end coordinates
+    end_pixel = start_pixel + pixels_to_process
+    end_y, end_x = divmod(end_pixel - 1, valid_width)
+    end_y, end_x = end_y + half_kernel, end_x + half_kernel
+    processing_end = (min(end_x, width - 1), min(end_y, height - 1))
+
+    return SpeckleResult(
+        mean_filter=mean_filter,
+        std_dev_filter=std_dev_filter,
+        speckle_contrast_filter=sc_filter,
+        processing_end_coord=processing_end,
+        kernel_size=kernel_size,
+        pixels_processed=pixels_to_process,
+        image_dimensions=(height, width),
+    )
 
 
+# Result class
 @dataclass
 class SpeckleResult(BaseResult):
     mean_filter: np.ndarray
