@@ -19,6 +19,7 @@ from dill import dumps, loads
 import os
 
 # Helper functions
+
 def calculate_speckle_contrast(local_std, local_mean):
     """
     Speckle Contrast (SC): ratio of standard deviation to mean intensity within
@@ -26,7 +27,8 @@ def calculate_speckle_contrast(local_std, local_mean):
     """
     return local_std / local_mean if local_mean != 0 else 0
 
-def process_pixel(args, image, kernel_size):
+
+def process_speckle_pixel(args, image, kernel_size):
     pixel, processing_origin, height, width, valid_width = args
     row = processing_origin[1] + pixel // valid_width
     col = processing_origin[0] + pixel % valid_width
@@ -36,23 +38,25 @@ def process_pixel(args, image, kernel_size):
         row_end = min(height, row + half_kernel + 1)
         col_start = max(0, col - half_kernel)
         col_end = min(width, col + half_kernel + 1)
-        
+
         local_window = image[row_start:row_end, col_start:col_end]
         local_mean = np.nanmean(local_window)
         local_std = np.nanstd(local_window)
         sc = calculate_speckle_contrast(local_std, local_mean)
-        
+
         return row, col, local_mean, local_std, sc
     return None
 
 # Main processing functions
+
+
 def apply_speckle_contrast(image: np.ndarray, kernel_size: int, pixels_to_process: int, processing_origin: Tuple[int, int]):
     """Applies speckle contrast to the given image using parallel processing."""
     if not isinstance(image, np.ndarray):
         raise TypeError(f"Expected numpy array, got {type(image)}")
     if image.ndim != 2:
         raise ValueError(f"Expected 2D array, got {image.ndim}D array")
-    
+
     height, width = image.shape
     mean_filter = np.zeros((height, width), dtype=np.float32)
     std_dev_filter = np.zeros((height, width), dtype=np.float32)
@@ -60,15 +64,18 @@ def apply_speckle_contrast(image: np.ndarray, kernel_size: int, pixels_to_proces
     valid_width = width - kernel_size + 1
 
     # Prepare arguments for parallel processing
-    args_list = ((pixel, processing_origin, height, width, valid_width) 
+    args_list = ((pixel, processing_origin, height, width, valid_width)
                  for pixel in range(pixels_to_process))
 
     # Use partial to fix image and kernel_size arguments
-    process_pixel_partial = partial(process_pixel, image=image, kernel_size=kernel_size)
+    process_pixel_partial = partial(
+        process_speckle_pixel, image=image, kernel_size=kernel_size)
 
     # Determine optimal chunk size and number of processes
-    chunk_size = max(1, pixels_to_process // (cpu_count() * 4))  # Adjust based on your specific use case
+    # Adjust based on your specific use case
+    chunk_size = max(1, pixels_to_process // (cpu_count() * 4))
     num_processes = min(cpu_count(), pixels_to_process // chunk_size)
+
 
     # Process in chunks
     with Pool(processes=num_processes) as pool:
@@ -79,7 +86,7 @@ def apply_speckle_contrast(image: np.ndarray, kernel_size: int, pixels_to_proces
                     mean_filter[row, col] = local_mean
                     std_dev_filter[row, col] = local_std
                     sc_filter[row, col] = sc
-                
+
                 # You can implement a callback here for progress reporting
                 if (i + 1) % chunk_size == 0:
                     (i + 1) / pixels_to_process
@@ -90,6 +97,7 @@ def apply_speckle_contrast(image: np.ndarray, kernel_size: int, pixels_to_proces
             raise
 
     return mean_filter, std_dev_filter, sc_filter
+
 
 def process_speckle(image, kernel_size, pixels_to_process, start_pixel=0):
 
@@ -107,9 +115,9 @@ def process_speckle(image, kernel_size, pixels_to_process, start_pixel=0):
     start_x += half_kernel
 
     mean_filter, std_dev_filter, sc_filter = apply_speckle_contrast(
-        image, 
-        kernel_size, 
-        pixels_to_process, 
+        image,
+        kernel_size,
+        pixels_to_process,
         (start_x, start_y)
     )
 
@@ -190,4 +198,3 @@ class SpeckleResult(BaseResult):
             pixels_processed=0,
             image_dimensions=(0, 0),
         )
-
