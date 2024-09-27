@@ -17,18 +17,16 @@ def process_speckle(image, kernel_size, pixels_to_process, start_pixel=0):
 
     # Calculate starting coordinates
     start_y, start_x = divmod(start_pixel, valid_width)
-    start_y += half_kernel
-    start_x += half_kernel
+    start_coords = (start_x + half_kernel, start_y + half_kernel)
 
     mean_filter, std_dev_filter, sc_filter = apply_speckle_contrast(
-        image, kernel_size, pixels_to_process, (start_x, start_y)
+        image, kernel_size, pixels_to_process, start_coords
     )
 
     # Calculate processing end coordinates
     end_pixel = start_pixel + pixels_to_process
     end_y, end_x = divmod(end_pixel - 1, valid_width)
-    end_y, end_x = end_y + half_kernel, end_x + half_kernel
-    processing_end = (min(end_x, width - 1), min(end_y, height - 1))
+    processing_end = (min(end_x + half_kernel, width - 1), min(end_y + half_kernel, height - 1))
 
     return SpeckleResult(
         mean_filter=mean_filter,
@@ -59,24 +57,20 @@ def process_nlm(
 
     # Calculate starting coordinates
     start_y, start_x = divmod(start_pixel, valid_width)
-    start_y += half_kernel
-    start_x += half_kernel
+    start_coords = (start_x + half_kernel, start_y + half_kernel)
 
-    NLM_image, NLstd_image, NLSC_xy_image, C_xy_image, last_similarity_map = (
-        apply_nlm_to_image(
-            np.asarray(image, dtype=np.float32),
-            kernel_size,
-            search_window_size,
-            h,
-            pixels_to_process,
-            (start_x, start_y),
-        )
+    NLM_image, NLstd_image, NLSC_xy_image, C_xy_image, last_similarity_map = apply_nlm_to_image(
+        image.astype(np.float32),
+        kernel_size,
+        search_window_size,
+        h,
+        pixels_to_process,
+        start_coords,
     )
 
     # Calculate processing end coordinates
     end_y, end_x = divmod(end_pixel - 1, valid_width)
-    end_y, end_x = end_y + half_kernel, end_x + half_kernel
-    processing_end = (min(end_x, width - 1), min(end_y, height - 1))
+    processing_end = (min(end_x + half_kernel, width - 1), min(end_y + half_kernel, height - 1))
 
     return NLMResult(
         nonlocal_means=NLM_image,

@@ -94,7 +94,6 @@ class NLMResult(BaseResult):
     search_window_size: int
     filter_strength: float
     last_similarity_map: np.ndarray
-    _combine: classmethod = field(default=None, repr=False, compare=False)
 
     @staticmethod
     def get_filter_options() -> List[str]:
@@ -172,7 +171,6 @@ class SpeckleResult(BaseResult):
     mean_filter: np.ndarray
     std_dev_filter: np.ndarray
     speckle_contrast_filter: np.ndarray
-    _combine: classmethod = field(default=None, repr=False, compare=False)
 
     @staticmethod
     def get_filter_options() -> List[str]:
@@ -202,14 +200,13 @@ class SpeckleResult(BaseResult):
 
     @classmethod
     def merge(cls, new_result: 'SpeckleResult', existing_result: 'SpeckleResult') -> 'SpeckleResult':
-        merged_mean = np.maximum(new_result.mean_filter, existing_result.mean_filter)
-        merged_std = np.maximum(new_result.std_dev_filter, existing_result.std_dev_filter)
-        merged_sc = np.maximum(new_result.speckle_contrast_filter, existing_result.speckle_contrast_filter)
+        merged_arrays = {
+            attr: np.maximum(getattr(new_result, attr), getattr(existing_result, attr))
+            for attr in ['mean_filter', 'std_dev_filter', 'speckle_contrast_filter']
+        }
         
         return cls(
-            mean_filter=merged_mean,
-            std_dev_filter=merged_std,
-            speckle_contrast_filter=merged_sc,
+            **merged_arrays,
             processing_end_coord=max(new_result.processing_end_coord, existing_result.processing_end_coord),
             kernel_size=new_result.kernel_size,
             pixels_processed=max(new_result.pixels_processed, existing_result.pixels_processed),
