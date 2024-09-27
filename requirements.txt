@@ -6,6 +6,7 @@ chardet
 charset-normalizer
 streamlit-image-comparison
 streamlit-image-coordinates
+streamlit-image-coordinates
 opencv-python
 streamlit-nested-layout
 scipy
