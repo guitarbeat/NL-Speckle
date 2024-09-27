@@ -6,7 +6,7 @@ import numpy as np
 import streamlit as st
 from streamlit_image_comparison import image_comparison
 import matplotlib.pyplot as plt
-import joblib
+import dill
 from dataclasses import dataclass
 from typing import List, Tuple
 
@@ -33,11 +33,13 @@ class BaseResult:
         )
 
     def save_checkpoint(self, filename: str):
-        joblib.dump(self, filename)
+        with open(filename, 'wb') as f:
+            dill.dump(self, f)
 
     @classmethod
     def load_checkpoint(cls, filename: str) -> 'BaseResult':
-        return joblib.load(filename)
+        with open(filename, 'rb') as f:
+            return dill.load(f)
 
 # Image processing and comparison
 class ImageComparison:

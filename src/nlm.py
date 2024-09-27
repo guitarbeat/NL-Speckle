@@ -4,11 +4,11 @@ algorithm functions.
 """
 
 import numpy as np
-import streamlit as st
 from typing import Tuple, List, Dict
 from dataclasses import dataclass
-from functools import lru_cache
-from multiprocessing import Pool
+from functools import lru_cache, partial
+from multiprocessing import Pool, cpu_count
+from itertools import islice
 from src.utils import BaseResult
 
 # --- Patch Calculation Functions ---
@@ -125,39 +125,39 @@ def apply_nlm_to_image(
     NLstd_image = np.zeros_like(image)
     NLSC_xy_image = np.zeros_like(image)
     
-    use_full_image = st.session_state.get("use_full_image")
+    use_full_image = False  # Replace with appropriate logic to determine this value
 
     # Prepare arguments for parallel processing
-    args_list = []
-    for pixel in range(pixels_to_process):
-        x = processing_origin[1] + pixel // valid_width
-        y = processing_origin[0] + pixel % valid_width
-        if x < height and y < width:
-            args_list.append((x, y, image, patch_size, search_window_size, h, use_full_image))
+    args_list = (
+        (x, y, image, patch_size, search_window_size, h, use_full_image)
+        for pixel in range(pixels_to_process)
+        for x, y in [(processing_origin[1] + pixel // valid_width, processing_origin[0] + pixel % valid_width)]
+        if x < height and y < width
+    )
+
+    # Determine optimal chunk size and number of processes
+    chunk_size = max(1, pixels_to_process // (cpu_count() * 4))  # Adjust based on your specific use case
+    num_processes = min(cpu_count(), pixels_to_process // chunk_size)
 
     # Process in chunks
-    chunk_size = 1000  # Adjust this value based on your memory constraints
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-    with Pool() as pool:
-        for i in range(0, len(args_list), chunk_size):
-            chunk = args_list[i:i+chunk_size]
-            try:
-                results = pool.map(process_pixel, chunk)
-                for x, y, NLM_xy, C_xy, NLstd_xy, NLSC_xy, similarity_map in results:
-                    NLM_image[x, y] = NLM_xy
-                    NLstd_image[x, y] = NLstd_xy
-                    NLSC_xy_image[x, y] = NLSC_xy
-                    C_xy_image[x, y] = C_xy
-                    last_similarity_map = similarity_map  # This will be overwritten in each iteration
-                progress = (i + len(chunk)) / len(args_list)
-                progress_bar.progress(progress)
-                status_text.text(f"Processed {i + len(chunk)} pixels out of {len(args_list)}")
-            except Exception as e:
-                st.error(f"Error processing chunk starting at pixel {i}: {str(e)}")
-
-    progress_bar.empty()
-    status_text.empty()
+    with Pool(processes=num_processes) as pool:
+        try:
+            for i, result in enumerate(pool.imap(process_pixel, args_list, chunksize=chunk_size)):
+                x, y, NLM_xy, C_xy, NLstd_xy, NLSC_xy, similarity_map = result
+                NLM_image[x, y] = NLM_xy
+                NLstd_image[x, y] = NLstd_xy
+                NLSC_xy_image[x, y] = NLSC_xy
+                C_xy_image[x, y] = C_xy
+                last_similarity_map = similarity_map  # This will be overwritten in each iteration
+                
+                # You can implement a callback here for progress reporting
+                if (i + 1) % chunk_size == 0:
+                    progress = (i + 1) / pixels_to_process
+                    # Report progress (e.g., through a callback function)
+        except Exception as e:
+            # Log the error and re-raise
+            print(f"Error in apply_nlm_to_image: {str(e)}")
+            raise
 
     return NLM_image, NLstd_image, NLSC_xy_image, C_xy_image, last_similarity_map
 

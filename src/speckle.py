@@ -11,11 +11,11 @@ Functions:
 # Imports
 import streamlit as st
 import numpy as np
-from multiprocessing import Pool
+from multiprocessing import Pool, cpu_count
 from functools import partial
 from itertools import islice
 from dataclasses import dataclass
-from typing import List, Dict
+from typing import List, Dict, Tuple
 from src.utils import BaseResult
 
 # Helper functions
@@ -46,7 +46,7 @@ def process_pixel(args, image, kernel_size):
     return None
 
 # Main processing functions
-def apply_speckle_contrast(image, kernel_size, pixels_to_process, processing_origin):
+def apply_speckle_contrast(image: np.ndarray, kernel_size: int, pixels_to_process: int, processing_origin: Tuple[int, int]):
     """Applies speckle contrast to the given image using parallel processing."""
     if not isinstance(image, np.ndarray):
         raise TypeError(f"Expected numpy array, got {type(image)}")
@@ -66,29 +66,28 @@ def apply_speckle_contrast(image, kernel_size, pixels_to_process, processing_ori
     # Use partial to fix image and kernel_size arguments
     process_pixel_partial = partial(process_pixel, image=image, kernel_size=kernel_size)
 
-    # Process in chunks
-    chunk_size = 10000  # Adjust this value based on your memory constraints
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-    with Pool() as pool:
-        for i in range(0, pixels_to_process, chunk_size):
-            chunk = list(islice(args_list, chunk_size))
-            try:
-                results = pool.map(process_pixel_partial, chunk)
-                for result in results:
-                    if result:
-                        row, col, local_mean, local_std, sc = result
-                        mean_filter[row, col] = local_mean
-                        std_dev_filter[row, col] = local_std
-                        sc_filter[row, col] = sc
-                progress = (i + len(chunk)) / pixels_to_process
-                progress_bar.progress(progress)
-                status_text.text(f"Processed {i + len(chunk)} pixels out of {pixels_to_process}")
-            except Exception as e:
-                st.error(f"Error processing chunk starting at pixel {i}: {str(e)}")
+    # Determine optimal chunk size and number of processes
+    chunk_size = max(1, pixels_to_process // (cpu_count() * 4))  # Adjust based on your specific use case
+    num_processes = min(cpu_count(), pixels_to_process // chunk_size)
 
-    progress_bar.empty()
-    status_text.empty()
+    # Process in chunks
+    with Pool(processes=num_processes) as pool:
+        try:
+            for i, results in enumerate(pool.imap(process_pixel_partial, args_list, chunksize=chunk_size)):
+                if results:
+                    row, col, local_mean, local_std, sc = results
+                    mean_filter[row, col] = local_mean
+                    std_dev_filter[row, col] = local_std
+                    sc_filter[row, col] = sc
+                
+                # You can implement a callback here for progress reporting
+                if (i + 1) % chunk_size == 0:
+                    progress = (i + 1) / pixels_to_process
+                    # Report progress (e.g., through a callback function)
+        except Exception as e:
+            # Log the error and re-raise
+            print(f"Error in apply_speckle_contrast: {str(e)}")
+            raise
 
     return mean_filter, std_dev_filter, sc_filter
 

@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 from typing import List, Tuple, Dict, Any
 
 import numpy as np
-import joblib
+import dill
 import streamlit as st
 
 from src.nlm import process_nlm, NLMResult
@@ -44,13 +44,16 @@ class NLSpeckleResult:
 
     def save_checkpoint(self, filename: str):
         os.makedirs(os.path.dirname(filename), exist_ok=True)
-        joblib.dump(self, filename)
+        with open(filename, 'wb') as f:
+            # dill.dump(self, f)
+            dill.dump(self, f, protocol=dill.HIGHEST_PROTOCOL)
 
     @classmethod
     def load_checkpoint(cls, filename: str) -> 'NLSpeckleResult':
         if not os.path.exists(filename):
             raise FileNotFoundError(f"Checkpoint file not found: {filename}")
-        return joblib.load(filename)
+        with open(filename, 'rb') as f:
+            return dill.load(f)
 
     @classmethod
     def combine(cls, nlm_results: List[NLMResult], speckle_results: List[SpeckleResult], 
