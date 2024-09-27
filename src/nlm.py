@@ -6,9 +6,9 @@ algorithm functions.
 import numpy as np
 from typing import Tuple, List, Dict
 from dataclasses import dataclass
-from functools import lru_cache, partial
+from functools import lru_cache
 from multiprocessing import Pool, cpu_count
-from itertools import islice
+
 from src.utils import BaseResult
 
 # --- Patch Calculation Functions ---
@@ -152,7 +152,7 @@ def apply_nlm_to_image(
                 
                 # You can implement a callback here for progress reporting
                 if (i + 1) % chunk_size == 0:
-                    progress = (i + 1) / pixels_to_process
+                    (i + 1) / pixels_to_process
                     # Report progress (e.g., through a callback function)
         except Exception as e:
             # Log the error and re-raise
