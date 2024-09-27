@@ -6,8 +6,6 @@ It imports necessary utilities and plotting functions for image comparison.
 from typing import List
 
 import streamlit as st
-import numpy as np
-
 from src.plotting import prepare_comparison_images, run_technique
 from src.sidebar import SidebarUI
 from src.utils import ImageComparison
