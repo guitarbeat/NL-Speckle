@@ -147,7 +147,7 @@ class SidebarUI:
 
         col1, col2 = st.columns(2)
         with col1:
-            percentage = st.slider(
+            st.slider(
                 "Percentage",
                 min_value=1,
                 max_value=100,
@@ -156,7 +156,7 @@ class SidebarUI:
                 on_change=update_exact_count,
             )
         with col2:
-            exact_count = st.number_input(
+            st.number_input(
                 "Exact Pixels",
                 min_value=1,
                 max_value=total_pixels,
