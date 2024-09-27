@@ -11,6 +11,7 @@ import streamlit as st
 from src.formula import display_analysis_formula
 from src.classes import SpeckleResult, NLMResult
 from src.overlay import KernelConfig, add_overlays, VisualizationConfig, SearchWindowConfig
+from src.images import process_nl_speckle
 
 # Constants for Image Visualization
 SPECKLE_CONTRAST = "Speckle Contrast"
@@ -30,12 +31,9 @@ class ImageArray:
     data: np.ndarray
 
 def generate_plot_key(filter_name: str, plot_type: str) -> str:
-    base_key = filter_name.lower().replace(" ", "_")
-    return f"zoomed_{base_key}" if plot_type == "zoomed" else base_key
+    return f"{'zoomed_' if plot_type == 'zoomed' else ''}{filter_name.lower().replace(' ', '_')}"
 
-def create_process_params(
-    analysis_params: Dict[str, Any], technique: str, technique_params: Dict[str, Any]
-) -> Dict[str, Any]:
+def create_process_params(analysis_params: Dict[str, Any], technique: str, technique_params: Dict[str, Any]) -> Dict[str, Any]:
     common_params = {
         "kernel_size": st.session_state.get("kernel_size", 3),
         "pixels_to_process": analysis_params.get("pixels_to_process", 0),
@@ -108,9 +106,7 @@ def create_image_plot(plot_image: np.ndarray, config: VisualizationConfig) -> pl
     fig.tight_layout(pad=2)
     return fig
 
-def prepare_filter_options_and_parameters(
-    results: Any, last_processed_pixel: Tuple[int, int]
-) -> Tuple[Dict[str, np.ndarray], Dict[str, Any]]:
+def prepare_filter_options_and_parameters(results: Any, last_processed_pixel: Tuple[int, int]) -> Tuple[Dict[str, np.ndarray], Dict[str, Any]]:
     end_x, end_y = last_processed_pixel
     filter_options = results.get_filter_data()
     specific_params = {
@@ -124,16 +120,16 @@ def prepare_filter_options_and_parameters(
             specific_params[filter_name.lower().replace(" ", "_")] = filter_data[end_y, end_x]
 
     if hasattr(results, "filter_strength"):
-        specific_params |= {
+        specific_params.update({
             "filter_strength": results.filter_strength,
             "search_window_size": results.search_window_size,
-        }
+        })
     elif hasattr(results, "start_pixel_mean"):
-        specific_params |= {
+        specific_params.update({
             "start_pixel_mean": results.start_pixel_mean,
             "start_pixel_std_dev": results.start_pixel_std_dev,
             "start_pixel_speckle_contrast": results.start_pixel_speckle_contrast,
-        }
+        })
 
     return filter_options, specific_params
 
@@ -143,9 +139,8 @@ def prepare_comparison_images() -> Optional[Dict[str, np.ndarray]]:
     }
 
     for result_key in ["speckle_results", "nlm_results"]:
-        results = st.session_state.get(result_key)
-        if results is not None:
-            comparison_images |= results.get_filter_data()
+        if results := st.session_state.get(result_key):
+            comparison_images.update(results.get_filter_data())
 
     return comparison_images if len(comparison_images) > 1 else None
 
@@ -291,11 +286,9 @@ def visualize_analysis_results(viz_params: VisualizationConfig) -> None:
         viz_params.original_pixel_value,
     )
 
-def run_technique(
-    technique: str, tab: Any, analysis_params: Dict[str, Any], nl_speckle_result: Any
-) -> None:
-    technique_params = st.session_state.get(f"{technique}_params", {})
+def run_technique(technique: str, tab: Any, analysis_params: Dict[str, Any], nl_speckle_result: Any) -> None:
     show_per_pixel_processing = analysis_params.get("show_per_pixel_processing", False)
+    technique_params = st.session_state.get(f"{technique}_params", {})
 
     ui_placeholders = create_technique_ui_elements(technique, tab, show_per_pixel_processing)
     st.session_state[f"{technique}_placeholders"] = ui_placeholders
@@ -304,26 +297,22 @@ def run_technique(
 
     try:
         if nl_speckle_result is None:
-            st.warning(f"{technique.upper()} processing not started. Please initiate the analysis.")
+            # Use process_nl_speckle instead of ProcessingManager
+            nl_speckle_result = process_nl_speckle(
+                image=process_params["image_array"],
+                kernel_size=process_params["analysis_params"]["kernel_size"],
+                pixels_to_process=process_params["analysis_params"]["pixels_to_process"],
+                nlm_search_window_size=process_params["analysis_params"].get("search_window_size", 21),
+                nlm_h=process_params["analysis_params"].get("filter_strength", 10.0)
+            )
+
+        if nl_speckle_result is None:
+            st.warning(f"{technique.upper()} processing failed. Please check the logs for details.")
             return
 
-        if technique == "nlm":
-            if not hasattr(nl_speckle_result, 'nlm_result') or nl_speckle_result.nlm_result is None:
-                if hasattr(nl_speckle_result, 'speckle_result') and nl_speckle_result.speckle_result is not None:
-                    st.warning("NLM processing not complete. Showing partial results from Speckle analysis.")
-                    results = nl_speckle_result.speckle_result
-                else:
-                    st.warning("Neither NLM nor Speckle results are available. Please wait for processing to complete.")
-                    return
-            else:
-                results = nl_speckle_result.nlm_result
-        elif technique == "speckle":
-            if not hasattr(nl_speckle_result, 'speckle_result') or nl_speckle_result.speckle_result is None:
-                st.warning("Speckle processing not complete. Please wait.")
-                return
-            results = nl_speckle_result.speckle_result
-        else:
-            raise ValueError(f"Unknown technique: {technique}")
+        results = get_technique_results(technique, nl_speckle_result)
+        if results is None:
+            return
 
         st.session_state[f"{technique}_results"] = results
 
@@ -340,6 +329,21 @@ def run_technique(
 
     except (ValueError, TypeError, KeyError) as e:
         st.error(f"Error for {technique}: {str(e)}. Please check the logs for details.")
+
+def get_technique_results(technique: str, nl_speckle_result: Any) -> Optional[Union[NLMResult, SpeckleResult]]:
+    if technique not in ("nlm", "speckle"):
+        raise ValueError(f"Unknown technique: {technique}")
+
+    result_attr = f"{technique}_result"
+    if not hasattr(nl_speckle_result, result_attr) or getattr(nl_speckle_result, result_attr) is None:
+        if technique == "nlm" and hasattr(nl_speckle_result, 'speckle_result') and nl_speckle_result.speckle_result is not None:
+            st.warning("NLM processing not complete. Showing partial results from Speckle analysis.")
+            return nl_speckle_result.speckle_result
+        else:
+            st.warning(f"{technique.upper()} processing not complete. Please wait.")
+            return None
+
+    return getattr(nl_speckle_result, result_attr)
 
 def create_visualization_config(
     image_array: np.ndarray,

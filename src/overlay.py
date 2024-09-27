@@ -18,10 +18,10 @@ class KernelConfig:
     origin: Tuple[int, int]
     kernel_matrix: Optional[np.ndarray] = None
     outline_color: str = "red"
-    outline_width: float = 2.0
+    outline_width: float = 1
     grid_line_color: str = "red"
     grid_line_style: str = ":"
-    grid_line_width: float = 0.5
+    grid_line_width: float = 1
     center_pixel_color: str = "green"
     center_pixel_outline_width: float = 2.0
 
@@ -37,7 +37,7 @@ class SearchWindowConfig:
 @dataclass
 class PixelValueConfig:
     text_color: str = "red"
-    font_size: int = 15
+    font_size: int = 10
 
 
 @dataclass
@@ -99,6 +99,8 @@ def add_overlays(
 
     if config.zoom and config.show_per_pixel_processing:
         add_pixel_value_overlay(subplot, image, config)
+        add_kernel_rectangle(subplot, config)
+        add_kernel_grid_lines(subplot, config)
 
 
 
@@ -299,7 +301,7 @@ def add_pixel_value_overlay(
         subplot.text(
             j,
             i,
-            f"{image[i, j]:.2f}",
+            f"{int(image[i, j])}",
             ha="center",
             va="center",
             color=config.pixel_value.text_color,

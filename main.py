@@ -3,7 +3,7 @@ This module serves as the main entry point for the Streamlit application.
 It imports necessary utilities and plotting functions for image comparison.
 """
 
-from typing import List
+from typing import List, Dict, Any
 
 import streamlit as st
 from src.plotting import prepare_comparison_images, run_technique
@@ -33,6 +33,12 @@ def setup_streamlit_config():
 def setup_app():
     """Set up the main application components."""
     sidebar_params = setup_sidebar()
+    if sidebar_params is None:
+        st.warning("Please upload an image in the sidebar to begin.")
+        return
+    if sidebar_params.get("image_array") is None:
+        st.warning("No image data found. Please try uploading the image again.")
+        return
     tabs = setup_tabs()
     params = prepare_analysis_params(sidebar_params)
     
@@ -53,25 +59,19 @@ def setup_tabs():
 
 def prepare_analysis_params(sidebar_params):
     """Prepare the analysis parameters based on sidebar inputs."""
-    kernel_size = sidebar_params.get("kernel_size", 5)
-    
-    pixels_to_process = st.session_state.pixels_to_process  # Use this instead
-
-    params = {
+    return {
         "image_array": sidebar_params["image_array"],
         "show_per_pixel_processing": sidebar_params["show_per_pixel_processing"],
         "total_pixels": sidebar_params["image_array"].size,
-        "pixels_to_process": pixels_to_process,
+        "pixels_to_process": st.session_state.pixels_to_process,
         "image_dimensions": sidebar_params["image_array"].shape,
-        "kernel_size": kernel_size,
+        "kernel_size": sidebar_params.get("kernel_size", 5),
         "search_window_size": sidebar_params.get("search_window_size"),
         "filter_strength": sidebar_params.get("filter_strength"),
         "use_full_image": sidebar_params.get("use_full_image"),
     }
 
-    return params
-
-def process_image(params):
+def process_image(params: Dict[str, Any]) -> None:
     """Process the image using NL-Speckle."""
     nl_speckle_result = process_nl_speckle(
         image=params["image_array"],

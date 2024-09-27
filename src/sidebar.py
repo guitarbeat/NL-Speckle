@@ -8,6 +8,7 @@ import streamlit as st
 from PIL import Image
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
+from functools import lru_cache
 
 from src.config import AVAILABLE_COLOR_MAPS, PRELOADED_IMAGE_PATHS
 
@@ -76,6 +77,7 @@ class SidebarUI:
                 return SidebarUI._load_uploaded_image()
 
     @staticmethod
+    @lru_cache(maxsize=32)
     def _load_preloaded_image() -> Tuple[Optional[Image.Image], str]:
         selected_image = st.selectbox("Select Image", list(PRELOADED_IMAGE_PATHS.keys()))
         try:
@@ -221,11 +223,7 @@ class SidebarUI:
                 help="Enable Summed-Area Tables for faster Speckle Contrast calculation"
             )
 
-        image_np = np.array(image) / 255.0
-        if apply_gaussian_noise:
-            image_np = SidebarUI._apply_gaussian_noise(image_np, **noise_params)
-        if normalization_option == "Percentile":
-            image_np = SidebarUI._normalize_percentile(image_np)
+        image_np = SidebarUI._process_image(image, apply_gaussian_noise, noise_params, normalization_option)
 
         return {
             "image_np": image_np,
@@ -233,6 +231,15 @@ class SidebarUI:
             "normalization_option": normalization_option,
             "use_sat": use_sat,
         }
+
+    @staticmethod
+    def _process_image(image: Image.Image, apply_gaussian_noise: bool, noise_params: Dict[str, float], normalization_option: str) -> np.ndarray:
+        image_np = np.array(image) / 255.0
+        if apply_gaussian_noise:
+            image_np = SidebarUI._apply_gaussian_noise(image_np, **noise_params)
+        if normalization_option == "Percentile":
+            image_np = SidebarUI._normalize_percentile(image_np)
+        return image_np
 
     @staticmethod
     def _setup_gaussian_noise_params() -> Dict[str, float]:
@@ -272,49 +279,41 @@ class SidebarUI:
     @staticmethod
     def _nlm_options(image: Image.Image) -> Dict[str, Any]:
         with st.sidebar.expander("🔍 NLM Options", expanded=False):
-            try:
-                image_shape = image.size
-                max_search_window = min(101, *image_shape)
-                default_search_window = min(21, max_search_window)
-                use_whole_image = st.checkbox(
-                    "Use whole image as search window", value=True
-                )
+            image_shape = image.size
+            max_search_window = min(101, *image_shape)
+            default_search_window = min(21, max_search_window)
+            use_whole_image = st.checkbox(
+                "Use whole image as search window", value=True
+            )
 
-                if not use_whole_image:
-                    search_window_size = st.slider(
-                        "Search Window Size",
-                        min_value=3,
-                        max_value=max_search_window,
-                        value=default_search_window,
-                        step=2,
-                        help="Size of the search window for NLM (must be odd)",
-                    )
-                    search_window_size = (
-                        search_window_size
-                        if search_window_size % 2 == 1
-                        else search_window_size + 1
-                    )
-                else:
-                    search_window_size = max(image_shape)
+            search_window_size = SidebarUI._get_search_window_size(use_whole_image, max_search_window, default_search_window, image_shape)
 
-                filter_strength = st.slider(
-                    "Filter Strength (h)",
-                    min_value=0.1,
-                    max_value=100.0,
-                    value=10.0,
-                    step=0.1,
-                    format="%.1f",
-                    help="Filter strength for NLM (higher values mean more smoothing)",
-                )
-                return {
-                    "search_window_size": search_window_size,
-                    "filter_strength": filter_strength,
-                    "use_whole_image": use_whole_image,
-                }
-            except (ValueError, TypeError, KeyError) as e:
-                st.error(f"Error setting up NLM options: {e}")
-                return {
-                    "search_window_size": 21,
-                    "filter_strength": 10.0,
-                    "use_whole_image": False,
-                }
+            filter_strength = st.slider(
+                "Filter Strength (h)",
+                min_value=0.1,
+                max_value=100.0,
+                value=10.0,
+                step=0.1,
+                format="%.1f",
+                help="Filter strength for NLM (higher values mean more smoothing)",
+            )
+            return {
+                "search_window_size": search_window_size,
+                "filter_strength": filter_strength,
+                "use_whole_image": use_whole_image,
+            }
+
+    @staticmethod
+    def _get_search_window_size(use_whole_image: bool, max_search_window: int, default_search_window: int, image_shape: Tuple[int, int]) -> int:
+        if use_whole_image:
+            return max(image_shape)
+        
+        search_window_size = st.slider(
+            "Search Window Size",
+            min_value=3,
+            max_value=max_search_window,
+            value=default_search_window,
+            step=2,
+            help="Size of the search window for NLM (must be odd)",
+        )
+        return search_window_size if search_window_size % 2 == 1 else search_window_size + 1
