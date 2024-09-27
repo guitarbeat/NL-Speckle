@@ -277,7 +277,7 @@ class SidebarUI:
                 max_search_window = min(101, *image_shape)
                 default_search_window = min(21, max_search_window)
                 use_whole_image = st.checkbox(
-                    "Use whole image as search window", value=False
+                    "Use whole image as search window", value=True
                 )
 
                 if not use_whole_image:

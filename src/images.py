@@ -3,13 +3,17 @@ from dataclasses import dataclass, field
 from typing import List, Tuple, Dict, Any
 
 import numpy as np
-import dill
+
 import streamlit as st
 
 from src.nlm import process_nlm, NLMResult
 from src.speckle import process_speckle, SpeckleResult
 
+
+from dill import dumps, loads
+
 os.makedirs("checkpoints", exist_ok=True)
+
 
 @dataclass
 class NLSpeckleResult:
@@ -45,15 +49,18 @@ class NLSpeckleResult:
     def save_checkpoint(self, filename: str):
         os.makedirs(os.path.dirname(filename), exist_ok=True)
         with open(filename, 'wb') as f:
-            # dill.dump(self, f)
-            dill.dump(self, f, protocol=dill.HIGHEST_PROTOCOL)
+            # Use dill.dumps to serialize the entire object, including class definition
+            serialized_data = dumps(self, recurse=True)
+            f.write(serialized_data)
 
     @classmethod
     def load_checkpoint(cls, filename: str) -> 'NLSpeckleResult':
         if not os.path.exists(filename):
             raise FileNotFoundError(f"Checkpoint file not found: {filename}")
         with open(filename, 'rb') as f:
-            return dill.load(f)
+            # Use dill.loads to deserialize the object, including class definition
+            serialized_data = f.read()
+            return loads(serialized_data)
 
     @classmethod
     def combine(cls, nlm_results: List[NLMResult], speckle_results: List[SpeckleResult], 

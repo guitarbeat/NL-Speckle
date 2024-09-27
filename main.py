@@ -66,7 +66,7 @@ def prepare_analysis_params(sidebar_params):
         "kernel_size": kernel_size,
         "search_window_size": sidebar_params.get("search_window_size"),
         "filter_strength": sidebar_params.get("filter_strength"),
-        "use_full_image": sidebar_params.get("use_full_image", False),
+        "use_full_image": sidebar_params.get("use_full_image"),
     }
 
     return params

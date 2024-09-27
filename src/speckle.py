@@ -9,14 +9,14 @@ Functions:
 """
 
 # Imports
-import streamlit as st
 import numpy as np
 from multiprocessing import Pool, cpu_count
 from functools import partial
-from itertools import islice
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Dict, Tuple
 from src.utils import BaseResult
+from dill import dumps, loads
+import os
 
 # Helper functions
 def calculate_speckle_contrast(local_std, local_mean):
@@ -82,7 +82,7 @@ def apply_speckle_contrast(image: np.ndarray, kernel_size: int, pixels_to_proces
                 
                 # You can implement a callback here for progress reporting
                 if (i + 1) % chunk_size == 0:
-                    progress = (i + 1) / pixels_to_process
+                    (i + 1) / pixels_to_process
                     # Report progress (e.g., through a callback function)
         except Exception as e:
             # Log the error and re-raise
@@ -136,6 +136,8 @@ class SpeckleResult(BaseResult):
     mean_filter: np.ndarray
     std_dev_filter: np.ndarray
     speckle_contrast_filter: np.ndarray
+    # Add this line to exclude the class method from serialization
+    _combine: classmethod = field(default=None, repr=False, compare=False)
 
     @staticmethod
     def get_filter_options() -> List[str]:
@@ -161,5 +163,31 @@ class SpeckleResult(BaseResult):
         return cls(
             **combined_arrays,
             **BaseResult.combine(results).__dict__,
+        )
+
+    def save_checkpoint(self, filename: str):
+        os.makedirs(os.path.dirname(filename), exist_ok=True)
+        with open(filename, 'wb') as f:
+            serialized_data = dumps(self, recurse=True)
+            f.write(serialized_data)
+
+    @classmethod
+    def load_checkpoint(cls, filename: str) -> 'SpeckleResult':
+        if not os.path.exists(filename):
+            raise FileNotFoundError(f"Checkpoint file not found: {filename}")
+        with open(filename, 'rb') as f:
+            serialized_data = f.read()
+            return loads(serialized_data)
+
+    @classmethod
+    def empty_result(cls) -> "SpeckleResult":
+        return cls(
+            mean_filter=np.array([]),
+            std_dev_filter=np.array([]),
+            speckle_contrast_filter=np.array([]),
+            processing_end_coord=(0, 0),
+            kernel_size=0,
+            pixels_processed=0,
+            image_dimensions=(0, 0),
         )
 

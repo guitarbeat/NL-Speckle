@@ -8,7 +8,9 @@ from typing import Tuple, List, Dict
 from dataclasses import dataclass
 from functools import lru_cache
 from multiprocessing import Pool, cpu_count
-
+from dill import dumps, loads
+from dataclasses import field
+import os
 from src.utils import BaseResult
 
 # --- Patch Calculation Functions ---
@@ -214,6 +216,7 @@ def process_nlm(
 
 # --- Data Class for NLM Results ---
 
+
 @dataclass
 class NLMResult(BaseResult):
     nonlocal_means: np.ndarray
@@ -223,6 +226,8 @@ class NLMResult(BaseResult):
     search_window_size: int
     filter_strength: float
     last_similarity_map: np.ndarray
+    # Add this line to exclude the class method from serialization
+    _combine: classmethod = field(default=None, repr=False, compare=False)
 
     @staticmethod
     def get_filter_options() -> List[str]:
@@ -276,3 +281,17 @@ class NLMResult(BaseResult):
             filter_strength=0,
             last_similarity_map=np.array([]),
         )
+
+    def save_checkpoint(self, filename: str):
+        os.makedirs(os.path.dirname(filename), exist_ok=True)
+        with open(filename, 'wb') as f:
+            serialized_data = dumps(self, recurse=True)
+            f.write(serialized_data)
+
+    @classmethod
+    def load_checkpoint(cls, filename: str) -> 'NLMResult':
+        if not os.path.exists(filename):
+            raise FileNotFoundError(f"Checkpoint file not found: {filename}")
+        with open(filename, 'rb') as f:
+            serialized_data = f.read()
+            return loads(serialized_data)
