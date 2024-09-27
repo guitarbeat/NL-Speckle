@@ -10,7 +10,7 @@ from src.plotting import prepare_comparison_images, run_technique
 from src.sidebar import SidebarUI
 from src.utils import ImageComparison
 from src.config import APP_CONFIG
-from src.nl_speckle import process_nl_speckle
+from src.images import process_nl_speckle
 
 
 def main():

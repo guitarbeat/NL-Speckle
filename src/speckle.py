@@ -7,17 +7,15 @@ Functions:
     Apply speckle contrast to an image.
 """
 
-from dataclasses import dataclass
-from typing import List, Tuple, Dict
+
 import streamlit as st
 import numpy as np
 from multiprocessing import Pool
 from functools import partial
-import logging
 from itertools import islice
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from dataclasses import dataclass
+from typing import List, Dict
+from src.utils import BaseResult
 
 def calculate_speckle_contrast(local_std, local_mean):
     """
@@ -68,6 +66,8 @@ def apply_speckle_contrast(image, kernel_size, pixels_to_process, processing_ori
 
     # Process in chunks
     chunk_size = 10000  # Adjust this value based on your memory constraints
+    progress_bar = st.progress(0)
+    status_text = st.empty()
     with Pool() as pool:
         for i in range(0, pixels_to_process, chunk_size):
             chunk = list(islice(args_list, chunk_size))
@@ -79,13 +79,18 @@ def apply_speckle_contrast(image, kernel_size, pixels_to_process, processing_ori
                         mean_filter[row, col] = local_mean
                         std_dev_filter[row, col] = local_std
                         sc_filter[row, col] = sc
-                logger.info(f"Processed {i + len(chunk)} pixels out of {pixels_to_process}")
+                progress = (i + len(chunk)) / pixels_to_process
+                progress_bar.progress(progress)
+                status_text.text(f"Processed {i + len(chunk)} pixels out of {pixels_to_process}")
             except Exception as e:
-                logger.error(f"Error processing chunk starting at pixel {i}: {str(e)}")
+                st.error(f"Error processing chunk starting at pixel {i}: {str(e)}")
+
+    progress_bar.empty()
+    status_text.empty()
 
     return mean_filter, std_dev_filter, sc_filter
 
-def process_speckle(image, kernel_size, pixels_to_process):
+def process_speckle(image, kernel_size, pixels_to_process, start_pixel=0):
     try:
         if not isinstance(image, np.ndarray):
             image = np.array(image)
@@ -95,15 +100,21 @@ def process_speckle(image, kernel_size, pixels_to_process):
         valid_height, valid_width = height - kernel_size + 1, width - kernel_size + 1
         pixels_to_process = min(pixels_to_process, valid_height * valid_width)
 
+        # Calculate starting coordinates
+        start_y, start_x = divmod(start_pixel, valid_width)
+        start_y += half_kernel
+        start_x += half_kernel
+
         mean_filter, std_dev_filter, sc_filter = apply_speckle_contrast(
             image, 
             kernel_size, 
             pixels_to_process, 
-            (half_kernel, half_kernel)
+            (start_x, start_y)
         )
 
         # Calculate processing end coordinates
-        end_y, end_x = divmod(pixels_to_process - 1, valid_width)
+        end_pixel = start_pixel + pixels_to_process
+        end_y, end_x = divmod(end_pixel - 1, valid_width)
         end_y, end_x = end_y + half_kernel, end_x + half_kernel
         processing_end = (min(end_x, width - 1), min(end_y, height - 1))
 
@@ -120,19 +131,12 @@ def process_speckle(image, kernel_size, pixels_to_process):
         st.error(f"Error in process_speckle: {type(e).__name__}: {str(e)}")
         raise
 
-# --- Data Class for Results ---
-@dataclass
-class SpeckleResult:
-    """Represents the result of a speckle filter, containing mean and standard
-    deviation filters."""
 
+@dataclass
+class SpeckleResult(BaseResult):
     mean_filter: np.ndarray
     std_dev_filter: np.ndarray
     speckle_contrast_filter: np.ndarray
-    processing_end_coord: Tuple[int, int]
-    kernel_size: int
-    pixels_processed: int
-    image_dimensions: Tuple[int, int]
 
     @staticmethod
     def get_filter_options() -> List[str]:
@@ -145,28 +149,18 @@ class SpeckleResult:
             "Speckle Contrast": self.speckle_contrast_filter,
         }
 
-    def get_last_processed_coordinates(self) -> Tuple[int, int]:
-        """Get the last processed pixel coordinates."""
-        return self.processing_end_coord
-
     @classmethod
-    def combine(cls, results):
+    def combine(cls, results: List["SpeckleResult"]) -> "SpeckleResult":
         if not results:
             raise ValueError("No results to combine")
 
-        combined_mean = np.maximum.reduce([r.mean_filter for r in results])
-        combined_std = np.maximum.reduce([r.std_dev_filter for r in results])
-        combined_sc = np.maximum.reduce([r.speckle_contrast_filter for r in results])
-
-        total_pixels = sum(r.pixels_processed for r in results)
-        max_coord = max(r.processing_end_coord for r in results)
+        combined_arrays = {
+            attr: np.maximum.reduce([getattr(r, attr) for r in results])
+            for attr in ['mean_filter', 'std_dev_filter', 'speckle_contrast_filter']
+        }
 
         return cls(
-            mean_filter=combined_mean,
-            std_dev_filter=combined_std,
-            speckle_contrast_filter=combined_sc,
-            processing_end_coord=max_coord,
-            kernel_size=results[0].kernel_size,
-            pixels_processed=total_pixels,
-            image_dimensions=results[0].image_dimensions
+            **combined_arrays,
+            **BaseResult.combine(results).__dict__,
         )
+

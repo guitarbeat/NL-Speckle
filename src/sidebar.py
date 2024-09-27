@@ -144,7 +144,6 @@ class SidebarUI:
             st.session_state.percentage_slider = int(
                 (st.session_state.exact_pixel_count / total_pixels) * 100
             )
-
         col1, col2 = st.columns(2)
         with col1:
             st.slider(

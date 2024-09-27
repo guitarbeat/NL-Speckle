@@ -3,17 +3,14 @@ This module provides the implementation of Non-Local Means (NLM) denoising
 algorithm functions.
 """
 
-from dataclasses import dataclass
-from typing import List, Tuple, Dict
+from typing import Tuple
 import numpy as np
 import streamlit as st
-
+from dataclasses import dataclass
+from typing import List, Dict
+from src.utils import BaseResult
 from functools import lru_cache
 from multiprocessing import Pool
-import logging
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 # --- Patch Calculation Functions ---
 
@@ -173,6 +170,8 @@ def apply_nlm_to_image(
 
     # Process in chunks
     chunk_size = 1000  # Adjust this value based on your memory constraints
+    progress_bar = st.progress(0)
+    status_text = st.empty()
     with Pool() as pool:
         for i in range(0, len(args_list), chunk_size):
             chunk = args_list[i:i+chunk_size]
@@ -184,9 +183,14 @@ def apply_nlm_to_image(
                     NLSC_xy_image[x, y] = NLSC_xy
                     C_xy_image[x, y] = C_xy
                     last_similarity_map = similarity_map  # This will be overwritten in each iteration
-                logger.info(f"Processed {i + len(chunk)} pixels out of {len(args_list)}")
+                progress = (i + len(chunk)) / len(args_list)
+                progress_bar.progress(progress)
+                status_text.text(f"Processed {i + len(chunk)} pixels out of {len(args_list)}")
             except Exception as e:
-                logger.error(f"Error processing chunk starting at pixel {i}: {str(e)}")
+                st.error(f"Error processing chunk starting at pixel {i}: {str(e)}")
+
+    progress_bar.empty()
+    status_text.empty()
 
     return NLM_image, NLstd_image, NLSC_xy_image, C_xy_image, last_similarity_map
 
@@ -247,75 +251,64 @@ def process_nlm(
 # --- Data Class for NLM Results ---
 
 @dataclass
-class NLMResult:
-    """
-    Data class to hold the result of the NLM denoising algorithm.
-    """
-
+class NLMResult(BaseResult):
     nonlocal_means: np.ndarray
     normalization_factors: np.ndarray
     nonlocal_std: np.ndarray
     nonlocal_speckle: np.ndarray
-    processing_end_coord: Tuple[int, int]
-    kernel_size: int
-    pixels_processed: int
-    image_dimensions: Tuple[int, int]
     search_window_size: int
     filter_strength: float
     last_similarity_map: np.ndarray
 
-    @classmethod
-    def combine(cls, results: List["NLMResult"]) -> "NLMResult":
-        if not results:
-            raise ValueError("No results to combine")
-
-        combined_nlm = np.maximum.reduce([r.nonlocal_means for r in results])
-        combined_norm = np.maximum.reduce([r.normalization_factors for r in results])
-        combined_std = np.maximum.reduce([r.nonlocal_std for r in results])
-        combined_speckle = np.maximum.reduce([r.nonlocal_speckle for r in results])
-
-        total_pixels = sum(r.pixels_processed for r in results)
-        max_coord = max(r.processing_end_coord for r in results)
-
-        return cls(
-            nonlocal_means=combined_nlm,
-            normalization_factors=combined_norm,
-            nonlocal_std=combined_std,
-            nonlocal_speckle=combined_speckle,
-            processing_end_coord=max_coord,
-            kernel_size=results[0].kernel_size,
-            pixels_processed=total_pixels,
-            image_dimensions=results[0].image_dimensions,
-            search_window_size=results[0].search_window_size,
-            filter_strength=results[0].filter_strength,
-            last_similarity_map=results[-1].last_similarity_map
-        )
-
     @staticmethod
     def get_filter_options() -> List[str]:
-        """
-        Returns the available filter options for NLM results.
-
-        Returns:
-            List[str]: The list of available filter options
-        """
-        return ["Non-Local Means", "Normalization Factors", "Last Similarity Map", "Non-Local Standard Deviation", "Non-Local Speckle"]
+        return [
+            "Non-Local Means",
+            "Normalization Factors",
+            "Last Similarity Map",
+            "Non-Local Standard Deviation",
+            "Non-Local Speckle",
+        ]
 
     def get_filter_data(self) -> Dict[str, np.ndarray]:
-        """
-        Provides the NLM result data as a dictionary.
-
-        Returns:
-            Dict[str, np.ndarray]: The result data
-        """
         return {
             "Non-Local Means": self.nonlocal_means,
             "Normalization Factors": self.normalization_factors,
             "Last Similarity Map": self.last_similarity_map,
             "Non-Local Standard Deviation": self.nonlocal_std,
-            "Non-Local Speckle": self.nonlocal_speckle
+            "Non-Local Speckle": self.nonlocal_speckle,
         }
 
-    def get_last_processed_coordinates(self) -> Tuple[int, int]:
-        """Get the last processed pixel coordinates."""
-        return self.processing_end_coord
+    @classmethod
+    def combine(cls, results: List["NLMResult"]) -> "NLMResult":
+        if not results:
+            return cls.empty_result()
+
+        combined_arrays = {
+            attr: np.maximum.reduce([getattr(r, attr) for r in results])
+            for attr in ['nonlocal_means', 'normalization_factors', 'nonlocal_std', 'nonlocal_speckle']
+        }
+
+        return cls(
+            **combined_arrays,
+            **BaseResult.combine(results).__dict__,
+            search_window_size=results[0].search_window_size,
+            filter_strength=results[0].filter_strength,
+            last_similarity_map=results[-1].last_similarity_map,
+        )
+
+    @classmethod
+    def empty_result(cls) -> "NLMResult":
+        return cls(
+            nonlocal_means=np.array([]),
+            normalization_factors=np.array([]),
+            nonlocal_std=np.array([]),
+            nonlocal_speckle=np.array([]),
+            processing_end_coord=(0, 0),
+            kernel_size=0,
+            pixels_processed=0,
+            image_dimensions=(0, 0),
+            search_window_size=0,
+            filter_strength=0,
+            last_similarity_map=np.array([]),
+        )

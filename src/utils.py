@@ -6,6 +6,39 @@ import numpy as np
 import streamlit as st
 from streamlit_image_comparison import image_comparison
 import matplotlib.pyplot as plt
+import joblib
+from dataclasses import dataclass
+from typing import List, Tuple
+
+
+@dataclass
+class BaseResult:
+    processing_end_coord: Tuple[int, int]
+    kernel_size: int
+    pixels_processed: int
+    image_dimensions: Tuple[int, int]
+
+    def get_last_processed_coordinates(self) -> Tuple[int, int]:
+        return self.processing_end_coord
+
+    @classmethod
+    def combine(cls, results: List["BaseResult"]) -> "BaseResult":
+        if not results:
+            raise ValueError("No results to combine")
+        return cls(
+            processing_end_coord=max(r.processing_end_coord for r in results),
+            kernel_size=results[0].kernel_size,
+            pixels_processed=sum(r.pixels_processed for r in results),
+            image_dimensions=results[0].image_dimensions,
+        )
+
+    def save_checkpoint(self, filename: str):
+        joblib.dump(self, filename)
+
+    @classmethod
+    def load_checkpoint(cls, filename: str) -> 'BaseResult':
+        return joblib.load(filename)
+
 
 class ImageComparison:
     """Class for handling image comparison functionality."""
