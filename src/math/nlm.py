@@ -6,7 +6,6 @@ algorithm functions.
 import numpy as np
 from typing import Tuple
 from functools import lru_cache
-from multiprocessing import Pool, cpu_count
 
 # --- Patch Calculation Functions ---
 
@@ -169,65 +168,4 @@ def process_nlm_pixel(args):
     return x, y, NLM_xy, C_xy, NLstd_xy, NLSC_xy, similarity_map
 
 
-
-
-def apply_nlm_to_image(
-    image: np.ndarray,
-    patch_size: int,
-    search_window_size: int,
-    h: float,
-    pixels_to_process: int,
-    processing_origin: Tuple[int, int],
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    height, width = image.shape
-    valid_width = width - patch_size + 1
-
-    NLM_image = np.zeros_like(image)
-    C_xy_image = np.zeros_like(image)
-    NLstd_image = np.zeros_like(image)
-    NLSC_xy_image = np.zeros_like(image)
-
-    use_full_image = False  # Replace with appropriate logic to determine this value
-
-    # Prepare arguments for parallel processing
-    args_list = [
-        (
-            pixel,
-            image,
-            patch_size,
-            search_window_size,
-            h,
-            use_full_image,
-            processing_origin,
-            height,
-            width,
-            valid_width,
-        )
-        for pixel in range(pixels_to_process)
-    ]
-
-    # Determine optimal chunk size and number of processes
-    chunk_size = max(1, pixels_to_process // (cpu_count() * 4))
-    num_processes = min(cpu_count(), pixels_to_process // chunk_size)
-
-    # Process using Pool.map
-    with Pool(processes=num_processes) as pool:
-        try:
-            results = pool.map(process_nlm_pixel, args_list, chunksize=chunk_size)
-
-            for result in results:
-                x, y, NLM_xy, C_xy, NLstd_xy, NLSC_xy, similarity_map = result
-                NLM_image[x, y] = NLM_xy
-                NLstd_image[x, y] = NLstd_xy
-                NLSC_xy_image[x, y] = NLSC_xy
-                C_xy_image[x, y] = C_xy
-                # This will be overwritten in each iteration
-                last_similarity_map = similarity_map
-
-        except Exception as e:
-            # Log the error and re-raise
-            print(f"Error in apply_nlm_to_image: {str(e)}")
-            raise
-
-    return NLM_image, NLstd_image, NLSC_xy_image, C_xy_image, last_similarity_map
 

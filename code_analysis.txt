@@ -1,0 +1,101 @@
+Processing: ./main.py
+Vulture output:
+Pyflakes output:
+-------------------
+Processing: ./src/sidebar.py
+Vulture output:
+src/sidebar.py:16: unused function 'setup_sidebar' (60% confidence)
+src/sidebar.py:75: unused attribute 'src/sidebar.py:16: unused function 'setup_sidebar' (60% confidence)
+src/sidebar.py:75: unused attribute 'image_file' (60% confidence)
+src/sidebar.py:88: unused attribute 'image_file' (60% confidence)' (60% confidence)
+src/sidebar.py:88: unused attribute 'image_file' (60% confidence)
+Pyflakes output:
+-------------------
+Processing: ./src/config.py
+Vulture output:
+src/config.py:7: unused variable 'DEFAULT_SPECKLE_VIEW' (60% confidence)
+src/config.py:8: unused variable 'DEFAULT_NLM_VIEW' (60% confidence)
+src/config.py:11: unused variable 'AVAILABLE_COLOR_MAPS' (60% confidence)
+src/config.py:23: unused variable 'PRELOADED_IMAGE_PATHS' (60% confidence)
+src/config.py:30: unused variable 'APP_CONFIG' (60% confidence)
+Pyflakes output:
+-------------------
+Processing: ./src/plotting.py
+Vulture output:
+src/plotting.py:145: unused function 'run_technique' (60% confidence)
+src/plotting.py:206: unused function 'prepare_comparison_images' (60% confidence)
+Pyflakes output:
+-------------------
+Processing: ./src/math/formula.py
+Vulture output:
+src/math/formula.py:150: unused function 'display_analysis_formula' (60% confidence)
+Pyflakes output:
+-------------------
+Processing: ./src/math/speckle.py
+Vulture output:
+src/math/speckle.py:53: unused function 'apply_speckle_contrast' (60% confidence)
+Pyflakes output:
+-------------------
+Processing: ./src/math/nlm.py
+Vulture output:
+src/math/nlm.py:174: unused function 'apply_nlm_to_image' (60% confidence)
+Pyflakes output:
+-------------------
+Processing: ./src/utils.py
+Vulture output:
+src/utils.py:10: unused function 'handle_image_comparison' (60% confidence)
+Pyflakes output:
+-------------------
+Processing: ./src/images.py
+Vulture output:
+src/images.py:145: unused function 'process_images' (60% confidence)
+Pyflakes output:
+-------------------
+Processing: ./src/classes.py
+Vulture output:
+src/classes.py:14: unused variable 'size' (60% confidence)
+src/classes.py:15: unused variable 'kernel_matrix' (60% confidence)
+src/classes.py:16: unused variable 'outline_color' (60% confidence)
+src/classes.py:17: unused variable 'outline_width' (60% confidence)
+src/classes.py:18: unused variable 'grid_line_color' (60% confidence)
+src/classes.py:19: unused variable 'grid_line_style' (60% confidence)
+src/classes.py:20: unused variable 'grid_line_width' (60% confidence)
+src/classes.py:21: unused variable 'center_pixel_color' (60% confidence)
+src/classes.py:22: unused variable 'center_pixel_outline_width' (60% confidence)
+src/classes.py:27: unused variable 'size' (60% confidence)
+src/classes.py:28: unused variable 'outline_color' (60% confidence)
+src/classes.py:29: unused variable 'outline_width' (60% confidence)
+src/classes.py:30: unused variable 'use_full_image' (60% confidence)
+src/classes.py:35: unused variable 'text_color' (60% confidence)
+src/classes.py:36: unused variable 'font_size' (60% confidence)
+src/classes.py:39: unused class 'VisualizationConfig' (60% confidence)
+src/classes.py:45: unused variable 'zoom' (60% confidence)
+src/classes.py:46: unused variable 'show_kernel' (60% confidence)
+src/classes.py:47: unused variable 'show_per_pixel_processing' (60% confidence)
+src/classes.py:48: unused variable 'image_array' (60% confidence)
+src/classes.py:49: unused variable 'analysis_params' (60% confidence)
+src/classes.py:51: unused variable 'ui_placeholders' (60% confidence)
+src/classes.py:52: unused variable 'last_processed_pixel' (60% confidence)
+src/classes.py:53: unused variable 'original_pixel_value' (60% confidence)
+src/classes.py:54: unused variable 'technique' (60% confidence)
+src/classes.py:55: unused variable 'title' (60% confidence)
+src/classes.py:56: unused variable 'figure_size' (60% confidence)
+src/classes.py:57: unused variable 'kernel' (60% confidence)
+src/classes.py:58: unused variable 'search_window' (60% confidence)
+src/classes.py:59: unused variable 'pixel_value' (60% confidence)
+src/classes.py:60: unused variable 'processing_end' (60% confidence)
+src/classes.py:101: unused method 'save_checkpoint' (60% confidence)
+src/classes.py:122: unused method 'load_checkpoint' (60% confidence)
+src/classes.py:259: unused method 'merge' (60% confidence)
+src/classes.py:327: unused method 'merge' (60% confidence)
+src/classes.py:351: unused class 'NLSpeckleResult' (60% confidence)
+src/classes.py:363: unused method 'add_image' (60% confidence)
+src/classes.py:376: unused property 'filter_options' (60% confidence)
+src/classes.py:435: unused function 'get_checkpoint_path' (60% confidence)
+Pyflakes output:
+-------------------
+Processing: ./src/draw/overlay.py
+Vulture output:
+src/draw/overlay.py:16: unused function 'add_overlays' (60% confidence)
+Pyflakes output:
+-------------------

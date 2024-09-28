@@ -5,6 +5,7 @@ mathematical concepts.
 """
 
 import streamlit as st
+import numpy as np
 
 NLM_FORMULA_CONFIG = {
     "title": "Non-Local Means (NLM) Denoising",
@@ -48,7 +49,7 @@ The patch is constructed by considering pixels within the range $[-{half_kernel}
             "formula": (
                 r"\quad\quad\text{{Patch }} P_{{{x},{y}}} \text{{ centered at: }}({{x}},{{y}})"
                 r"\\\\"
-                r"{kernel_matrix}"
+                r"{kernel_matrix_latex}"
             ),
             "explanation": (
                 r"The ${kernel_size} \times {kernel_size}$ patch $P_{{x,y}}$ centered at $({{x}}, {{y}})$ "
@@ -119,7 +120,7 @@ The patch is constructed by considering pixels within the range $[-{half_kernel}
             "formula": r"\text{{Kernel Size: }} {kernel_size} \times {kernel_size}"
             r"\quad\quad\text{{Centered at pixel: }}({x}, {y})"
             r"\\\\"
-            "{kernel_matrix}",
+            "{kernel_matrix_latex}",
             "explanation": r"Analysis of a ${kernel_size}\times{kernel_size}$ neighborhood centered at pixel $({x},{y})$. The matrix shows pixel values, with the central value (in bold) being the processed pixel.",
         },
 
@@ -148,11 +149,11 @@ The patch is constructed by considering pixels within the range $[-{half_kernel}
 
 
 def display_analysis_formula(
-    specific_params,
-    placeholders,
+    variables,
+    ui_placeholders,
     analysis_type,
-    end_x,
-    end_y,
+    x,
+    y,
     kernel_size,
     kernel_matrix,
     original_value,
@@ -161,30 +162,27 @@ def display_analysis_formula(
     Display the analysis formula.
 
     Args:
-        specific_params: A dictionary of specific parameters for the formula.
-        placeholders: A dictionary of Streamlit placeholders. analysis_type: The
-        type of analysis ('nlm' or 'speckle'). end_x: The x-coordinate of the
-        end point. end_y: The y-coordinate of the end point. kernel_size: The
-        size of the kernel. kernel_matrix: The kernel matrix. original_value:
-        The original value.
+        variables: A dictionary of variables for the formula.
+        ui_placeholders: A dictionary of Streamlit placeholders.
+        analysis_type: The type of analysis ('nlm' or 'speckle').
+        x: The x-coordinate of the end point.
+        y: The y-coordinate of the end point.
+        kernel_size: The size of the kernel.
+        kernel_matrix: The kernel matrix (numpy array).
+        original_value: The original value.
     """
-    variables = {
-        "x": end_x,
-        "y": end_y,
-        "input_x": end_x,
-        "input_y": end_y,
+    formula_config = {
         "kernel_size": kernel_size,
-        "kernel_matrix": kernel_matrix,
+        "kernel_matrix": kernel_matrix,  # This should be the numpy array
+        "x": x,
+        "y": y,
         "original_value": original_value,
-        "total_pixels": kernel_size * kernel_size,
     }
-
-    variables.update(specific_params)
 
     formula_config = (
         NLM_FORMULA_CONFIG if analysis_type == "nlm" else SPECKLE_FORMULA_CONFIG
     )
-    if formula_placeholder := placeholders.get("formula"):
+    if formula_placeholder := ui_placeholders.get("formula"):
         display_formula(formula_config, variables, formula_placeholder)
     else:
         st.warning("Formula placeholder not found.")
@@ -192,19 +190,19 @@ def display_analysis_formula(
 # Prepares and adjusts variables for formula display based on the analysis type
 
 
-def prepare_variables(kwargs, analysis_type):
+def prepare_variables(variables, analysis_type):
     """
     Prepares and adjusts variables for formula display based on the analysis
     type.
 
     Args:
-        kwargs: The input variables. analysis_type: The type of analysis ('nlm'
+        variables: The input variables. analysis_type: The type of analysis ('nlm'
         or 'speckle').
 
     Returns:
         The prepared variables.
     """
-    variables = kwargs.copy()
+    variables = variables.copy()
     kernel_size = variables.get("kernel_size", 3)
 
     if "input_x" not in variables or "input_y" not in variables:
@@ -212,9 +210,19 @@ def prepare_variables(kwargs, analysis_type):
         variables["input_y"] = variables["y"] - kernel_size // 2
 
     if "kernel_matrix" in variables:
-        variables["kernel_matrix"] = generate_kernel_matrix(
-            kernel_size, variables["kernel_matrix"]
-        )
+        kernel_matrix = variables["kernel_matrix"]
+        if isinstance(kernel_matrix, np.ndarray):
+            variables["kernel_matrix_latex"] = generate_kernel_matrix(
+                kernel_matrix,
+                variables["kernel_size"],
+                variables["x"] - variables["half_kernel"],
+                variables["y"] - variables["half_kernel"]
+            )
+        else:
+            variables["kernel_matrix_latex"] = str(kernel_matrix)
+        
+        # Keep the original kernel_matrix as well
+        variables["kernel_matrix_array"] = kernel_matrix
 
     if analysis_type == "nlm":
         variables["patch_size"] = kernel_size
@@ -298,23 +306,26 @@ def display_additional_formulas(config, variables):
 # Generates a LaTeX representation of the kernel matrix
 
 
-def generate_kernel_matrix(kernel_size, kernel_matrix):
+def generate_kernel_matrix(kernel_matrix, kernel_size, x, y):
     """
     Generates a LaTeX representation of the kernel matrix.
 
     Args:
-        kernel_size: The size of the kernel. kernel_matrix: The kernel matrix.
+        kernel_matrix: The kernel matrix as a numpy array.
+        kernel_size: The size of the kernel.
+        x: The x-coordinate of the center pixel.
+        y: The y-coordinate of the center pixel.
 
     Returns:
         The LaTeX representation of the kernel matrix.
     """
     center = kernel_size // 2
-    center_value = kernel_matrix[center, center]
+    kernel_matrix[center, center]
 
     matrix_rows = [
         " & ".join(
             (
-                rf"\mathbf{{{center_value:.3f}}}"
+                rf"\mathbf{{{kernel_matrix[i, j]:.3f}}}"
                 if i == center and j == center
                 else f"{kernel_matrix[i, j]:.3f}"
             )

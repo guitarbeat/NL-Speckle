@@ -1,80 +1,26 @@
 """
-This module defines data classes and functions for visualizing image processing techniques
-with overlays such as kernels, search windows, and pixel values.
+overlay.py: A module for adding visual overlays to image processing visualizations.
+
+This module is designed to be imported and used in other scripts. It provides
+functions for adding kernels, search windows, and pixel value overlays to
+matplotlib subplots.
+
+Usage:
+    from src.draw.overlay import add_overlays, add_kernel_rectangle, ...
+
+Do not run this file directly.
 """
 
 import itertools
-from dataclasses import dataclass, field
-from typing import Any, Dict, Optional, Tuple, List
+from typing import Tuple, List
 
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.collections import LineCollection
-
-# Data Classes
-@dataclass
-class KernelConfig:
-    size: int
-    origin: Tuple[int, int]
-    kernel_matrix: Optional[np.ndarray] = None
-    outline_color: str = "red"
-    outline_width: float = 1
-    grid_line_color: str = "red"
-    grid_line_style: str = ":"
-    grid_line_width: float = 1
-    center_pixel_color: str = "green"
-    center_pixel_outline_width: float = 2.0
-
-
-@dataclass
-class SearchWindowConfig:
-    size: Optional[int] = None
-    outline_color: str = "blue"
-    outline_width: float = 2.0
-    use_full_image: bool = True
-
-
-@dataclass
-class PixelValueConfig:
-    text_color: str = "red"
-    font_size: int = 10
-
-
-@dataclass
-class VisualizationConfig:
-    """Holds configuration for image visualization and analysis settings."""
-
-    vmin: Optional[float] = None
-    vmax: Optional[float] = None
-    zoom: bool = False
-    show_kernel: bool = False
-    show_per_pixel_processing: bool = False
-    image_array: Optional[np.ndarray] = None
-    analysis_params: Dict[str, Any] = field(default_factory=dict)
-    results: Optional[Any] = None
-    ui_placeholders: Dict[str, Any] = field(default_factory=dict)
-    last_processed_pixel: Optional[Tuple[int, int]] = None
-    original_pixel_value: float = 0.0  # Changed from original_value to original_pixel_value
-    technique: str = ""
-    title: str = ""
-    figure_size: Tuple[int, int] = (8, 8)
-    kernel: KernelConfig = field(default_factory=KernelConfig)
-    search_window: SearchWindowConfig = field(default_factory=SearchWindowConfig)
-    pixel_value: PixelValueConfig = field(default_factory=PixelValueConfig)
-    processing_end: Tuple[int, int] = field(default_factory=tuple)
-    pixels_to_process: int = 0
-
-    def __post_init__(self):
-        """Post-initialization validation."""
-        self._validate_vmin_vmax()
-
-    def _validate_vmin_vmax(self):
-        """Ensure vmin is not greater than vmax."""
-        if self.vmin is not None and self.vmax is not None and self.vmin > self.vmax:
-            raise ValueError("vmin cannot be greater than vmax.")
-
-
+from src.classes import VisualizationConfig
 # Main overlay function
+
+
 def add_overlays(
     subplot: plt.Axes, image: np.ndarray, config: VisualizationConfig
 ) -> None:
@@ -93,7 +39,7 @@ def add_overlays(
 
             if config.technique == "nlm" and config.search_window.size is not None:
                 add_search_window_overlay(subplot, image, config)
-        
+
         # Always highlight the center pixel, regardless of the image type
         highlight_center_pixel(subplot, config)
 
@@ -101,9 +47,6 @@ def add_overlays(
         add_pixel_value_overlay(subplot, image, config)
         add_kernel_rectangle(subplot, config)
         add_kernel_grid_lines(subplot, config)
-
-
-
 
 
 # Kernel-related functions
@@ -257,8 +200,8 @@ def get_search_window_dims(
     Calculate the dimensions of the search window.
 
     Args:
-        image (np.ndarray): The image being plotted. config
-        (VisualizationConfig): Configuration parameters.
+        image (np.ndarray): The image being plotted.
+        config (VisualizationConfig): Configuration parameters.
 
     Returns:
         Tuple[float, float, float, float]: The left, top, width, and height of
@@ -268,7 +211,7 @@ def get_search_window_dims(
 
     image_height, image_width = image.shape[:2]
 
-    if st.session_state.get("use_full_image"):
+    if st.session_state.get("use_full_image", False):  # Added default value
         return -0.5, -0.5, image_width, image_height
 
     half_window_size = config.search_window.size // 2
@@ -283,6 +226,7 @@ def get_search_window_dims(
     window_height = window_bottom - window_top
 
     return window_left, window_top, window_width, window_height
+
 
 # Pixel value-related functions
 def add_pixel_value_overlay(

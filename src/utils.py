@@ -7,7 +7,7 @@ import streamlit as st
 from streamlit_image_comparison import image_comparison
 import matplotlib.pyplot as plt
 
-def handle_image_comparison(tab, cmap_name, images):
+def handle_image_comparison(tab, images):
     with tab:
         st.header("Image Comparison")
         
@@ -20,7 +20,7 @@ def handle_image_comparison(tab, cmap_name, images):
         
         if image_choice_1 and image_choice_2:
             if image_choice_1 != image_choice_2:
-                compare_images(images, image_choice_1, image_choice_2, cmap_name)
+                compare_images(images, image_choice_1, image_choice_2)
             else:
                 st.error("Please select two different images for comparison.")
         else:
@@ -45,11 +45,11 @@ def get_image_choices(available_images):
     
     return image_choice_1, image_choice_2
 
-def compare_images(images, image_choice_1, image_choice_2, cmap_name):
+def compare_images(images, image_choice_1, image_choice_2):
     try:
         img1, img2 = images[image_choice_1], images[image_choice_2]
         
-        normalized_images = normalize_and_colorize([img1, img2], cmap_name)
+        normalized_images = normalize_and_colorize([img1, img2])
         if normalized_images:
             img1_uint8, img2_uint8 = normalized_images
             
@@ -63,14 +63,14 @@ def compare_images(images, image_choice_1, image_choice_2, cmap_name):
             st.subheader("Selected Images")
             st.image([img1_uint8, img2_uint8], caption=[image_choice_1, image_choice_2])
             
-            display_difference_map(img1, img2, cmap_name)
+            display_difference_map(img1, img2)
         else:
             st.error("Error processing images for comparison.")
     except Exception as e:
         st.error(f"Error in image comparison: {str(e)}")
         st.exception(e)
 
-def normalize_and_colorize(images, cmap_name):
+def normalize_and_colorize(images):
     try:
         normalized_images = []
         for img in images:
@@ -78,17 +78,17 @@ def normalize_and_colorize(images, cmap_name):
                 normalized = img
             else:
                 normalized = (img - np.min(img)) / (np.max(img) - np.min(img))
-            colored = plt.get_cmap(cmap_name)(normalized)[:, :, :3]
+            colored = plt.get_cmap(st.session_state.color_map)(normalized)[:, :, :3]
             normalized_images.append((colored * 255).astype(np.uint8))
         return normalized_images
     except Exception as e:
         st.error(f"Error in normalizing and colorizing images: {str(e)}")
         return None
 
-def display_difference_map(img1, img2, cmap_name):
+def display_difference_map(img1, img2):
     try:
         diff_map = np.abs(img1 - img2)
-        normalized_diff = normalize_and_colorize([diff_map], cmap_name)
+        normalized_diff = normalize_and_colorize([diff_map])
         if normalized_diff:
             st.image(normalized_diff[0], caption="Difference Map")
         else:
