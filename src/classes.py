@@ -3,7 +3,24 @@ from dataclasses import dataclass, field
 from abc import ABC, abstractmethod
 from typing import List, Tuple, Dict, Any, Optional, Type
 
-# Data Classes
+from src.math.formula import display_analysis_formula, prepare_variables
+from src.draw.overlay import add_overlays
+
+import matplotlib.pyplot as plt
+import streamlit as st
+
+###############################################################################
+#                              Basic Data Classes                             #
+###############################################################################
+
+@dataclass
+class ImageArray:
+    data: np.ndarray
+
+###############################################################################
+#                         Visualization Configuration                         #
+###############################################################################
+
 @dataclass
 class KernelVisualizationConfig:
     size: int
@@ -16,13 +33,6 @@ class KernelVisualizationConfig:
     center_pixel_color: str = "green"
     center_pixel_outline_width: float = 2.0
     origin: Tuple[int, int] = (0, 0)
-
-    def __post_init__(self):
-        if self.kernel_matrix is not None and not isinstance(self.kernel_matrix, np.ndarray):
-            raise TypeError("kernel_matrix must be a numpy array or None")
-        
-        if self.kernel_matrix is not None and self.kernel_matrix.shape != (self.size, self.size):
-            raise ValueError(f"kernel_matrix shape {self.kernel_matrix.shape} does not match size {self.size}")
 
 @dataclass
 class SearchWindowConfig:
@@ -69,7 +79,9 @@ class VisualizationConfig:
         if self.vmin is not None and self.vmax is not None and self.vmin > self.vmax:
             raise ValueError("vmin cannot be greater than vmax.")
 
-# --- Base Classes ---
+###############################################################################
+#                              Base Classes                                   #
+###############################################################################
 
 class ResultCombinationError(Exception):
     """Exception raised when there's an error combining results."""
@@ -114,255 +126,106 @@ class BaseResult(ABC):
     def filter_data(self) -> Dict[str, np.ndarray]:
         pass
 
-@dataclass
-class NLMResult(BaseResult):
-    nonlocal_means: np.ndarray
-    normalization_factors: np.ndarray
-    nonlocal_std: np.ndarray
-    nonlocal_speckle: np.ndarray
-    search_window_size: int
-    filter_strength: float
-    last_similarity_map: np.ndarray
+###############################################################################
+#                             Utility Functions                               #
+###############################################################################
 
-    @staticmethod
-    def get_filter_options() -> List[str]:
-        return [
-            "Non-Local Means",
-            "Normalization Factors",
-            "Last Similarity Map",
-            "Non-Local Standard Deviation",
-            "Non-Local Speckle",
-        ]
 
-    @property
-    def filter_data(self) -> Dict[str, np.ndarray]:
-        return {
-            "Non-Local Means": self.nonlocal_means,
-            "Normalization Factors": self.normalization_factors,
-            "Last Similarity Map": self.last_similarity_map,
-            "Non-Local Standard Deviation": self.nonlocal_std,
-            "Non-Local Speckle": self.nonlocal_speckle,
-        }
+def get_zoomed_image_section(image: np.ndarray, center_x: int, center_y: int, kernel_size: int):
+    half_zoom = kernel_size // 2
+    top, bottom = max(0, center_y - half_zoom), min(image.shape[0], center_y + half_zoom + 1)
+    left, right = max(0, center_x - half_zoom), min(image.shape[1], center_x + half_zoom + 1)
+    return image[top:bottom, left:right], center_x - left, center_y - top
 
-    @classmethod
-    def combine(class_: Type["NLMResult"], results: List["NLMResult"]) -> "NLMResult":
-        if not results:
-            return class_.empty_result()
 
-        try:
-            combined_arrays: Dict[str, np.ndarray] = {
-                attr: np.maximum.reduce([getattr(r, attr) for r in results])
-                for attr in [
-                    "nonlocal_means",
-                    "normalization_factors",
-                    "nonlocal_std",
-                    "nonlocal_speckle",
-                ]
-            }
-        except ValueError as e:
-            raise ResultCombinationError(f"Error combining NLM results: {str(e)}")
-
-        return class_(
-            **combined_arrays,
-            **BaseResult.combine(results).__dict__,
-            search_window_size=results[0].search_window_size,
-            filter_strength=results[0].filter_strength,
-            last_similarity_map=results[-1].last_similarity_map,
-        )
-
-    @classmethod
-    def empty_result(class_: Type["NLMResult"]) -> "NLMResult":
-        return class_(
-            nonlocal_means=np.array([]),
-            normalization_factors=np.array([]),
-            nonlocal_std=np.array([]),
-            nonlocal_speckle=np.array([]),
-            processing_end_coord=(0, 0),
-            kernel_size=0,
-            pixels_processed=0,
-            image_dimensions=(0, 0),
-            search_window_size=0,
-            filter_strength=0,
-            last_similarity_map=np.array([]),
-        )
-
-    @classmethod
-    def merge(
-        class_: Type["NLMResult"], new_result: "NLMResult", existing_result: "NLMResult"
-    ) -> "NLMResult":
-        merged_arrays: Dict[str, np.ndarray] = {
-            attr: np.maximum(getattr(new_result, attr), getattr(existing_result, attr))
-            for attr in [
-                "nonlocal_means",
-                "normalization_factors",
-                "nonlocal_std",
-                "nonlocal_speckle",
-            ]
-        }
-
-        return class_(
-            **merged_arrays,
-            processing_end_coord=max(
-                new_result.processing_end_coord, existing_result.processing_end_coord
-            ),
-            kernel_size=new_result.kernel_size,
-            pixels_processed=max(
-                new_result.pixels_processed, existing_result.pixels_processed
-            ),
-            image_dimensions=new_result.image_dimensions,
-            search_window_size=new_result.search_window_size,
-            filter_strength=new_result.filter_strength,
-            last_similarity_map=new_result.last_similarity_map,
-        )
-
-@dataclass
-class SpeckleResult(BaseResult):
-    mean_filter: np.ndarray
-    std_dev_filter: np.ndarray
-    speckle_contrast_filter: np.ndarray
-
-    @staticmethod
-    def get_filter_options() -> List[str]:
-        return ["Mean Filter", "Std Dev Filter", "Speckle Contrast"]
-
-    @property
-    def filter_data(self) -> Dict[str, np.ndarray]:
-        return {
-            "Mean Filter": self.mean_filter,
-            "Std Dev Filter": self.std_dev_filter,
-            "Speckle Contrast": self.speckle_contrast_filter,
-        }
-
-    @classmethod
-    def combine(
-        class_: Type["SpeckleResult"], results: List["SpeckleResult"]
-    ) -> "SpeckleResult":
-        if not results:
-            raise ResultCombinationError("No Speckle results provided for combination")
-
-        try:
-            combined_arrays: Dict[str, np.ndarray] = {
-                attr: np.maximum.reduce([getattr(r, attr) for r in results])
-                for attr in ["mean_filter", "std_dev_filter", "speckle_contrast_filter"]
-            }
-        except ValueError as e:
-            raise ResultCombinationError(f"Error combining Speckle results: {str(e)}")
-
-        return class_(
-            **combined_arrays,
-            **BaseResult.combine(results).__dict__,
-        )
-
-    @classmethod
-    def merge(
-        class_: Type["SpeckleResult"],
-        new_result: "SpeckleResult",
-        existing_result: "SpeckleResult",
-    ) -> "SpeckleResult":
-        merged_arrays: Dict[str, np.ndarray] = {
-            attr: np.maximum(getattr(new_result, attr), getattr(existing_result, attr))
-            for attr in ["mean_filter", "std_dev_filter", "speckle_contrast_filter"]
-        }
-
-        return class_(
-            **merged_arrays,
-            processing_end_coord=max(
-                new_result.processing_end_coord, existing_result.processing_end_coord
-            ),
-            kernel_size=new_result.kernel_size,
-            pixels_processed=max(
-                new_result.pixels_processed, existing_result.pixels_processed
-            ),
-            image_dimensions=new_result.image_dimensions,
-        )
-
-@dataclass
-class NLSpeckleResult:
-    nlm_result: NLMResult
-    speckle_result: SpeckleResult
-    additional_images: Dict[str, np.ndarray] = field(default_factory=dict)
-    processing_end_coord: Tuple[int, int] = field(default=(0, 0))
-    kernel_size: int = field(default=0)
-    pixels_processed: int = field(default=0)
-    image_dimensions: Tuple[int, int] = field(default=(0, 0))
-    nlm_search_window_size: int = field(default=0)
-    nlm_filter_strength: float = field(default=0.0)
-
-    def __post_init__(self):
-        # Ensure pixels_processed is consistent across results
-        self.pixels_processed = max(self.pixels_processed, self.nlm_result.pixels_processed, self.speckle_result.pixels_processed)
-        self.nlm_result.pixels_processed = self.pixels_processed
-        self.speckle_result.pixels_processed = self.pixels_processed
-
-    def add_image(self, name: str, image: np.ndarray) -> None:
-        self.additional_images[name] = image
-
-    @property
-    def all_images(self) -> Dict[str, np.ndarray]:
-        images: Dict[str, np.ndarray] = {}
-        for prefix, result in [
-            ("NLM", self.nlm_result),
-            ("Speckle", self.speckle_result),
-        ]:
-            images.update({f"{prefix} {k}": v for k, v in result.filter_data.items()})
-        return {**images, **self.additional_images}
-
-    @property
-    def filter_options(self) -> List[str]:
-        return [
-            f"{prefix} {option}"
-            for prefix, result in [
-                ("NLM", self.nlm_result),
-                ("Speckle", self.speckle_result),
-            ]
-            for option in result.get_filter_options()
-        ] + list(self.additional_images.keys())
-
-    @property
-    def filter_data(self) -> Dict[str, Any]:
-        return self.all_images
-
-    @classmethod
-    def combine(
-        class_: Type["NLSpeckleResult"],
-        nlm_results: List[NLMResult],
-        speckle_results: List[SpeckleResult],
-        kernel_size: int,
-        pixels_processed: int,
-        image_dimensions: Tuple[int, int],
-        nlm_search_window_size: int,
-        nlm_filter_strength: float,
-    ) -> "NLSpeckleResult":
-        if not nlm_results or not speckle_results:
-            raise ResultCombinationError(
-                "Both NLM and Speckle results must be provided for combination"
+def visualize_image(image: np.ndarray, placeholder, *, config: VisualizationConfig) -> None:
+    try:
+        if config.zoom:
+            image, new_center_x, new_center_y = get_zoomed_image_section(
+                image, config.last_processed_pixel[0], config.last_processed_pixel[1], config.kernel.size
             )
+            config.last_processed_pixel = (new_center_x, new_center_y)
 
-        combined_nlm = NLMResult.combine(nlm_results)
-        combined_speckle = SpeckleResult.combine(speckle_results)
+        fig, ax = plt.subplots(1, 1, figsize=config.figure_size)
+        ax.imshow(image, vmin=config.vmin, vmax=config.vmax, cmap=st.session_state.color_map)
+        ax.set_title(config.title)
+        ax.axis("off")
+        add_overlays(ax, image, config)
+        fig.tight_layout(pad=2)
+        placeholder.pyplot(fig)
+        plt.close(fig)
+    except Exception as e:
+        placeholder.error(f"An error occurred while visualizing the image: {e}. Please check the logs for details.")
 
-        return class_(
-            nlm_result=combined_nlm,
-            speckle_result=combined_speckle,
-            processing_end_coord=class_._get_max_processing_end_coord(
-                nlm_results, speckle_results
-            ),
-            kernel_size=kernel_size,
-            pixels_processed=pixels_processed,  # Use the provided pixels_processed
-            image_dimensions=image_dimensions,
-            nlm_search_window_size=nlm_search_window_size,
-            nlm_filter_strength=nlm_filter_strength,
-        )
 
-    @staticmethod
-    def _get_max_processing_end_coord(
-        nlm_results: List[NLMResult], speckle_results: List[SpeckleResult]
-    ) -> Tuple[int, int]:
-        all_coords: List[Tuple[int, int]] = [
-            result.processing_end_coord for result in nlm_results + speckle_results
-        ]
-        return max(
-            all_coords, key=lambda coord: coord[0] * 10000 + coord[1]
-        )  # Prioritize y-coordinate
+def visualize_analysis_results(viz_params: VisualizationConfig) -> None:
+    filter_options = viz_params.results.filter_data
+    filter_options["Original Image"] = viz_params.image_array.data
+    selected_filters = st.session_state.get(f"{viz_params.technique}_selected_filters", [])
 
-# --- Utility Functions ---
+    for filter_name in selected_filters:
+        if filter_name in filter_options:
+            filter_data = filter_options[filter_name]
+            for plot_type in ["main", "zoomed"]:
+                plot_key = f"{'zoomed_' if plot_type == 'zoomed' else ''}{filter_name.lower().replace(' ', '_')}"
+                if plot_key in viz_params.ui_placeholders and (plot_type != "zoomed" or viz_params.show_per_pixel_processing):
+                    config = VisualizationConfig(
+                        **{**viz_params.__dict__,
+                           "vmin": None if filter_name == "Original Image" else np.min(filter_data),
+                           "vmax": None if filter_name == "Original Image" else np.max(filter_data),
+                           "zoom": (plot_type == "zoomed"),
+                           "show_kernel": (viz_params.show_per_pixel_processing if plot_type == "main" else True),
+                           "show_per_pixel_processing": (plot_type == "zoomed"),
+                           "title": f"Zoomed-In {filter_name}" if plot_type == "zoomed" else filter_name}
+                    )
+                    visualize_image(filter_data, viz_params.ui_placeholders[plot_key], config=config)
+        else:
+            # Display a placeholder or loading message for unavailable filters
+            plot_key = f"{filter_name.lower().replace(' ', '_')}"
+            if plot_key in viz_params.ui_placeholders:
+                viz_params.ui_placeholders[plot_key].info(f"{filter_name} is not yet available.")
+
+    last_x, last_y = viz_params.last_processed_pixel
+    specific_params = {
+        "kernel_size": viz_params.results.kernel_size,
+        "pixels_processed": viz_params.results.pixels_processed,
+        "total_pixels": viz_params.results.kernel_size**2,
+        "x": last_x,
+        "y": last_y,
+        "image_height": viz_params.image_array.data.shape[0],
+        "image_width": viz_params.image_array.data.shape[1],
+        "half_kernel": viz_params.kernel.size // 2,
+        "valid_height": viz_params.image_array.data.shape[0] - viz_params.kernel.size + 1,
+        "valid_width": viz_params.image_array.data.shape[1] - viz_params.kernel.size + 1,
+        "search_window_size": viz_params.search_window.size,
+        "kernel_matrix": viz_params.kernel.kernel_matrix,
+        "original_value": viz_params.original_pixel_value,
+        "analysis_type": viz_params.technique,
+    }
+
+    if viz_params.technique == "nlm":
+        specific_params.update({
+            "filter_strength": viz_params.results.filter_strength,
+            "search_window_size": viz_params.results.search_window_size,
+            "nlm_value": viz_params.results.nonlocal_means[last_y, last_x],
+        })
+    else:  # speckle
+        specific_params.update({
+            "mean": viz_params.results.mean_filter[last_y, last_x],
+            "std": viz_params.results.std_dev_filter[last_y, last_x],
+            "sc": viz_params.results.speckle_contrast_filter[last_y, last_x],
+        })
+
+    specific_params = prepare_variables(specific_params, viz_params.technique)
+
+    display_analysis_formula(
+        specific_params,
+        viz_params.ui_placeholders,
+        viz_params.technique,
+        last_x,
+        last_y,
+        viz_params.kernel.size,
+        viz_params.kernel.kernel_matrix,
+        viz_params.original_pixel_value,
+    )
+

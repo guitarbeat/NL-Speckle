@@ -17,12 +17,11 @@ from typing import Tuple, List
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.collections import LineCollection
-from src.classes import VisualizationConfig
-# Main overlay function
+
 
 
 def add_overlays(
-    subplot: plt.Axes, image: np.ndarray, config: VisualizationConfig
+    subplot: plt.Axes, image: np.ndarray, config
 ) -> None:
     """
     Add overlays to the plot based on the technique and configuration.
@@ -50,7 +49,7 @@ def add_overlays(
 
 
 # Kernel-related functions
-def add_kernel_rectangle(subplot: plt.Axes, config: VisualizationConfig) -> None:
+def add_kernel_rectangle(subplot: plt.Axes, config) -> None:
     """
     Add the main kernel rectangle to the subplot.
 
@@ -71,7 +70,7 @@ def add_kernel_rectangle(subplot: plt.Axes, config: VisualizationConfig) -> None
     )
 
 
-def add_kernel_grid_lines(subplot: plt.Axes, config: VisualizationConfig) -> None:
+def add_kernel_grid_lines(subplot: plt.Axes, config) -> None:
     """
     Add grid lines to the kernel in the subplot.
 
@@ -90,7 +89,7 @@ def add_kernel_grid_lines(subplot: plt.Axes, config: VisualizationConfig) -> Non
     )
 
 
-def highlight_center_pixel(subplot: plt.Axes, config: VisualizationConfig) -> None:
+def highlight_center_pixel(subplot: plt.Axes, config) -> None:
     """
     Highlight the center pixel of the kernel in the subplot.
 
@@ -115,7 +114,7 @@ def highlight_center_pixel(subplot: plt.Axes, config: VisualizationConfig) -> No
     )
 
 
-def get_kernel_top_left(config: VisualizationConfig) -> Tuple[float, float]:
+def get_kernel_top_left(config) -> Tuple[float, float]:
     """
     Calculate the top-left coordinates of the kernel.
 
@@ -132,7 +131,7 @@ def get_kernel_top_left(config: VisualizationConfig) -> Tuple[float, float]:
 
 
 def generate_kernel_grid_lines(
-    config: VisualizationConfig,
+    config,
 ) -> List[List[Tuple[float, float]]]:
     """
     Generate the grid lines for the kernel.
@@ -168,7 +167,7 @@ def generate_kernel_grid_lines(
 
 # Search window-related functions
 def add_search_window_overlay(
-    subplot: plt.Axes, image: np.ndarray, config: VisualizationConfig
+    subplot: plt.Axes, image: np.ndarray, config
 ) -> None:
     """
     Add search window overlay for the NLM technique to the subplot.
@@ -194,14 +193,14 @@ def add_search_window_overlay(
 
 
 def get_search_window_dims(
-    image: np.ndarray, config: VisualizationConfig
+    image: np.ndarray, config
 ) -> Tuple[float, float, float, float]:
     """
     Calculate the dimensions of the search window.
 
     Args:
-        image (np.ndarray): The image being plotted.
-        config (VisualizationConfig): Configuration parameters.
+        image (np.ndarray): The image being plotted. config
+        (VisualizationConfig): Configuration parameters.
 
     Returns:
         Tuple[float, float, float, float]: The left, top, width, and height of
@@ -211,7 +210,7 @@ def get_search_window_dims(
 
     image_height, image_width = image.shape[:2]
 
-    if st.session_state.get("use_full_image", False):  # Added default value
+    if st.session_state.get("use_full_image"):
         return -0.5, -0.5, image_width, image_height
 
     half_window_size = config.search_window.size // 2
@@ -230,7 +229,7 @@ def get_search_window_dims(
 
 # Pixel value-related functions
 def add_pixel_value_overlay(
-    subplot: plt.Axes, image: np.ndarray, config: VisualizationConfig
+    subplot: plt.Axes, image: np.ndarray, config
 ) -> None:
     """
     Add pixel value overlay for the zoomed view to the subplot.

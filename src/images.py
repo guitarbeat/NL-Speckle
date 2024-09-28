@@ -1,211 +1,202 @@
+from dataclasses import dataclass, field
 import numpy as np
 import streamlit as st
-from typing import Tuple, Optional, Callable
+from typing import Any, Dict, List, Tuple, Optional, Type, Union
 from contextlib import contextmanager
-from multiprocessing import Pool, cpu_count
-import logging
+from functools import partial
 
-from src.classes import NLSpeckleResult, NLMResult, SpeckleResult, ResultCombinationError
-from src.math.speckle import calculate_speckle_contrast
-from src.math.nlm import process_nlm_pixel
+from src.classes import (ResultCombinationError, 
+                         ImageArray, KernelVisualizationConfig, 
+                         SearchWindowConfig, VisualizationConfig,
+                         visualize_analysis_results)
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from src.math.speckle import process_speckle_contrast, SpeckleResult
+from src.math.nlm import process_non_local_means, NLMResult
+from src.utils import validate_input, calculate_processing_end
 
-# Utility functions
-def validate_input(image: np.ndarray, kernel_size: int, pixel_count: int, search_window_size: Optional[int] = None, filter_strength: Optional[float] = None):
-    if not isinstance(image, np.ndarray) or image.ndim != 2:
-        raise ValueError("Image must be a 2D numpy array.")
-    if not isinstance(kernel_size, int) or kernel_size <= 0 or kernel_size > min(image.shape) or kernel_size % 2 == 0:
-        raise ValueError("Invalid kernel_size. Must be a positive odd integer not larger than the smallest image dimension.")
-    if not isinstance(pixel_count, int) or pixel_count <= 0:
-        raise ValueError("pixel_count must be a positive integer.")
-    if search_window_size is not None and (not isinstance(search_window_size, int) or search_window_size <= 0):
-        raise ValueError("search_window_size must be a positive integer.")
-    if filter_strength is not None and (not isinstance(filter_strength, (int, float)) or filter_strength <= 0):
-        raise ValueError("filter_strength must be a positive number.")
-    if image.dtype != np.float32:
-        raise ValueError("Image must be of dtype float32.")
+###############################################################################
+#                              Result Classes                                 #
+###############################################################################
 
-def calculate_processing_end(width: int, height: int, kernel_size: int, pixel_count: int) -> Tuple[int, int]:
-    valid_width = width - kernel_size + 1
-    if valid_width <= 0:
-        raise ValueError("Invalid valid_width calculated. Check image dimensions and kernel_size.")
-    end_y, end_x = divmod(pixel_count - 1, valid_width)
-    half_kernel = kernel_size // 2
-    return (min(end_x + half_kernel, width - 1), min(end_y + half_kernel, height - 1))
+@dataclass
+class ImageResult:
+    nlm_result: NLMResult
+    speckle_result: SpeckleResult
+    additional_images: Dict[str, np.ndarray] = field(default_factory=dict)
+    image_dimensions: Tuple[int, int] = field(default=(0, 0))
 
-@contextmanager
-def create_processing_status():
-    with st.status("Processing image...", expanded=True) as status:
-        progress_bar = st.progress(0)
-        yield status, progress_bar
+    @property
+    def processing_end_coord(self) -> Tuple[int, int]:
+        return max(self.nlm_result.processing_end_coord, self.speckle_result.processing_end_coord)
 
-# Speckle contrast functions
-def apply_speckle_contrast(
-    image: np.ndarray,
-    kernel_size: int,
-    pixels_to_process: int,
-    processing_origin: Tuple[int, int],
-    progress_callback: Optional[Callable[[float], None]] = None
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    logger.info(f"Speckle: Processing {pixels_to_process} pixels")
+    @property
+    def kernel_size(self) -> int:
+        return self.nlm_result.kernel_size  # Assuming both results use the same kernel size
 
-    height, width = image.shape
-    mean_filter = np.zeros_like(image)
-    std_dev_filter = np.zeros_like(image)
-    sc_filter = np.zeros_like(image)
-    valid_width = width - kernel_size + 1
+    @property
+    def pixels_processed(self) -> int:
+        return max(self.nlm_result.pixels_processed, self.speckle_result.pixels_processed)
 
-    half_kernel = kernel_size // 2
-    update_interval = max(1, pixels_to_process // 1000)
+    @property
+    def nlm_search_window_size(self) -> int:
+        return self.nlm_result.search_window_size
 
-    for pixel in range(pixels_to_process):
-        row = processing_origin[1] + pixel // valid_width
-        col = processing_origin[0] + pixel % valid_width
-        
-        if row < height and col < width:
-            row_start, row_end = max(0, row - half_kernel), min(height, row + half_kernel + 1)
-            col_start, col_end = max(0, col - half_kernel), min(width, col + half_kernel + 1)
+    @property
+    def nlm_filter_strength(self) -> float:
+        return self.nlm_result.filter_strength
 
-            local_window = image[row_start:row_end, col_start:col_end]
-            local_mean = np.nanmean(local_window)
-            local_std = np.nanstd(local_window)
-            sc = calculate_speckle_contrast(local_std, local_mean)
+    def add_image(self, name: str, image: np.ndarray) -> None:
+        self.additional_images[name] = image
 
-            mean_filter[row, col] = local_mean
-            std_dev_filter[row, col] = local_std
-            sc_filter[row, col] = sc
+    @property
+    def all_images(self) -> Dict[str, np.ndarray]:
+        images = {
+            f"NLM {k}": v for k, v in self.nlm_result.filter_data.items()
+        }
+        images.update({
+            f"Speckle {k}": v for k, v in self.speckle_result.filter_data.items()
+        })
+        return {**images, **self.additional_images}
 
-            if progress_callback and pixel % update_interval == 0:
-                progress_callback((pixel + 1) / pixels_to_process)
-
-    if progress_callback:
-        progress_callback(1.0)
-
-    return mean_filter, std_dev_filter, sc_filter
-
-def compute_speckle_contrast(image: np.ndarray, kernel_size: int, pixel_count: int, start_pixel: int = 0,
-                             progress_callback: Optional[Callable[[float], None]] = None) -> SpeckleResult:
-    validate_input(image, kernel_size, pixel_count)
-    height, width = image.shape
-    half_kernel = kernel_size // 2
-    valid_height, valid_width = height - kernel_size + 1, width - kernel_size + 1
-    pixel_count = min(pixel_count, valid_height * valid_width)
-    start_y, start_x = divmod(start_pixel, valid_width)
-    start_coords = (start_x + half_kernel, start_y + half_kernel)
-    try:
-        mean_image, std_dev_image, speckle_contrast_image = apply_speckle_contrast(
-            image, kernel_size, pixel_count, start_coords,
-            lambda p: progress_callback(p) if progress_callback else None)
-    except Exception as e:
-        raise ResultCombinationError(f"Error in apply_speckle_contrast: {str(e)}") from e
-    end_pixel = start_pixel + pixel_count
-    end_y, end_x = divmod(end_pixel - 1, valid_width)
-    processing_end = (min(end_x + half_kernel, width - 1), min(end_y + half_kernel, height - 1))
-    if progress_callback:
-        progress_callback(1.0)
-    return SpeckleResult(mean_filter=mean_image, std_dev_filter=std_dev_image,
-                         speckle_contrast_filter=speckle_contrast_image,
-                         processing_end_coord=processing_end, kernel_size=kernel_size,
-                         pixels_processed=pixel_count, image_dimensions=(height, width))
-
-# Non-local means functions
-def apply_nlm_to_image(
-    image: np.ndarray,
-    patch_size: int,
-    search_window_size: int,
-    h: float,
-    pixels_to_process: int,
-    processing_origin: Tuple[int, int],
-    progress_callback: Optional[Callable[[float], None]] = None
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    logger.info(f"NLM: Processing {pixels_to_process} pixels")
-
-    height, width = image.shape
-    valid_width = width - patch_size + 1
-    
-    NLM_image = np.zeros_like(image)
-    C_xy_image = np.zeros_like(image)
-    NLstd_image = np.zeros_like(image)
-    NLSC_xy_image = np.zeros_like(image)
-
-    use_full_image = st.session_state.get("use_full_image", False)
-    args_list = [
-        (
-            pixel,
-            image,
-            patch_size,
-            search_window_size,
-            h,
-            use_full_image,
-            processing_origin,
-            height,
-            width,
-            valid_width,
+    @property
+    def filter_options(self) -> List[str]:
+        return (
+            [f"NLM {option}" for option in self.nlm_result.get_filter_options()] +
+            [f"Speckle {option}" for option in self.speckle_result.get_filter_options()] +
+            list(self.additional_images.keys())
         )
-        for pixel in range(pixels_to_process)
-    ]
 
-    chunk_size = max(1, pixels_to_process // (cpu_count() * 4))
-    num_processes = min(cpu_count(), pixels_to_process // chunk_size)
-    update_interval = max(1, pixels_to_process // 1000)
+    @property
+    def filter_data(self) -> Dict[str, Any]:
+        return self.all_images
 
-    with Pool(processes=num_processes) as pool:
-        try:
-            for i, result in enumerate(pool.imap(process_nlm_pixel, args_list, chunksize=chunk_size)):
-                x, y, NLM_xy, C_xy, NLstd_xy, NLSC_xy, similarity_map = result
-                NLM_image[x, y] = NLM_xy
-                NLstd_image[x, y] = NLstd_xy
-                NLSC_xy_image[x, y] = NLSC_xy
-                C_xy_image[x, y] = C_xy
-                last_similarity_map = similarity_map
 
-                if progress_callback and i % update_interval == 0:
-                    progress_callback((i + 1) / pixels_to_process)
+###############################################################################
+#                           Technique Execution                               #
+###############################################################################
 
-        except Exception as e:
-            logger.error(f"Error in apply_nlm_to_image: {str(e)}")
-            raise
+def process_and_visualize_image(technique: str, tab: st.delta_generator.DeltaGenerator) -> None:
+    if "image_array" not in st.session_state or st.session_state.image_array is None:
+        st.warning("No image has been uploaded. Please upload an image before processing.")
+        return
 
-    if progress_callback:
-        progress_callback(1.0)
+    show_per_pixel_processing = st.session_state.get("show_per_pixel", False)
+    ui_placeholders = create_technique_ui(technique, tab, show_per_pixel_processing)
+    st.session_state[f"{technique}_placeholders"] = ui_placeholders
 
-    return NLM_image, NLstd_image, NLSC_xy_image, C_xy_image, last_similarity_map
-
-def compute_non_local_means(image: np.ndarray, kernel_size: int, pixel_count: int,
-                            search_window_size: int = 21, filter_strength: float = 10.0,
-                            start_pixel: int = 0,
-                            progress_callback: Optional[Callable[[float], None]] = None) -> NLMResult:
-    validate_input(image, kernel_size, pixel_count, search_window_size, filter_strength)
-    height, width = image.shape
-    half_kernel = kernel_size // 2
-    valid_height, valid_width = height - kernel_size + 1, width - kernel_size + 1
-    total_valid_pixels = valid_height * valid_width
-    end_pixel = min(start_pixel + pixel_count, total_valid_pixels)
-    pixel_count = end_pixel - start_pixel
-    start_y, start_x = divmod(start_pixel, valid_width)
-    start_coords = (start_x + half_kernel, start_y + half_kernel)
     try:
-        nlm_image, nl_std_image, nl_speckle_image, normalization_factors, last_similarity_map = apply_nlm_to_image(
-            image, kernel_size, search_window_size, filter_strength,
-            pixel_count, start_coords, lambda p: progress_callback(p) if progress_callback else None)
-    except Exception as e:
-        raise ResultCombinationError(f"Error in apply_nlm_to_image: {str(e)}") from e
-    end_y, end_x = divmod(end_pixel - 1, valid_width)
-    processing_end = (min(end_x + half_kernel, width - 1), min(end_y + half_kernel, height - 1))
-    if progress_callback:
-        progress_callback(1.0)
-    return NLMResult(nonlocal_means=nlm_image, normalization_factors=normalization_factors,
-                     nonlocal_std=nl_std_image, nonlocal_speckle=nl_speckle_image,
-                     processing_end_coord=processing_end, kernel_size=kernel_size,
-                     pixels_processed=pixel_count, image_dimensions=(height, width),
-                     search_window_size=search_window_size, filter_strength=filter_strength,
-                     last_similarity_map=last_similarity_map)
+        # Process image if not already processed
+        if f"{technique}_result" not in st.session_state or st.session_state[f"{technique}_result"] is None:
+            with create_processing_status() as (status, progress_bar):
+                result = process_technique(technique, status, progress_bar)
+            
+            if result is None:
+                st.warning(f"{technique.upper()} processing failed. Please check the logs for details.")
+                return
+            
+            st.session_state[f"{technique}_result"] = result
 
-# Main processing function
-def initialize_processing(image: np.ndarray, kernel_size: int, pixel_count: int, 
+        # Visualize results
+        visualize_results(technique, ui_placeholders, show_per_pixel_processing)
+
+    except Exception as e:
+        st.error(f"Error for {technique}: {str(e)}. Please check the logs for details.")
+        import traceback
+        st.error(f"Traceback: {traceback.format_exc()}")
+
+def process_technique(technique: str, status, progress_bar) -> Optional[Union[SpeckleResult, NLMResult, ImageResult]]:
+    image, kernel_size, pixel_count, _ = initialize_processing(
+        st.session_state.image_array.astype(np.float32),
+        st.session_state.kernel_size,
+        st.session_state.exact_pixel_count,
+        st.session_state.search_window_size,
+        st.session_state.filter_strength
+    )
+
+    update_progress = partial(update_progress_wrapper, status, progress_bar)
+
+    if technique == "speckle":
+        return process_speckle_contrast(status, image, kernel_size, pixel_count, 
+                                        partial(update_progress, "Speckle"))
+    elif technique == "nlm":
+        return process_non_local_means(status, image, kernel_size, pixel_count,
+                                       st.session_state.search_window_size,
+                                       st.session_state.filter_strength,
+                                       partial(update_progress, "NLM"))
+    elif technique == "nl_speckle":
+        speckle_result = process_speckle_contrast(status, image, kernel_size, pixel_count, 
+                                                  partial(update_progress, "Speckle"))
+        nlm_result = process_non_local_means(status, image, kernel_size, pixel_count,
+                                             st.session_state.search_window_size,
+                                             st.session_state.filter_strength,
+                                             partial(update_progress, "NLM"))
+        
+        if speckle_result is None or nlm_result is None:
+            raise ValueError("Processing failed to produce a result")
+
+        return combine_results(status, speckle_result, nlm_result, image.shape)
+    
+    raise ValueError(f"Unknown technique: {technique}")
+
+def visualize_results(technique: str, ui_placeholders, show_per_pixel_processing: bool):
+    results = st.session_state[f"{technique}_result"]
+    image_array = st.session_state.image_array
+    height, width = image_array.shape
+
+    half_kernel = results.kernel_size // 2
+    end_x, end_y = results.processing_end_coord
+
+    end_x = min(max(end_x, half_kernel), width - half_kernel - 1)
+    end_y = min(max(end_y, half_kernel), height - half_kernel - 1)
+
+    kernel_matrix = get_kernel_matrix(image_array, end_x, end_y, half_kernel, results.kernel_size)
+
+    viz_config = create_visualization_config(technique, results, image_array, ui_placeholders,
+                                             show_per_pixel_processing, end_x, end_y, half_kernel,
+                                             kernel_matrix)
+
+    visualize_analysis_results(viz_config)
+
+def create_technique_ui(technique: str, tab: st.delta_generator.DeltaGenerator, show_per_pixel_processing: bool):
+    from main import DEFAULT_SPECKLE_VIEW, DEFAULT_NLM_VIEW
+
+    with tab:
+        ui_placeholders = {"formula": st.empty(), "original_image": st.empty()}
+        filter_options = ["Original Image"] + (SpeckleResult.get_filter_options() if technique == "speckle" else NLMResult.get_filter_options())
+        default_selection = DEFAULT_SPECKLE_VIEW if technique == "speckle" else DEFAULT_NLM_VIEW
+        selected_filters = st.multiselect("Select views to display", filter_options, default=default_selection, key=f"{technique}_filter_selection")
+        st.session_state[f"{technique}_selected_filters"] = selected_filters
+
+        if selected_filters:
+            columns = st.columns(len(selected_filters))
+            for i, filter_name in enumerate(selected_filters):
+                filter_key = filter_name.lower().replace(" ", "_")
+                ui_placeholders[filter_key] = columns[i].empty()
+                if show_per_pixel_processing:
+                    ui_placeholders[f"zoomed_{filter_key}"] = columns[i].expander(f"Zoomed-in {filter_name}", expanded=False).empty()
+        else:
+            st.warning("No views selected. Please select at least one view to display.")
+
+        if show_per_pixel_processing:
+            ui_placeholders["zoomed_kernel"] = st.empty()
+
+    return ui_placeholders
+
+
+###############################################################################
+#                           Image Processing                                  #
+###############################################################################
+
+def update_progress_wrapper(status, progress_bar, task: str, progress: float):
+    status.update(label=f"{task}: {progress:.1%}")
+    progress_bar.progress(0.5 * progress if task == "Speckle" else 0.5 + 0.5 * progress)
+
+def log_error(e: Exception, image_array: np.ndarray):
+    error_message = f"Error in process_image: {type(e).__name__}: {str(e)}"
+    image_info = f"Image shape: {image_array.shape}, Image size: {image_array.size}, Image dtype: {image_array.dtype}"
+    st.error(f"{error_message}\n{image_info}")
+
+def initialize_processing(image: np.ndarray, kernel_size: int, pixel_count: int,
                           nlm_search_window_size: int, nlm_filter_strength: float) -> Tuple[np.ndarray, int, int, int]:
     validate_input(image, kernel_size, pixel_count, nlm_search_window_size, nlm_filter_strength)
     height, width = image.shape
@@ -213,88 +204,65 @@ def initialize_processing(image: np.ndarray, kernel_size: int, pixel_count: int,
     pixel_count = min(pixel_count, valid_pixels)
     return image, kernel_size, pixel_count, valid_pixels
 
-def process_speckle_contrast(status, image: np.ndarray, kernel_size: int, pixel_count: int, 
-                             update_progress: Callable) -> SpeckleResult:
-    status.write("📊 Calculating local statistics (mean, standard deviation) for each pixel neighborhood")
-    status.write(f"🔍 Using a {kernel_size}x{kernel_size} kernel to analyze {pixel_count} pixels")
-    speckle_result = compute_speckle_contrast(image, kernel_size, pixel_count, 0, update_progress)
-    status.write("📈 Computing speckle contrast (σ/μ) from local statistics")
-    return speckle_result
 
-def process_non_local_means(status, image: np.ndarray, kernel_size: int, pixel_count: int, 
-                            nlm_search_window_size: int, nlm_filter_strength: float, 
-                            update_progress: Callable) -> NLMResult:
-    status.write(f"🔎 Initiating Non-Local Means denoising with {nlm_search_window_size}x{nlm_search_window_size} search window")
-    status.write(f"⚖️ Applying filter strength h = {nlm_filter_strength} for weight calculations")
-    nlm_result = compute_non_local_means(image, kernel_size, pixel_count, nlm_search_window_size,
-                                         nlm_filter_strength, 0, update_progress)
-    status.write("🧮 Calculating weighted averages of similar patches for each pixel")
-    return nlm_result
-
-def combine_results(status, speckle_result: SpeckleResult, nlm_result: NLMResult, 
-                    kernel_size: int, pixel_count: int, image_dimensions: Tuple[int, int], 
-                    nlm_search_window_size: int, nlm_filter_strength: float) -> NLSpeckleResult:
+@contextmanager 
+def create_processing_status():
+    with st.status("Processing image...", expanded=True) as status:
+        progress_bar = st.progress(0)
+        yield status, progress_bar
+        
+def combine_results(status, speckle_result: SpeckleResult, nlm_result: NLMResult,
+                    image_dimensions: Tuple[int, int]) -> ImageResult:
     status.write("🔗 Merging Speckle Contrast and Non-Local Means results")
-    final_result = NLSpeckleResult(
+    
+    final_result = ImageResult(
         nlm_result=nlm_result,
         speckle_result=speckle_result,
-        additional_images={},
-        processing_end_coord=calculate_processing_end(image_dimensions[1], image_dimensions[0], kernel_size, pixel_count),
-        kernel_size=kernel_size,
-        pixels_processed=pixel_count,
-        image_dimensions=image_dimensions,
-        nlm_search_window_size=nlm_search_window_size,
-        nlm_filter_strength=nlm_filter_strength
+        image_dimensions=image_dimensions
     )
+
     status.write("🏁 Analysis complete: NL-Speckle result generated")
     return final_result
 
-def process_image() -> Optional[NLSpeckleResult]:
-    if "image_array" not in st.session_state or st.session_state.image_array is None:
-        st.warning("No image has been uploaded. Please upload an image before processing.")
-        return None
+def get_kernel_matrix(image_array, end_x, end_y, half_kernel, kernel_size):
+    height, width = image_array.shape
+    kernel_matrix = image_array[
+        max(0, end_y - half_kernel):min(height, end_y + half_kernel + 1),
+        max(0, end_x - half_kernel):min(width, end_x + half_kernel + 1)
+    ].copy()
 
-    try:
-        image, kernel_size, pixel_count, valid_pixels = initialize_processing(
-            st.session_state.image_array.astype(np.float32),
-            st.session_state.kernel_size,
-            st.session_state.exact_pixel_count,
-            st.session_state.search_window_size,
-            st.session_state.filter_strength
+    if kernel_matrix.shape != (kernel_size, kernel_size):
+        kernel_matrix = np.pad(
+            kernel_matrix,
+            (
+                (max(0, half_kernel - end_y), max(0, end_y + half_kernel + 1 - height)),
+                (max(0, half_kernel - end_x), max(0, end_x + half_kernel + 1 - width))
+            ),
+            mode="constant", constant_values=0
         )
 
-        with create_processing_status() as (status, progress_bar):
-            def update_progress(task: str, progress: float):
-                status.update(label=f"Processing: {task} - {progress:.1%} complete")
-                progress_bar.progress(0.5 * progress if task == "Speckle" else 0.5 + 0.5 * progress)
+    return np.array(kernel_matrix)
 
-            speckle_result = process_speckle_contrast(status, image, kernel_size, pixel_count, 
-                                                      lambda p: update_progress("Speckle", p))
-            
-            nlm_result = process_non_local_means(status, image, kernel_size, pixel_count, 
-                                                 st.session_state.search_window_size, 
-                                                 st.session_state.filter_strength, 
-                                                 lambda p: update_progress("NLM", p))
-
-            if speckle_result is None or nlm_result is None:
-                raise ValueError("Processing failed to produce a result")
-
-            final_result = combine_results(status, speckle_result, nlm_result, kernel_size, pixel_count, 
-                                           image.shape, st.session_state.search_window_size, 
-                                           st.session_state.filter_strength)
-
-            status.update(label="Processing complete!", state="complete")
-            progress_bar.progress(1.0)
-
-        st.session_state.nl_speckle_result = final_result
-        st.session_state.speckle_result = speckle_result
-        st.session_state.nlm_result = nlm_result
-
-        return final_result
-
-    except Exception as e:
-        error_message = f"Error in process_image: {type(e).__name__}: {str(e)}"
-        image_info = f"Image shape: {st.session_state.image_array.shape}, Image size: {st.session_state.image_array.size}, Image dtype: {st.session_state.image_array.dtype}"
-        logger.error(f"{error_message}\n{image_info}")
-        st.error(f"{error_message}\n{image_info}")
-        return None
+def create_visualization_config(technique, results, image_array, ui_placeholders,
+                                show_per_pixel_processing, end_x, end_y, half_kernel,
+                                kernel_matrix):
+    return VisualizationConfig(
+        image_array=ImageArray(data=image_array),
+        technique=technique,
+        results=results,
+        ui_placeholders=ui_placeholders,
+        show_per_pixel_processing=show_per_pixel_processing,
+        processing_end=(end_x, end_y),
+        kernel=KernelVisualizationConfig(
+            size=results.kernel_size,
+            origin=(half_kernel, half_kernel),
+            kernel_matrix=kernel_matrix,
+        ),
+        search_window=SearchWindowConfig(
+            size=getattr(results, 'search_window_size', None) if technique == "nlm" else None,
+            use_full_image=st.session_state.get("use_whole_image", False),
+        ),
+        last_processed_pixel=(end_x, end_y),
+        pixels_to_process=st.session_state.get("exact_pixel_count", results.pixels_processed),
+        original_pixel_value=float(image_array[end_y, end_x]),
+    )

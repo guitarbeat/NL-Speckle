@@ -8,12 +8,15 @@ import streamlit as st
 from PIL import Image
 from typing import Optional
 
-from src.config import AVAILABLE_COLOR_MAPS, PRELOADED_IMAGE_PATHS
-
 # Create a Generator object with a seed
 rng = np.random.default_rng(seed=42)
 
-def setup_sidebar() -> Optional[bool]:
+
+###############################################################################
+#                              Main UI Setup                                  #
+###############################################################################
+
+def setup_ui() -> Optional[bool]:
     # Apply custom CSS for better spacing and wider sidebar
     _apply_custom_css()
 
@@ -36,7 +39,10 @@ def _apply_custom_css():
         </style>
     """, unsafe_allow_html=True)
 
-# Image selection methods
+###############################################################################
+#                           Image Selection Methods                           #
+###############################################################################
+
 def _image_selection() -> bool:
     with st.sidebar.expander("🖼️ Image Selector", expanded=True):
         image_source = st.radio("Select Image Source", ("Preloaded Images", "Upload Image"))
@@ -47,6 +53,7 @@ def _image_selection() -> bool:
             return _load_uploaded_image()
 
 def _load_preloaded_image() -> bool:
+    from main import PRELOADED_IMAGE_PATHS
     selected_image = st.selectbox("Select Image", list(PRELOADED_IMAGE_PATHS.keys()))
     try:
         image = Image.open(PRELOADED_IMAGE_PATHS[selected_image]).convert("L")
@@ -76,79 +83,89 @@ def _process_loaded_image(image: Image.Image) -> bool:
     _select_color_map()
     return True
 
-# Display options methods
+###############################################################################
+#                          Display Options Methods                            #
+###############################################################################
+
 def _display_options():
     with st.sidebar.expander("🔧 Display Options", expanded=True):
-        st.session_state.kernel_size = st.slider(
-            "Kernel Size",
-            min_value=3,
-            max_value=21,
-            value=st.session_state.get("kernel_size", 3),
-            step=2,
-            key="kernel_size_slider",
-        )
-
-        show_per_pixel = st.toggle(
-            "Show Per-Pixel Processing Steps", 
-            value=st.session_state.get("show_per_pixel", False),
-            key="show_per_pixel",
-        )
+        col1, col2 = st.columns(2)
+        with col1:
+            st.session_state.kernel_size = st.slider(
+                "Kernel Size",
+                min_value=3,
+                max_value=21,
+                value=st.session_state.get("kernel_size", 3),
+                step=2,
+                key="kernel_size_slider",
+            )
+        with col2:
+            show_per_pixel = st.toggle(
+                "Show Per-Pixel Processing Steps", 
+                value=st.session_state.get("show_per_pixel", False),
+                key="show_per_pixel",
+            )
         
         total_pixels = (st.session_state.image.width - st.session_state.kernel_size + 1) * (
             st.session_state.image.height - st.session_state.kernel_size + 1
         )
         st.session_state.total_pixels = total_pixels
         
-        print(f"Total pixels: {total_pixels}")  # Added print statement
-        
         if show_per_pixel:
             _setup_pixel_processing(total_pixels)
         else:
             st.session_state.exact_pixel_count = total_pixels
-            print(f"Exact pixel count set to total pixels: {total_pixels}")  # Added print statement
 
 def _setup_pixel_processing(total_pixels: int):
-    if "percentage_slider" not in st.session_state:
-        st.session_state.percentage_slider = 100
-        st.session_state.exact_pixel_count = total_pixels
+    # Initialize session state variables if they don't exist
+    if "desired_percentage" not in st.session_state:
+        st.session_state.desired_percentage = 100
+    if "desired_exact_count" not in st.session_state:
+        st.session_state.desired_exact_count = total_pixels
 
     def update_exact_count():
-        st.session_state.exact_pixel_count = int(
-            total_pixels * st.session_state.percentage_slider / 100
-        )
-        print(f"Updated exact pixel count: {st.session_state.exact_pixel_count}")  # Added print statement
+        st.session_state.desired_exact_count = max(1, int(
+            total_pixels * st.session_state.desired_percentage / 100
+        ))
 
     def update_percentage():
-        st.session_state.percentage_slider = int(
-            (st.session_state.exact_pixel_count / total_pixels) * 100
-        )
-        print(f"Updated percentage: {st.session_state.percentage_slider}%")  # Added print statement
-        st.rerun()
-        
-    col1, col2 = st.columns(2)
-    with col1:
-        st.slider(
-            "Percentage",
-            min_value=1,
-            max_value=100,
-            value=st.session_state.percentage_slider,
-            key="percentage_slider",
-            on_change=update_exact_count,
-        )
-    with col2:
-        st.number_input(
-            "Exact Pixels",
-            min_value=1,
-            max_value=total_pixels,
-            value=st.session_state.exact_pixel_count,
-            key="exact_pixel_count",
-            on_change=update_percentage,
-        )
+        st.session_state.desired_percentage = max(1, min(100, int(
+            (st.session_state.desired_exact_count / total_pixels) * 100
+        )))
 
-    print(f"Final exact pixel count: {st.session_state.exact_pixel_count}")  # Added print statement
+    with st.popover("Pixel Processing Options"):
+        col1, col2 = st.columns(2)
+        with col1:
+            percentage = st.slider(
+                "Percentage",
+                min_value=1,
+                max_value=100,
+                value=st.session_state.desired_percentage,
+                key="percentage_slider",
+                on_change=update_exact_count,
+            )
 
+        with col2:
+            exact_count = st.number_input(
+                "Exact Pixels",
+                min_value=1,
+                max_value=total_pixels,
+                value=st.session_state.desired_exact_count,
+                key="exact_pixel_count",
+                on_change=update_percentage,
+            )
 
+    # Update session state with the widget values
+    st.session_state.desired_percentage = percentage
+    st.session_state.desired_exact_count = exact_count
+    st.session_state.pixels_to_process = exact_count
+
+    # Display the selected values outside the popover
+    st.write(f"Processing {percentage}% ({exact_count} pixels)")
+
+# Display options methods
 def _select_color_map():
+    from main import AVAILABLE_COLOR_MAPS
     if "color_map" not in st.session_state:
         st.session_state.color_map = "gray"
 
@@ -159,27 +176,35 @@ def _select_color_map():
         key="color_map_select",
     )
 
-# Advanced options methods
+###############################################################################
+#                         Advanced Options Methods                            #
+###############################################################################
+
 def _advanced_options():
     with st.sidebar.expander("🔬 Advanced Options", expanded=False):
-        st.session_state.normalization_option = st.selectbox(
-            "Normalization",
-            options=["None", "Percentile"],
-            index=0,
-            help="Choose the normalization method for the image",
-        )
+        tab1, tab2 = st.tabs(["Normalization", "Noise"])
+        
+        with tab1:
+            st.session_state.normalization_option = st.selectbox(
+                "Normalization",
+                options=["None", "Percentile"],
+                index=0,
+                help="Choose the normalization method for the image",
+            )
 
-        st.session_state.apply_gaussian_noise = st.checkbox(
-            "Add Gaussian Noise", value=False, help="Add Gaussian noise to the image"
-        )
-        if st.session_state.apply_gaussian_noise:
-            _setup_gaussian_noise_params()
+        with tab2:
+            st.session_state.apply_gaussian_noise = st.checkbox(
+                "Add Gaussian Noise", value=False, help="Add Gaussian noise to the image"
+            )
+            if st.session_state.apply_gaussian_noise:
+                _setup_gaussian_noise_params()
 
-        st.session_state.use_sat = st.toggle(
-            "Use Summed-Area Tables (SAT)",
-            value=False,
-            help="Enable Summed-Area Tables for faster Speckle Contrast calculation"
-        )
+        with st.popover("SAT Options"):
+            st.session_state.use_sat = st.toggle(
+                "Use Summed-Area Tables (SAT)",
+                value=False,
+                help="Enable Summed-Area Tables for faster Speckle Contrast calculation"
+            )
 
     _process_image()
 
@@ -212,7 +237,10 @@ def _process_image():
         image_np = (image_np - p_low) / (p_high - p_low)
     st.session_state.processed_image_np = image_np
 
-# NLM options method
+###############################################################################
+#                             NLM Options Method                              #
+###############################################################################
+
 def _nlm_options():
     with st.sidebar.expander("🔍 NLM Options", expanded=False):
         image_shape = st.session_state.image.size

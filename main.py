@@ -5,11 +5,40 @@ It imports necessary utilities and plotting functions for image comparison.
 
 from typing import List
 import streamlit as st
-from src.plotting import prepare_comparison_images, run_technique
-from src.sidebar import setup_sidebar
+from src.sidebar import setup_ui
 from src.utils import handle_image_comparison
-from src.config import APP_CONFIG
-from src.images import process_image
+from src.images import process_and_visualize_image
+
+# App Configuration
+APP_CONFIG = {
+    "page_title": "Speckle Contrast Visualization",
+    "layout": "wide",
+    "page_icon": "favicon.png",
+    "initial_sidebar_state": "expanded",
+}
+
+# Color Maps
+AVAILABLE_COLOR_MAPS = [
+    "viridis",
+    "gray",
+    "plasma",
+    "inferno",
+    "magma",
+    "pink",
+    "hot",
+    "cool",
+    "YlOrRd",
+]
+
+# Preloaded Images
+PRELOADED_IMAGE_PATHS = {
+    "image50.png": "media/image50.png",
+    "spatial.tif": "media/spatial.tif",
+    "logo.jpg": "media/logo.jpg",
+}
+
+SPECKLE_CONTRAST, ORIGINAL_IMAGE, NON_LOCAL_MEANS = "Speckle Contrast", "Original Image", "Non-Local Means"
+DEFAULT_SPECKLE_VIEW, DEFAULT_NLM_VIEW = [ORIGINAL_IMAGE, SPECKLE_CONTRAST], [ORIGINAL_IMAGE, NON_LOCAL_MEANS]
 
 def main():
     """Main function to set up the Streamlit app configuration, logo, and run the application."""
@@ -23,14 +52,14 @@ def main():
 def setup_streamlit_config():
     """Set up Streamlit configuration and logo."""
     st.set_page_config(**APP_CONFIG)
-    st.logo("media/logo.png")  # Changed from st.logo to st.image
+    st.logo("media/logo.png")
     
     if "techniques" not in st.session_state:
         st.session_state.techniques = ["speckle", "nlm"]
 
 def setup_app():
     """Set up the main application components."""
-    sidebar_params = setup_sidebar()
+    sidebar_params = setup_ui()
     if sidebar_params is None:
         st.warning("Please upload an image in the sidebar to begin.")
         return
@@ -40,30 +69,24 @@ def setup_app():
     
     tabs = setup_tabs()
     
-    # Move this block inside the function to ensure it runs on every rerun
+    # Check if all required parameters are present
     required_keys = ["image_array", "kernel_size", "exact_pixel_count", "search_window_size", "filter_strength"]
     if all(key in st.session_state for key in required_keys):
-        try:
-            nl_speckle_result = process_image()
-            if nl_speckle_result is not None:
-                st.session_state.nl_speckle_result = nl_speckle_result
-        except Exception as e:
-            st.error(f"Failed to process image: {e}")
-    
-    display_results(tabs)
+        process_and_display_results(tabs)
+    else:
+        st.warning("Some required parameters are missing. Please ensure all settings are properly configured.")
 
-def display_results(tabs):
-    """Display the results in the appropriate tabs."""
+def process_and_display_results(tabs):
+    """Process the image and display results in the appropriate tabs."""
     techniques: List[str] = st.session_state.get("techniques", [])
     
     for technique, tab in zip(techniques, tabs):
         if tab is not None:
             with tab:
-                run_technique(technique, tab)
+                process_and_visualize_image(technique, tab)
 
     with tabs[2]:
-        comparison_images = prepare_comparison_images()
-        handle_image_comparison(tabs[2], comparison_images)
+        handle_image_comparison(tabs[2])
 
 def setup_tabs() -> List:
     """Set up the tabs for the application."""
