@@ -205,48 +205,86 @@ def compute_non_local_means(image: np.ndarray, kernel_size: int, pixel_count: in
                      last_similarity_map=last_similarity_map)
 
 # Main processing function
+def initialize_processing(image: np.ndarray, kernel_size: int, pixel_count: int, 
+                          nlm_search_window_size: int, nlm_filter_strength: float) -> Tuple[np.ndarray, int, int, int]:
+    validate_input(image, kernel_size, pixel_count, nlm_search_window_size, nlm_filter_strength)
+    height, width = image.shape
+    valid_pixels = (height - kernel_size + 1) * (width - kernel_size + 1)
+    pixel_count = min(pixel_count, valid_pixels)
+    return image, kernel_size, pixel_count, valid_pixels
+
+def process_speckle_contrast(status, image: np.ndarray, kernel_size: int, pixel_count: int, 
+                             update_progress: Callable) -> SpeckleResult:
+    status.write("📊 Calculating local statistics (mean, standard deviation) for each pixel neighborhood")
+    status.write(f"🔍 Using a {kernel_size}x{kernel_size} kernel to analyze {pixel_count} pixels")
+    speckle_result = compute_speckle_contrast(image, kernel_size, pixel_count, 0, update_progress)
+    status.write("📈 Computing speckle contrast (σ/μ) from local statistics")
+    return speckle_result
+
+def process_non_local_means(status, image: np.ndarray, kernel_size: int, pixel_count: int, 
+                            nlm_search_window_size: int, nlm_filter_strength: float, 
+                            update_progress: Callable) -> NLMResult:
+    status.write(f"🔎 Initiating Non-Local Means denoising with {nlm_search_window_size}x{nlm_search_window_size} search window")
+    status.write(f"⚖️ Applying filter strength h = {nlm_filter_strength} for weight calculations")
+    nlm_result = compute_non_local_means(image, kernel_size, pixel_count, nlm_search_window_size,
+                                         nlm_filter_strength, 0, update_progress)
+    status.write("🧮 Calculating weighted averages of similar patches for each pixel")
+    return nlm_result
+
+def combine_results(status, speckle_result: SpeckleResult, nlm_result: NLMResult, 
+                    kernel_size: int, pixel_count: int, image_dimensions: Tuple[int, int], 
+                    nlm_search_window_size: int, nlm_filter_strength: float) -> NLSpeckleResult:
+    status.write("🔗 Merging Speckle Contrast and Non-Local Means results")
+    final_result = NLSpeckleResult(
+        nlm_result=nlm_result,
+        speckle_result=speckle_result,
+        additional_images={},
+        processing_end_coord=calculate_processing_end(image_dimensions[1], image_dimensions[0], kernel_size, pixel_count),
+        kernel_size=kernel_size,
+        pixels_processed=pixel_count,
+        image_dimensions=image_dimensions,
+        nlm_search_window_size=nlm_search_window_size,
+        nlm_filter_strength=nlm_filter_strength
+    )
+    status.write("🏁 Analysis complete: NL-Speckle result generated")
+    return final_result
+
 def process_image() -> Optional[NLSpeckleResult]:
     if "image_array" not in st.session_state or st.session_state.image_array is None:
         st.warning("No image has been uploaded. Please upload an image before processing.")
         return None
 
     try:
-        image = st.session_state.image_array.astype(np.float32)
-        kernel_size = st.session_state.kernel_size
-        pixel_count = st.session_state.exact_pixel_count
-        nlm_search_window_size = st.session_state.search_window_size
-        nlm_filter_strength = st.session_state.filter_strength
-
-        validate_input(image, kernel_size, pixel_count, nlm_search_window_size, nlm_filter_strength)
-        height, width = image.shape
-        valid_pixels = (height - kernel_size + 1) * (width - kernel_size + 1)
-        pixel_count = min(pixel_count, valid_pixels)
+        image, kernel_size, pixel_count, valid_pixels = initialize_processing(
+            st.session_state.image_array.astype(np.float32),
+            st.session_state.kernel_size,
+            st.session_state.exact_pixel_count,
+            st.session_state.search_window_size,
+            st.session_state.filter_strength
+        )
 
         with create_processing_status() as (status, progress_bar):
             def update_progress(task: str, progress: float):
                 status.update(label=f"Processing: {task} - {progress:.1%} complete")
-                progress_bar.progress(progress / 2)
+                progress_bar.progress(0.5 * progress if task == "Speckle" else 0.5 + 0.5 * progress)
 
-            speckle_result = compute_speckle_contrast(image, kernel_size, pixel_count, 0, lambda p: update_progress("Speckle", p))
-            nlm_result = compute_non_local_means(image, kernel_size, pixel_count, nlm_search_window_size,
-                                                 nlm_filter_strength, 0, lambda p: update_progress("NLM", p))
+            speckle_result = process_speckle_contrast(status, image, kernel_size, pixel_count, 
+                                                      lambda p: update_progress("Speckle", p))
+            
+            nlm_result = process_non_local_means(status, image, kernel_size, pixel_count, 
+                                                 st.session_state.search_window_size, 
+                                                 st.session_state.filter_strength, 
+                                                 lambda p: update_progress("NLM", p))
 
             if speckle_result is None or nlm_result is None:
                 raise ValueError("Processing failed to produce a result")
 
-            final_result = NLSpeckleResult(
-                nlm_result=nlm_result,
-                speckle_result=speckle_result,
-                additional_images={},
-                processing_end_coord=calculate_processing_end(width, height, kernel_size, pixel_count),
-                kernel_size=kernel_size,
-                pixels_processed=pixel_count,
-                image_dimensions=(height, width),
-                nlm_search_window_size=nlm_search_window_size,
-                nlm_filter_strength=nlm_filter_strength
-            )
+            final_result = combine_results(status, speckle_result, nlm_result, kernel_size, pixel_count, 
+                                           image.shape, st.session_state.search_window_size, 
+                                           st.session_state.filter_strength)
 
             status.update(label="Processing complete!", state="complete")
+            progress_bar.progress(1.0)
 
         st.session_state.nl_speckle_result = final_result
         st.session_state.speckle_result = speckle_result
