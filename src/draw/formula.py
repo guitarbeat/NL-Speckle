@@ -4,8 +4,15 @@ Contrast formulas. Provides interactive explanations and visualizations of the
 mathematical concepts.
 """
 
-import streamlit as st
 import numpy as np
+from typing import Dict, Any
+from session_state import (
+    get_use_whole_image, get_default_filter_strength, 
+    get_default_search_window_size, safe_get, safe_int,
+    safe_array_value, get_image_dimensions,
+    get_kernel_size, get_analysis_type, handle_processing_error
+)
+import streamlit as st
 
 NLM_FORMULA_CONFIG = {
     "title": "Non-Local Means (NLM) Denoising",
@@ -148,197 +155,189 @@ The patch is constructed by considering pixels within the range $[-{half_kernel}
 # ----------------------------- #
 
 
-def display_analysis_formula(
-    variables,
-    ui_placeholders,
-    analysis_type,
-    x,
-    y,
-    kernel_size,
-    kernel_matrix,
-    original_value,
-):
+def display_formula_details(viz_params: Dict[str, Any]) -> None:
     """
-    Display the analysis formula.
+    Main function to display formula details based on visualization parameters.
+    """
+    last_x, last_y = viz_params['last_processed_pixel']
+    specific_params = create_specific_params(viz_params, last_x, last_y)
+    specific_params = prepare_variables(specific_params, viz_params['technique'])
 
-    Args:
-        variables: A dictionary of variables for the formula.
-        ui_placeholders: A dictionary of Streamlit placeholders.
-        analysis_type: The type of analysis ('nlm' or 'speckle').
-        x: The x-coordinate of the end point.
-        y: The y-coordinate of the end point.
-        kernel_size: The size of the kernel.
-        kernel_matrix: The kernel matrix (numpy array).
-        original_value: The original value.
+    formula_config = get_formula_config(viz_params, specific_params)
+    
+    if formula_placeholder := viz_params['ui_placeholders'].get("formula"):
+        display_formula(formula_config, specific_params, formula_placeholder)
+    else:
+        handle_processing_error("Formula placeholder not found.")
+
+def get_formula_config(viz_params: Dict[str, Any], specific_params: Dict[str, Any]) -> Dict[str, Any]:
     """
-    formula_config = {
-        "kernel_size": kernel_size,
-        "kernel_matrix": kernel_matrix,  # This should be the numpy array
-        "x": x,
-        "y": y,
-        "original_value": original_value,
+    Get the appropriate formula configuration based on the analysis technique.
+    """
+    base_config = {
+        'kernel_size': viz_params['kernel']['size'],
+        'kernel_matrix': viz_params['kernel']['kernel_matrix'],
+        'x': specific_params['x'],
+        'y': specific_params['y'],
+        'original_value': viz_params['original_pixel_value']
+    }
+    technique_config = NLM_FORMULA_CONFIG if viz_params['technique'] == "nlm" else SPECKLE_FORMULA_CONFIG
+    return {**base_config, **technique_config}
+
+
+def create_specific_params(viz_params: Dict[str, Any], last_x: int, last_y: int) -> Dict[str, Any]:
+    """
+    Create specific parameters for formula display based on visualization parameters.
+    This version is more robust and handles potential errors gracefully.
+    """
+    height, width = get_image_dimensions()
+
+    # Create base parameters
+    specific_params = {
+        "kernel_size": get_kernel_size(),
+        "pixels_processed": safe_int(safe_get(viz_params, 'results', 'pixels_processed'), 0),
+        "x": safe_int(last_x, 0),
+        "y": safe_int(last_y, 0),
+        "image_height": height,
+        "image_width": width,
+        "half_kernel": get_kernel_size() // 2,
+        "original_value": safe_get(viz_params, 'original_pixel_value', default=0.0),
+        "analysis_type": get_analysis_type(),
     }
 
-    formula_config = (
-        NLM_FORMULA_CONFIG if analysis_type == "nlm" else SPECKLE_FORMULA_CONFIG
-    )
-    if formula_placeholder := ui_placeholders.get("formula"):
-        display_formula(formula_config, variables, formula_placeholder)
-    else:
-        st.warning("Formula placeholder not found.")
+    # Calculate derived parameters
+    kernel_size = get_kernel_size()
+    specific_params.update({
+        "total_pixels": kernel_size ** 2,
+        "valid_height": max(0, height - kernel_size + 1),
+        "valid_width": max(0, width - kernel_size + 1),
+        "search_window_size": safe_get(viz_params, 'search_window', 'size', default="N/A"),
+        "kernel_matrix": safe_get(viz_params, 'kernel', 'kernel_matrix', default=np.zeros((kernel_size, kernel_size))),
+    })
 
-# Prepares and adjusts variables for formula display based on the analysis type
+    # Technique-specific parameters
+    if specific_params["analysis_type"] == "nlm":
+        specific_params.update({
+            "filter_strength": safe_get(viz_params, 'results', 'filter_strength', default=get_default_filter_strength()),
+            "search_window_size": safe_get(viz_params, 'results', 'search_window_size', default=get_default_search_window_size()),
+            "nlm_value": safe_array_value(safe_get(viz_params, 'results', 'nonlocal_means'), last_y, last_x, width),
+        })
+    elif specific_params["analysis_type"] == "speckle":
+        specific_params.update({
+            "mean": safe_array_value(safe_get(viz_params, 'results', 'mean_filter'), last_y, last_x, width),
+            "std": safe_array_value(safe_get(viz_params, 'results', 'std_dev_filter'), last_y, last_x, width),
+            "sc": safe_array_value(safe_get(viz_params, 'results', 'speckle_contrast_filter'), last_y, last_x, width),
+        })
 
+    return specific_params
 
-def prepare_variables(variables, analysis_type):
+def prepare_variables(variables: Dict[str, Any], analysis_type: str) -> Dict[str, Any]:
     """
-    Prepares and adjusts variables for formula display based on the analysis
-    type.
-
-    Args:
-        variables: The input variables. analysis_type: The type of analysis ('nlm'
-        or 'speckle').
-
-    Returns:
-        The prepared variables.
+    Prepare variables for formula display, including kernel matrix latex representation.
+    Handles missing or invalid data gracefully.
     """
-    variables = variables.copy()
-    kernel_size = variables.get("kernel_size", 3)
+    # Create a new dictionary to avoid modifying the input
+    prepared = variables.copy()
 
-    if "input_x" not in variables or "input_y" not in variables:
-        variables["input_x"] = variables["x"] - kernel_size // 2
-        variables["input_y"] = variables["y"] - kernel_size // 2
+    # Handle kernel size
+    kernel_size = safe_int(safe_get(prepared, "kernel_size"), 3)
+    half_kernel = kernel_size // 2
 
-    if "kernel_matrix" in variables:
-        kernel_matrix = variables["kernel_matrix"]
-        if isinstance(kernel_matrix, np.ndarray):
-            variables["kernel_matrix_latex"] = generate_kernel_matrix(
-                kernel_matrix,
-                variables["kernel_size"],
-                variables["x"] - variables["half_kernel"],
-                variables["y"] - variables["half_kernel"]
-            )
-        else:
-            variables["kernel_matrix_latex"] = str(kernel_matrix)
-        
-        # Keep the original kernel_matrix as well
-        variables["kernel_matrix_array"] = kernel_matrix
+    # Update basic variables
+    prepared.update({
+        "kernel_size": kernel_size,
+        "half_kernel": half_kernel,
+        "x": safe_int(safe_get(prepared, "x"), 0),
+        "y": safe_int(safe_get(prepared, "y"), 0),
+        "input_x": safe_int(safe_get(prepared, "input_x"), prepared["x"] - half_kernel),
+        "input_y": safe_int(safe_get(prepared, "input_y"), prepared["y"] - half_kernel),
+        "image_height": safe_int(safe_get(prepared, "image_height"), 0),
+        "image_width": safe_int(safe_get(prepared, "image_width"), 0),
+    })
 
-    if analysis_type == "nlm":
-        variables["patch_size"] = kernel_size
-        variables["h"] = variables.get("filter_strength", 1.0)
-        search_window_size = variables.get("search_window_size")
-        variables["search_window_description"] = (
-            "We search the entire image for similar pixels."
-            if search_window_size == "full"
-            else f"A search window of size {search_window_size}x{search_window_size} centered around the target pixel."
+    # Handle kernel matrix
+    kernel_matrix = safe_get(prepared, "kernel_matrix")
+    if isinstance(kernel_matrix, np.ndarray) and kernel_matrix.size > 0:
+        prepared["kernel_matrix_latex"] = generate_kernel_matrix(
+            kernel_matrix, kernel_size, 
+            prepared["x"] - half_kernel, 
+            prepared["y"] - half_kernel
         )
-        variables["nlm_value"] = variables.get("nlm_value", 0.0)
+    else:
+        prepared["kernel_matrix_latex"] = "Kernel matrix not available"
+
+    # Analysis-specific preparations
+    if analysis_type == "nlm":
+        prepared.update({
+            "patch_size": kernel_size,
+            "h": safe_get(prepared, "filter_strength", get_default_filter_strength()),
+            "search_window_size": safe_get(prepared, "search_window_size", get_default_search_window_size()),
+            "nlm_value": safe_get(prepared, "nlm_value", 0.0),
+        })
+        if prepared["search_window_size"] == "full" or get_use_whole_image():
+            prepared["search_window_description"] = "We search the entire image for similar pixels."
+        else:
+            prepared["search_window_description"] = f"A search window of size {prepared['search_window_size']}x{prepared['search_window_size']} centered around the target pixel."
     else:  # speckle
-        variables["mean"] = variables.get("mean", 0.0)
-        variables["std"] = variables.get("std", 0.0)
-        variables["sc"] = variables.get("sc", 0.0)
+        for key in ["mean", "std", "sc"]:
+            prepared[key] = safe_get(prepared, key, 0.0)
 
-    return variables
+    # Ensure all required keys have a value, even if it's a placeholder
+    required_keys = [
+        "original_value", "total_pixels", "valid_height", "valid_width",
+        "pixels_processed", "analysis_type"
+    ]
+    for key in required_keys:
+        if key not in prepared:
+            prepared[key] = "N/A"
 
-# Displays the main formula and additional formulas in an expandable section
+    return prepared
 
-
-def display_formula(config, variables, formula_placeholder):
+def display_formula(config: Dict[str, Any], variables: Dict[str, Any], formula_placeholder: st.delta_generator.DeltaGenerator):
     """
-    Displays the main formula and additional formulas in an expandable section.
-
-    Args:
-        config: The formula configuration. variables: The variables for the
-        formula. formula_placeholder: The Streamlit placeholder for the formula
-        display.
+    Display the formula and its details in a Streamlit container.
     """
     with formula_placeholder.container():
-        analysis_type = variables.get("analysis_type", "nlm")
-        variables = prepare_variables(variables, analysis_type)
         with st.expander(f"{config['title']} Details"):
             display_formula_section(config, variables, "main")
             display_additional_formulas(config, variables)
 
-# Displays a specific section of the formula (main or additional)
-
-
-def display_formula_section(config, variables, section_key):
+def display_formula_section(config: Dict[str, Any], variables: Dict[str, Any], section_key: str):
     """
-    Displays a specific section of the formula (main or additional).
-
-    Args:
-        config: The formula configuration. variables: The variables for the
-        formula. section_key: The key for the section to display ('main' or
-        'additional').
+    Display a specific section of the formula (main or additional).
     """
-    formula_key = "formula" if section_key == "formula" else f"{
-        section_key}_formula"
-    explanation_key = "explanation"
-
+    formula_key = "formula" if section_key == "formula" else f"{section_key}_formula"
     try:
-        # Ensure the formula is a string Convert to string if necessary
         st.latex(str(config[formula_key]).format(**variables))
-        st.markdown(config[explanation_key].format(**variables))
-    except KeyError as e:
-        st.error(f"Missing key in {section_key} formula or explanation: {e}")
-    except ValueError as e:
-        st.error(f"Formatting error in {section_key} formula: {e}")
+        st.markdown(config["explanation"].format(**variables))
+    except (KeyError, ValueError) as e:
+        st.error(f"Error in {section_key} formula or explanation: {e}")
+        st.error(f"Variables: {variables}")  # Added to help with debugging
 
-# Displays additional formulas in separate tabs
-
-def display_additional_formulas(config, variables):
+def display_additional_formulas(config: Dict[str, Any], variables: Dict[str, Any]):
     """
-    Displays additional formulas in separate tabs.
-
-    Args:
-        config: The formula configuration. variables: The variables for the
-        formula.
+    Display additional formulas in tabs.
     """
     st.write("Additional Formulas:")
-    tab_labels = [formula["title"]
-                  for formula in config["additional_formulas"]]
-    tabs = st.tabs(tab_labels)
+    tabs = st.tabs([formula["title"] for formula in config["additional_formulas"]])
     for tab, additional_formula in zip(tabs, config["additional_formulas"]):
         with tab:
             display_formula_section(additional_formula, variables, "formula")
 
-# Generates a LaTeX representation of the kernel matrix
-
-
-def generate_kernel_matrix(kernel_matrix, kernel_size, x, y):
+def generate_kernel_matrix(kernel_matrix: np.ndarray, kernel_size: int, x: int, y: int) -> str:
     """
-    Generates a LaTeX representation of the kernel matrix.
-
-    Args:
-        kernel_matrix: The kernel matrix as a numpy array.
-        kernel_size: The size of the kernel.
-        x: The x-coordinate of the center pixel.
-        y: The y-coordinate of the center pixel.
-
-    Returns:
-        The LaTeX representation of the kernel matrix.
+    Generate a LaTeX representation of the kernel matrix.
     """
-    center = kernel_size // 2
-    kernel_matrix[center, center]
-
-    matrix_rows = [
-        " & ".join(
-            (
-                rf"\mathbf{{{kernel_matrix[i, j]:.3f}}}"
-                if i == center and j == center
+    try:
+        center = kernel_size // 2
+        matrix_rows = [
+            " & ".join(
+                rf"\mathbf{{{kernel_matrix[i, j]:.3f}}}" if i == center and j == center 
                 else f"{kernel_matrix[i, j]:.3f}"
-            )
-            for j in range(kernel_size)
-        )
-        for i in range(kernel_size)
-    ]
-
-    return (
-        r"\def\arraystretch{1.5}\begin{array}{|"
-        + ":".join(["c"] * kernel_size)
-        + "|}"
-        + r"\hline"
-        + r"\\ \hdashline".join(matrix_rows)
-        + r"\\ \hline\end{array}"
-    )
+                for j in range(kernel_size)
+            ) for i in range(kernel_size)
+        ]
+        return (r"\def\arraystretch{1.5}\begin{array}{|" + ":".join(["c"] * kernel_size) + "|}" + 
+                r"\hline" + r"\\ \hdashline".join(matrix_rows) + r"\\ \hline\end{array}")
+    except Exception as e:
+        return f"Error generating kernel matrix: {str(e)}"

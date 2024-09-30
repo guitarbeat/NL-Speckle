@@ -3,11 +3,42 @@ This module serves as the main entry point for the Streamlit application.
 It imports necessary utilities and plotting functions for image comparison.
 """
 
-from typing import List
 import streamlit as st
 from src.sidebar import setup_ui
-from src.utils import handle_image_comparison
-from src.images import process_and_visualize_image
+from src.images import create_technique_ui_and_config, visualize_image_and_results
+from src.draw.compare import handle_image_comparison
+from session_state import (
+    initialize_session_state, get_filter_options,
+    update_filter_selection, get_filter_selection, set_technique_result,
+    get_technique_result
+)
+from src.math.nlm import process_technique
+import json
+import logging
+import sys
+
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+file_handler = logging.FileHandler('app.log')
+file_handler.setLevel(logging.INFO)
+logging.getLogger().addHandler(file_handler)
+
+# Capture stdout and stderr
+class StreamToLogger:
+    def __init__(self, logger, log_level=logging.INFO):
+        self.logger = logger
+        self.log_level = log_level
+        self.linebuf = ''
+
+    def write(self, buf):
+        for line in buf.rstrip().splitlines():
+            self.logger.log(self.log_level, line.rstrip())
+
+    def flush(self):
+        pass
+
+sys.stdout = StreamToLogger(logging.getLogger('STDOUT'), logging.INFO)
+sys.stderr = StreamToLogger(logging.getLogger('STDERR'), logging.ERROR)
 
 # App Configuration
 APP_CONFIG = {
@@ -17,12 +48,13 @@ APP_CONFIG = {
     "initial_sidebar_state": "expanded",
 }
 
-# Color Maps
+# Color Maps 
 AVAILABLE_COLOR_MAPS = [
+    "viridis_r",
     "viridis",
     "gray",
     "plasma",
-    "inferno",
+    "inferno", 
     "magma",
     "pink",
     "hot",
@@ -37,62 +69,89 @@ PRELOADED_IMAGE_PATHS = {
     "logo.jpg": "media/logo.jpg",
 }
 
-SPECKLE_CONTRAST, ORIGINAL_IMAGE, NON_LOCAL_MEANS = "Speckle Contrast", "Original Image", "Non-Local Means"
-DEFAULT_SPECKLE_VIEW, DEFAULT_NLM_VIEW = [ORIGINAL_IMAGE, SPECKLE_CONTRAST], [ORIGINAL_IMAGE, NON_LOCAL_MEANS]
-
 def main():
-    """Main function to set up the Streamlit app configuration, logo, and run the application."""
-    setup_streamlit_config()
-    
+    """Main function to set up and run the Streamlit application."""
     try:
-        setup_app()
-    except (ValueError, TypeError) as e:
-        st.error(f"An error occurred: {e}. Please check your input and try again.")
 
-def setup_streamlit_config():
-    """Set up Streamlit configuration and logo."""
-    st.set_page_config(**APP_CONFIG)
-    st.logo("media/logo.png")
-    
-    if "techniques" not in st.session_state:
-        st.session_state.techniques = ["speckle", "nlm"]
+        # Initialize session state
+        initialize_session_state()
 
-def setup_app():
-    """Set up the main application components."""
-    sidebar_params = setup_ui()
-    if sidebar_params is None:
-        st.warning("Please upload an image in the sidebar to begin.")
+        # Set up Streamlit configuration
+        st.set_page_config(**APP_CONFIG)
+        st.logo("media/logo.png")
+        
+   
+        
+        # Set up UI components
+        setup_ui()
+        
+        # Add debug checkbox
+        debug_mode = st.sidebar.checkbox("Debug Mode")
+        
+        if debug_mode:
+            st.sidebar.subheader("Session State")
+            # Convert session state to a pretty-printed JSON string
+            session_state_str = json.dumps(
+                {k: str(v) for k, v in st.session_state.items()},
+                indent=2
+            )
+            st.sidebar.code(session_state_str, language="json")
+        
+        # Set up tabs
+        tabs = st.tabs(["Speckle", "NL-Means", "Image Comparison"])
+        st.session_state.tabs = tabs
+    except Exception as e:
+        st.error(f"An error occurred during initial setup: {e}")
+        st.exception(e)
         return
-    if "image_array" not in st.session_state:
-        st.warning("No image data found. Please try uploading the image again.")
-        return
-    
-    tabs = setup_tabs()
-    
-    # Check if all required parameters are present
-    required_keys = ["image_array", "kernel_size", "exact_pixel_count", "search_window_size", "filter_strength"]
-    if all(key in st.session_state for key in required_keys):
-        process_and_display_results(tabs)
-    else:
-        st.warning("Some required parameters are missing. Please ensure all settings are properly configured.")
 
-def process_and_display_results(tabs):
-    """Process the image and display results in the appropriate tabs."""
-    techniques: List[str] = st.session_state.get("techniques", [])
-    
-    for technique, tab in zip(techniques, tabs):
-        if tab is not None:
-            with tab:
-                process_and_visualize_image(technique, tab)
+    for technique, tab in zip(st.session_state.techniques, tabs[:2]):
+        with tab:
+            try:
+                # Move the filter selection code inside the tab context
+                filter_options = get_filter_options(technique)
+                current_selection = get_filter_selection(technique)
 
+                new_selection = st.multiselect(
+                    f"Select views to display for {technique.upper()}",
+                    filter_options,
+                    default=current_selection,
+                    key=f"{technique}_filter_selection_key"
+                )
+
+                if new_selection != current_selection:
+                    update_filter_selection(technique, new_selection)
+
+                show_per_pixel_processing = st.session_state.show_per_pixel
+                
+                if get_technique_result(technique) is None:
+                    with st.spinner(f"Processing {technique}..."):
+                        result = process_technique(technique)
+                    set_technique_result(technique, result)
+                
+                viz_config = create_technique_ui_and_config(
+                    technique, 
+                    tab, 
+                    show_per_pixel_processing, 
+                    get_technique_result(technique),
+                    st.session_state.image_array
+                )
+                
+                if viz_config:
+                    st.session_state.viz_config = viz_config
+                    visualize_image_and_results(st.session_state.viz_config)
+                
+            except Exception as e:
+                st.error(f"Error processing and visualizing {technique}: {e}")
+                st.exception(e)
+
+    # Handle image comparison in the third tab
     with tabs[2]:
-        handle_image_comparison(tabs[2])
-
-def setup_tabs() -> List:
-    """Set up the tabs for the application."""
-    tabs = st.tabs(["Speckle", "NL-Means", "Image Comparison"])
-    st.session_state.tabs = tabs
-    return tabs
+        try:
+            handle_image_comparison(tabs[2])  
+        except Exception as e:
+            st.error(f"Error in image comparison: {e}")
+            st.exception(e)
 
 if __name__ == "__main__":
     main()
