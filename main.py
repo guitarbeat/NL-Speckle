@@ -6,7 +6,7 @@ import streamlit as st
 import json
 from src.sidebar import setup_ui
 import numpy as np
-from src.images import apply_processing_to_image, create_technique_config, display_filters, get_zoomed_image_section
+from src.images import apply_processing, create_technique_config, display_filters, get_zoomed_image_section
 from src.draw.formula import display_formula_details
 import src.session_state as session_state
 import matplotlib.pyplot as plt
@@ -42,6 +42,15 @@ PRELOADED_IMAGE_PATHS = {
 }
 
 def process_technique(technique):
+    """
+    Apply the specified image processing technique and store the result in session state.
+    
+    Args:
+        technique (str): The name of the technique to apply (e.g., 'nlm', 'speckle').
+    
+    Returns:
+        dict or None: The result of the processing if successful, else None.
+    """
     image = session_state.get_image_array()
     params = session_state.get_technique_params(technique)
     pixel_percentage = session_state.get_session_state("desired_percentage", 100)
@@ -52,9 +61,7 @@ def process_technique(technique):
         )
         return None
 
-    result = apply_processing_to_image(
-        image.astype(np.float32), technique, params, pixel_percentage
-    )
+    result = apply_processing(image.astype(np.float32), technique, params, pixel_percentage)
 
     if result is not None:
         session_state.set_technique_result(technique, result)
@@ -62,7 +69,9 @@ def process_technique(technique):
     return result
 
 def setup_debug_mode():
-    """Set up debug mode in the sidebar."""
+    """
+    Set up debug mode in the sidebar to display session state information.
+    """
     debug_mode = st.sidebar.checkbox("Debug Mode")
     if debug_mode:
         st.sidebar.subheader("Session State")
@@ -70,7 +79,13 @@ def setup_debug_mode():
         st.sidebar.code(session_state_str, language="json")
 
 def process_technique_tab(technique, tab):
-    """Process and display results for a given technique in its tab."""
+    """
+    Process and display results for a given technique within its designated tab.
+    
+    Args:
+        technique (str): The name of the technique (e.g., 'nlm', 'speckle').
+        tab: The Streamlit tab object where the output will be displayed.
+    """
     with tab:
         if session_state.get_session_state('image') is None:
             st.warning("Please load an image before processing.")
@@ -105,7 +120,14 @@ def process_technique_tab(technique, tab):
             display_formula_details(config)
 
 def display_image(plot_config, placeholder, zoomed=False):
-    """Display either the main image or a zoomed section."""
+    """
+    Display either the main image or a zoomed section based on the configuration.
+    
+    Args:
+        plot_config (dict): Configuration for plotting the image.
+        placeholder: Streamlit placeholder to render the image.
+        zoomed (bool): Whether to display a zoomed-in section of the image.
+    """
     zoom_data, _ = (
         (plot_config["filter_data"], "")
         if not zoomed
@@ -136,7 +158,9 @@ def display_image(plot_config, placeholder, zoomed=False):
     plt.close(fig)
 
 def main():
-    """Main function to set up and run the Streamlit application."""
+    """
+    Main function to set up and run the Streamlit application.
+    """
     try:
         st.set_page_config(**APP_CONFIG)
         session_state.initialize_session_state()

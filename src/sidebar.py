@@ -123,12 +123,13 @@ def kernel_size_and_per_pixel_toggle(technique: str):
         session_state.update_pixel_processing_values()
         session_state.clear_technique_result(technique)
     
-    st.checkbox(
+    show_per_pixel = st.checkbox(
         "Show Per-Pixel Processing",
         value=session_state.get_show_per_pixel_processing(),
         key=f"show_per_pixel_{technique}",
         help="Enable to see per-pixel processing details",
     )
+    session_state.set_show_per_pixel_processing(show_per_pixel)
 
 def handle_pixel_processing(total_pixels: int):
     if session_state.get_show_per_pixel_processing():

@@ -61,9 +61,12 @@ DEFAULT_VALUES: Dict[str, Any] = {
     "last_processed_pixel": (0, 0),
 }
 
-def set_show_per_pixel_processing(show_per_pixel: bool):
-    set_session_state("show_per_pixel", show_per_pixel)
-    
+def get_show_per_pixel_processing():
+    return st.session_state.get("show_per_pixel", False)
+
+def set_show_per_pixel_processing(value: bool):
+    st.session_state["show_per_pixel"] = value
+
 def initialize_session_state() -> None:
     """Initialize the session state with default values."""
     for key, value in DEFAULT_VALUES.items():
@@ -255,10 +258,6 @@ def get_color_map() -> str:
     """Get the current color map."""
     return get_session_state("color_map", "gray")
 
-def get_show_per_pixel_processing() -> bool:
-    """Get the current setting for showing per-pixel processing."""
-    return get_session_state("show_per_pixel", False)
-
 def get_use_whole_image() -> bool:
     """Get the current setting for using the whole image."""
     return get_session_state("use_whole_image", True)  
@@ -287,30 +286,19 @@ def reset_session_state() -> None:
     except Exception as e:
         handle_error(f"Error resetting session state: {str(e)}")
 
-def update_nlm_params(
-    filter_strength: float, search_window_size: int, use_whole_image: bool
-) -> None:
-    """Update the NLM parameters."""
-    nlm_options = safe_get(st.session_state, "nlm_options", default={})
-    nlm_options.update(
-        {
-            "filter_strength": filter_strength,
-            "search_window_size": search_window_size,
-            "use_whole_image": use_whole_image,
-        }
-    )
-    set_session_state("nlm_options", nlm_options)
+def update_nlm_params(filter_strength, search_window_size, use_whole_image):
+    st.session_state["nlm_options"] = {
+        "filter_strength": filter_strength,
+        "search_window_size": search_window_size,
+        "use_whole_image": use_whole_image,
+    }
     
-
-
-
 def get_last_processed_pixel() -> Tuple[int, int]:
     """Get the last processed pixel coordinates."""
     return get_session_state("last_processed_pixel", (0, 0))
 
 def set_last_processed_pixel(x: int, y: int) -> None:
-    """Set the last processed pixel coordinates."""
-    set_session_state("last_processed_pixel", (x, y))
+    st.session_state["last_processed_pixel"] = (x, y)
 
 def clear_technique_result(technique: str) -> None:
     """Clear the result for a specific technique."""

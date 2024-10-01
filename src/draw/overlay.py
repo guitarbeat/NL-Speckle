@@ -12,29 +12,13 @@ Do not run this file directly.
 """
 
 import itertools
-import traceback
 from typing import Any, Dict, List, Tuple
-
 import matplotlib.pyplot as plt
 import numpy as np
-import streamlit as st
 from matplotlib.collections import LineCollection
 import src.session_state as session_state
 
 
-def handle_error(func):
-    """Decorator to handle errors in overlay functions."""
-    def wrapper(*args, **kwargs):
-        try:
-            return func(*args, **kwargs)
-        except Exception as e:
-            st.error(
-                f"Error in {func.__name__}: {str(e)}\nTraceback:\n{traceback.format_exc()}"
-            )
-    return wrapper
-
-
-@handle_error
 def add_overlays(subplot: plt.Axes, image: np.ndarray, config: Dict[str, Any]) -> None:
     """Add visual overlays to the given subplot based on the provided configuration."""
     config = _set_default_config_values(config)
@@ -44,20 +28,16 @@ def add_overlays(subplot: plt.Axes, image: np.ndarray, config: Dict[str, Any]) -
         add_kernel_grid_lines(subplot, config)
         highlight_center_pixel(subplot, config)
         if config.get("technique") == "nlm":
-            add_search_window_overlay(subplot, image, config, session_state.get_use_whole_image())
-        
+            add_search_window_overlay(subplot, image, config)
+
         if config.get("zoom"):
             add_pixel_value_overlay(subplot, image, config)
     elif config.get("show_kernel"):
         if config.get("title") == "Original Image":
             add_kernel_rectangle(subplot, config)
             add_kernel_grid_lines(subplot, config)
-        
-        highlight_center_pixel(subplot, config)
 
-    # Remove this block as it's now handled in the first condition
-    # if config.get("technique") == "nlm":
-    #     add_search_window_overlay(subplot, image, config, session_state.get_use_whole_image())
+        highlight_center_pixel(subplot, config)
 
 
 def _set_default_config_values(config: Dict[str, Any]) -> Dict[str, Any]:
@@ -69,7 +49,7 @@ def _set_default_config_values(config: Dict[str, Any]) -> Dict[str, Any]:
     kernel_config.setdefault("grid_line_style", ":")
     kernel_config.setdefault("grid_line_width", 1)
     kernel_config.setdefault("center_pixel_color", "green")
-    kernel_config.setdefault("center_pixel_opacity", 0.3)  # Add this line
+    kernel_config.setdefault("center_pixel_opacity", 0.3)
     config["kernel"] = kernel_config
 
     pixel_value_config = config.get("pixel_value", {})
@@ -85,7 +65,6 @@ def _set_default_config_values(config: Dict[str, Any]) -> Dict[str, Any]:
     return config
 
 
-@handle_error
 def add_kernel_rectangle(subplot: plt.Axes, config: Dict[str, Any]) -> None:
     """Add a rectangle representing the kernel to the subplot."""
     kernel_top_left = get_kernel_top_left(config)
@@ -101,7 +80,6 @@ def add_kernel_rectangle(subplot: plt.Axes, config: Dict[str, Any]) -> None:
     )
 
 
-@handle_error
 def add_kernel_grid_lines(subplot: plt.Axes, config: Dict[str, Any]) -> None:
     """Add grid lines representing the kernel cells to the subplot."""
     grid_lines = generate_kernel_grid_lines(config)
@@ -115,7 +93,6 @@ def add_kernel_grid_lines(subplot: plt.Axes, config: Dict[str, Any]) -> None:
     )
 
 
-@handle_error
 def highlight_center_pixel(subplot: plt.Axes, config: Dict[str, Any]) -> None:
     """Highlight the center pixel of the kernel."""
     center_pixel_coords = (
@@ -134,7 +111,6 @@ def highlight_center_pixel(subplot: plt.Axes, config: Dict[str, Any]) -> None:
     )
 
 
-@handle_error
 def get_kernel_top_left(config: Dict[str, Any]) -> Tuple[float, float]:
     """Calculate the top-left corner coordinates of the kernel."""
     last_processed_pixel = config.get("last_processed_pixel", (0, 0))
@@ -145,8 +121,9 @@ def get_kernel_top_left(config: Dict[str, Any]) -> Tuple[float, float]:
     )
 
 
-@handle_error
-def generate_kernel_grid_lines(config: Dict[str, Any]) -> List[List[Tuple[float, float]]]:
+def generate_kernel_grid_lines(
+    config: Dict[str, Any],
+) -> List[List[Tuple[float, float]]]:
     """Generate the grid lines representing the kernel cells."""
     kernel_top_left = get_kernel_top_left(config)
     kernel_size = config["kernel"]["size"]
@@ -172,17 +149,17 @@ def generate_kernel_grid_lines(config: Dict[str, Any]) -> List[List[Tuple[float,
     return vertical_lines + horizontal_lines
 
 
-@handle_error
 def add_search_window_overlay(
-    subplot: plt.Axes, image: np.ndarray, config: Dict[str, Any], use_whole_image: bool
+    subplot: plt.Axes, image: np.ndarray, config: Dict[str, Any]
 ) -> None:
     """Add a rectangle representing the search window to the subplot."""
-    window_dims = get_search_window_dims(image, config) if not use_whole_image else (
-        -0.5,
-        -0.5,
-        image.shape[1],
-        image.shape[0],
-    )
+    use_whole_image = config.get("use_full_image", False)
+
+    if use_whole_image:
+        window_dims = (-0.5, -0.5, image.shape[1], image.shape[0])
+    else:
+        window_dims = get_search_window_dims(image, config)
+
     subplot.add_patch(
         plt.Rectangle(
             window_dims[:2],
@@ -195,14 +172,12 @@ def add_search_window_overlay(
     )
 
 
-@handle_error
 def get_search_window_dims(
     image: np.ndarray, config: Dict[str, Any]
 ) -> Tuple[float, float, float, float]:
     """Calculate the dimensions of the search window."""
     image_height, image_width = image.shape[:2]
-    nlm_options = session_state.get_nlm_options()
-    half_window_size = nlm_options["search_window_size"] // 2
+    half_window_size = config["search_window_size"] // 2
     last_processed_pixel_x, last_processed_pixel_y = config["last_processed_pixel"]
 
     window_left = max(0, last_processed_pixel_x - half_window_size) - 0.5
@@ -213,8 +188,9 @@ def get_search_window_dims(
     return window_left, window_top, window_right - window_left, window_bottom - window_top
 
 
-@handle_error
-def add_pixel_value_overlay(subplot: plt.Axes, image: np.ndarray, config: Dict[str, Any]) -> None:
+def add_pixel_value_overlay(
+    subplot: plt.Axes, image: np.ndarray, config: Dict[str, Any]
+) -> None:
     """Add pixel values as text overlays to the subplot."""
     image_height, image_width = image.shape[:2]
     for i, j in itertools.product(range(image_height), range(image_width)):
