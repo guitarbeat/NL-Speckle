@@ -1,30 +1,16 @@
 """
-This module serves as the main entry point for the Streamlit application.
-It imports necessary utilities and plotting functions for image comparison.
+Main entry point for the Speckle Contrast Visualization Streamlit application.
 """
 
 import streamlit as st
 import json
 from src.sidebar import setup_ui
-
-from src.images import prepare_visualization, create_technique_config, display_filters
-
+import numpy as np
+from src.images import apply_processing_to_image, create_technique_config, display_filters, get_zoomed_image_section
 from src.draw.formula import display_formula_details
-
-from src.draw.compare import handle_image_comparison
-
-from src.session_state import (
-    initialize_session_state,
-    set_technique_result,
-    get_technique_result,
-    get_session_state,
-    setup_tabs,
-        get_filter_options,
-    update_filter_selection,
-    get_filter_selection
-    )
-
-from src.utils import process_technique
+import src.session_state as session_state
+import matplotlib.pyplot as plt
+from src.draw.overlay import add_overlays
 
 # App Configuration
 APP_CONFIG = {
@@ -34,13 +20,13 @@ APP_CONFIG = {
     "initial_sidebar_state": "expanded",
 }
 
-# Color Maps 
+# Color Maps
 AVAILABLE_COLOR_MAPS = [
     "viridis_r",
     "viridis",
     "gray",
     "plasma",
-    "inferno", 
+    "inferno",
     "magma",
     "pink",
     "hot",
@@ -55,75 +41,112 @@ PRELOADED_IMAGE_PATHS = {
     "logo.jpg": "media/logo.jpg",
 }
 
+def process_technique(technique):
+    image = session_state.get_image_array()
+    params = session_state.get_technique_params(technique)
+    pixel_percentage = session_state.get_session_state("desired_percentage", 100)
+
+    if image is None or image.size == 0 or params is None:
+        st.error(
+            f"{'No image data found' if image is None or image.size == 0 else 'No parameters found for ' + technique}. Please check your input."
+        )
+        return None
+
+    result = apply_processing_to_image(
+        image.astype(np.float32), technique, params, pixel_percentage
+    )
+
+    if result is not None:
+        session_state.set_technique_result(technique, result)
+
+    return result
+
+def setup_debug_mode():
+    """Set up debug mode in the sidebar."""
+    debug_mode = st.sidebar.checkbox("Debug Mode")
+    if debug_mode:
+        st.sidebar.subheader("Session State")
+        session_state_str = json.dumps({k: str(v) for k, v in st.session_state.items()}, indent=2)
+        st.sidebar.code(session_state_str, language="json")
+
+def process_technique_tab(technique, tab):
+    """Process and display results for a given technique in its tab."""
+    with tab:
+        if session_state.get_session_state('image') is None:
+            st.warning("Please load an image before processing.")
+            return
+
+        filter_options = session_state.get_filter_options(technique)
+        if f'{technique}_filters' not in st.session_state:
+            st.session_state[f'{technique}_filters'] = session_state.get_filter_selection(technique)
+
+        st.write(f"{technique.upper()} Filters:")
+        selected_filters = st.multiselect(
+            f"Select {technique.upper()} filters to display",
+            options=filter_options,
+            default=st.session_state[f'{technique}_filters'],
+            key=f"{technique}_filter_selection"
+        )
+
+        if selected_filters != st.session_state[f'{technique}_filters']:
+            st.session_state[f'{technique}_filters'] = selected_filters
+            session_state.update_filter_selection(technique, selected_filters)
+
+        result = session_state.get_technique_result(technique)
+        if result is None:
+            result = process_technique(technique)
+            session_state.set_technique_result(technique, result)
+
+        config = create_technique_config(technique, tab)
+        if config is not None:
+            display_data = display_filters(config)
+            for plot_config, placeholder, zoomed in display_data:
+                display_image(plot_config, placeholder, zoomed)
+            display_formula_details(config)
+
+def display_image(plot_config, placeholder, zoomed=False):
+    """Display either the main image or a zoomed section."""
+    zoom_data, _ = (
+        (plot_config["filter_data"], "")
+        if not zoomed
+        else get_zoomed_image_section(
+            plot_config["filter_data"],
+            *session_state.get_last_processed_pixel(),
+            session_state.kernel_size(),
+        )
+    )
+
+    fig, ax = plt.subplots(1, 1, figsize=(4 if zoomed else 8, 4 if zoomed else 8))
+    ax.set_title(f"{'Zoomed ' if zoomed else ''}{plot_config['title']}")
+    ax.imshow(
+        zoom_data,
+        vmin=plot_config["vmin"],
+        vmax=plot_config["vmax"],
+        cmap=session_state.get_color_map(),
+    )
+    ax.axis("off")
+    add_overlays(ax, zoom_data, plot_config)
+    fig.tight_layout(pad=2)
+
+    (
+        placeholder
+        if not zoomed
+        else placeholder.get(f"zoomed_{plot_config['title'].lower().replace(' ', '_')}")
+    ).pyplot(fig)
+    plt.close(fig)
+
 def main():
     """Main function to set up and run the Streamlit application."""
     try:
-        # Set up Streamlit configuration (this should be the first Streamlit command)
         st.set_page_config(**APP_CONFIG)
-        
-        # Initialize session state
-        initialize_session_state()
-        
+        session_state.initialize_session_state()
         setup_ui()
-        
-        # Debug mode setup
-        debug_mode = st.sidebar.checkbox("Debug Mode")
-        if debug_mode:
-            st.sidebar.subheader("Session State")
-            session_state_str = json.dumps({k: str(v) for k, v in st.session_state.items()}, indent=2)
-            st.sidebar.code(session_state_str, language="json")
-        
-        setup_tabs()
+        setup_debug_mode()
 
-        tab_speckle, tab_nlm, tab_compare = st.tabs(["Speckle", "NL-Means", "Compare"])
-
+        tab_speckle, tab_nlm = st.tabs(["Speckle", "NL-Means"])
+        
         for technique, tab in zip(['speckle', 'nlm'], [tab_speckle, tab_nlm]):
-            with tab:
-                if get_session_state('image') is None:
-                    st.warning("Please load an image before processing.")
-                    continue
-                
-                # Filter selection
-                filter_options = get_filter_options(technique)
-                if f'{technique}_filters' not in st.session_state:
-                    st.session_state[f'{technique}_filters'] = get_filter_selection(technique)
-                
-                st.write(f"{technique.upper()} Filters:")
-                selected_filters = st.multiselect(
-                    f"Select {technique.upper()} filters to display",
-                    options=filter_options,
-                    default=st.session_state[f'{technique}_filters'],
-                    key=f"{technique}_filter_selection"
-                )
-                
-                if selected_filters != st.session_state[f'{technique}_filters']:
-                    st.session_state[f'{technique}_filters'] = selected_filters
-                    update_filter_selection(technique, selected_filters)
-                
-                # Processing
-                if get_technique_result(technique) is None:
-                    with st.spinner(f"Processing {technique}..."):
-                        result = process_technique(technique)
-                    set_technique_result(technique, result)
-                
-                # Display results
-                config = create_technique_config(technique, tab)
-                if config is not None:
-                    display_filters(config)
-                    display_formula_details(config)
-
-        # Handle image comparison in the third tab
-        with tab_compare:
-            speckle_result = get_technique_result('speckle')
-            nlm_result = get_technique_result('nlm')
-            
-            if speckle_result is None and nlm_result is None:
-                st.warning("No processed images available for comparison. Please process at least one image using Speckle or NL-Means techniques.")
-            else:
-                handle_image_comparison(tab_compare)
-
-        # Prepare visualization settings
-        prepare_visualization()
+            process_technique_tab(technique, tab)
 
     except Exception as e:
         st.error(f"An error occurred: {e}")
