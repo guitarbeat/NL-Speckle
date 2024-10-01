@@ -1,37 +1,51 @@
 ###############################################################################
-# sidebar.py
+# Imports and Constants
 ###############################################################################
 
-"""
-This module defines functions for the sidebar UI in the Streamlit application.
-It includes available color maps and preloaded image paths.
-"""
-
-# Imports
 import numpy as np
 import streamlit as st
 from PIL import Image
 from typing import Optional
-from session_state import initialize_session_state, update_pixel_processing_values, calculate_total_pixels
+from src.session_state import (
+    update_pixel_processing_values, 
+    calculate_total_pixels, 
+    set_value,
+    get_value,
+    update_nested_session_state, 
 
-# Constants
-rng = np.random.default_rng(seed=42)
+)
+import uuid
+
+RNG = np.random.default_rng(seed=42)
 
 ###############################################################################
 # Main UI Setup
 ###############################################################################
 
 def setup_ui() -> Optional[bool]:
-    initialize_session_state()
     apply_custom_css()
 
-    if image_selection():
-        update_pixel_processing_values()  # Call this only if an image is loaded
-        display_options()
-        nlm_options()
-        advanced_options()
+    try:
+        with st.sidebar:
+            st.title("Image Processing App")
+            
+            with st.expander("🖼️ Image Selection", expanded=True):
+                if image_selection():
+                    update_pixel_processing_values()
+            
+            with st.expander("🔧 Display Options", expanded=True):
+                display_options()
+            
+            
+            with st.expander("🔍 NLM Options", expanded=False):
+                nlm_options()
+            
+            with st.expander("⚙️ Advanced Options", expanded=False):
+                advanced_options()
+        
         return True
-    else:
+    except Exception as e:
+        st.error(f"Error setting up UI: {str(e)}")
         return None
 
 def apply_custom_css():
@@ -42,53 +56,64 @@ def apply_custom_css():
             }
         </style>
     """, unsafe_allow_html=True)
+
 ###############################################################################
 # Image Selection Methods
 ###############################################################################
 
-
 def image_selection() -> bool:
     with st.sidebar.expander("🖼️ Image Selector", expanded=True):
-        image_source = st.radio("Select Image Source", ("Preloaded Images", "Upload Image"))
+        image_source = st.radio("Select Image Source", ("Preloaded Images", "Upload Image"), key=f"image_source_radio_{uuid.uuid4()}")
         return load_preloaded_image() if image_source == "Preloaded Images" else load_uploaded_image()
+
+def load_image(image_path: str) -> Image.Image:
+    try:
+        return Image.open(image_path).convert("L")
+    except (FileNotFoundError, IOError) as e:
+        st.error(f"Error loading image: {e}. Please try again.")
+        return None
+
+def process_loaded_image(image: Image.Image, image_name: str) -> bool:
+    if image is None:
+        st.warning("Failed to load image. Please try again.")
+        return False
+    
+    st.success("Image loaded successfully!")
+    st.image(image, caption="Input Image", use_column_width=True)
+    set_value('image', image)
+    set_value('image_array', np.array(image))
+    set_value('image_file', image_name)
+    select_color_map()
+    update_pixel_processing_values()
+    return True
 
 def load_preloaded_image() -> bool:
     from main import PRELOADED_IMAGE_PATHS
     selected_image = st.selectbox("Select Image", list(PRELOADED_IMAGE_PATHS.keys()))
-    try:
-        image = Image.open(PRELOADED_IMAGE_PATHS[selected_image]).convert("L")
-        st.session_state.image_file = selected_image
-        return process_loaded_image(image)
-    except (FileNotFoundError, IOError) as e:
-        st.error(f"Error loading image: {e}. Please try again.")
-        return False
+    image = load_image(PRELOADED_IMAGE_PATHS[selected_image])
+    return process_loaded_image(image, selected_image)
 
 def load_uploaded_image() -> bool:
     uploaded_file = st.file_uploader("Upload Image", type=["png", "jpg", "jpeg", "tif", "tiff"])
     if uploaded_file is None:
         st.warning("Please upload an image.")
         return False
-    try:
-        image = Image.open(uploaded_file).convert("L")
-        st.session_state.image_file = uploaded_file.name
-        return process_loaded_image(image)
-    except IOError as e:
-        st.error(f"Error loading image: {e}. Please try again.")
-        return False
+    image = load_image(uploaded_file)
+    return process_loaded_image(image, uploaded_file.name)
 
-def process_loaded_image(image: Image.Image) -> bool:
-    st.image(image, caption="Input Image", use_column_width=True)
-    st.session_state.image = image
-    st.session_state.image_array = np.array(image)
-    select_color_map()
-    update_pixel_processing_values()
-    return True
-
+def select_color_map():
+    from main import AVAILABLE_COLOR_MAPS
+    color_map = st.selectbox(
+        "Select Color Map", AVAILABLE_COLOR_MAPS,
+        index=AVAILABLE_COLOR_MAPS.index(get_value('color_map')),
+        key="color_map_select",
+        help="Choose a color map to apply to the image"
+    )
+    set_value('color_map', color_map)
 
 ###############################################################################
 # Display Options Methods
 ###############################################################################
-
 
 def display_options():
     with st.sidebar.expander("🔧 Display Options", expanded=True):
@@ -97,58 +122,65 @@ def display_options():
         handle_pixel_processing(total_pixels)
 
 def kernel_size_and_per_pixel_toggle():
-    col1, col2 = st.columns(2)
-    with col1:
-        new_kernel_size = st.slider(
-            "Kernel Size", min_value=3, max_value=21, 
-            value=st.session_state.kernel_size, step=2, key="kernel_size_slider"
-        )
-        if new_kernel_size != st.session_state.kernel_size:
-            st.session_state.kernel_size = new_kernel_size
-            update_pixel_processing_values()
-    with col2:
-        st.toggle(
-            "Show Per-Pixel Processing Steps", 
-            value=st.session_state.show_per_pixel,
-            key="show_per_pixel",
-            on_change=lambda: setattr(st.session_state, 'show_per_pixel', not st.session_state.show_per_pixel)
-        )
+    new_kernel_size = st.slider(
+        "Kernel Size", min_value=3, max_value=21, 
+        value=get_value('kernel_size', 3), step=2, key="kernel_size_slider",
+        help="Size of the kernel used for processing"
+    )
+    if new_kernel_size != get_value('kernel_size'):
+        set_value('kernel_size', new_kernel_size)
+        update_pixel_processing_values()
+
+    show_per_pixel = st.toggle(
+        "Show Per-Pixel Processing Steps", 
+        value=get_value('show_per_pixel', False),
+        key="show_per_pixel",
+        help="Enable to view processing steps for individual pixels"
+    )
+    set_value('show_per_pixel', show_per_pixel)
 
 def handle_pixel_processing(total_pixels: int):
-    if st.session_state.show_per_pixel:
+    if get_value('show_per_pixel', False):
         setup_pixel_processing(total_pixels)
     else:
-        st.session_state.pixels_to_process = total_pixels
+        set_value('pixels_to_process', total_pixels)
 
 def setup_pixel_processing(total_pixels: int):
-    col1, col2 = st.columns(2)
-    with col1:
-        st.session_state.desired_percentage = st.slider(
-            "Percentage", min_value=1, max_value=100,
-            value=st.session_state.desired_percentage, key="percentage_slider",
-        )
+    st.write("Per-Pixel Processing Options:")
 
-    st.session_state.desired_exact_count = int(total_pixels * st.session_state.desired_percentage / 100)
-
-    with col2:
-        st.session_state.desired_exact_count = st.number_input(
-            "Exact Pixels", min_value=1, max_value=total_pixels,
-            value=st.session_state.desired_exact_count, key="exact_pixel_count",
-        )
-
-    st.session_state.desired_percentage = int((st.session_state.desired_exact_count / total_pixels) * 100)
-    st.session_state.pixels_to_process = st.session_state.desired_exact_count
-
-    st.write(f"Processing {st.session_state.desired_percentage}% ({st.session_state.desired_exact_count} of {total_pixels} pixels)")
-
-# Display options methods
-def select_color_map():
-    from main import AVAILABLE_COLOR_MAPS
-    st.session_state.color_map = st.selectbox(
-        "Select Color Map", AVAILABLE_COLOR_MAPS,
-        index=AVAILABLE_COLOR_MAPS.index(st.session_state.color_map),
-        key="color_map_select",
+    desired_percentage = st.slider(
+        "Percentage of Pixels to Process", 
+        min_value=1, 
+        max_value=100,
+        value=get_value('desired_percentage', 100), 
+        key="percentage_slider",
+        help="Adjust the percentage of pixels to process"
     )
+    set_value('desired_percentage', desired_percentage)
+
+    desired_exact_count = int(total_pixels * desired_percentage / 100)
+    set_value('desired_exact_count', desired_exact_count)
+
+    exact_count = st.number_input(
+        "Exact Number of Pixels to Process", 
+        min_value=1, 
+        max_value=total_pixels,
+        value=desired_exact_count, 
+        key="exact_pixel_count",
+        help="Specify the exact number of pixels to process"
+    )
+    set_value('desired_exact_count', exact_count)
+
+    # Update percentage based on exact count
+    updated_percentage = int((exact_count / total_pixels) * 100)
+    set_value('desired_percentage', updated_percentage)
+    set_value('pixels_to_process', exact_count)
+
+    st.info(f"Processing {updated_percentage}% ({exact_count} out of {total_pixels} total pixels)")
+
+###############################################################################
+# Filter Selection Methods
+###############################################################################
 
 ###############################################################################
 # Advanced Options Methods
@@ -158,72 +190,89 @@ def advanced_options():
     with st.sidebar.expander("🔬 Advanced Options", expanded=False):
         normalization_and_noise_options()
         sat_options()
-        speckle_filter_selection()  # Add this line
     process_image()
-
-def speckle_filter_selection():
-    st.session_state.filters["speckle"] = st.multiselect(
-        "Speckle Filter Selection",
-        options=["Original Image", "Speckle Contrast"],
-        default=st.session_state.filters["speckle"],
-        key="speckle_filter_selection"
-    )
 
 def normalization_and_noise_options():
     tab1, tab2 = st.tabs(["Normalization", "Noise"])
     with tab1:
-        st.session_state.normalization["option"] = st.selectbox(
+        normalization_option = st.selectbox(
             "Normalization", options=["None", "Percentile"],
-            index=["None", "Percentile"].index(st.session_state.normalization["option"]),
+            index=["None", "Percentile"].index(get_value('normalization', {}).get("option", "None")),
             help="Choose the normalization method for the image",
         )
+        update_nested_session_state(['normalization', 'option'], normalization_option)
     with tab2:
-        st.session_state.apply_gaussian_noise = st.checkbox(
-            "Add Gaussian Noise", value=st.session_state.gaussian_noise["enabled"], 
+        apply_gaussian_noise = st.checkbox(
+            "Add Gaussian Noise", 
+            value=get_value('gaussian_noise', {}).get("enabled", False),
             help="Add Gaussian noise to the image"
         )
-        if st.session_state.gaussian_noise["enabled"]:
+        update_nested_session_state(['gaussian_noise', 'enabled'], apply_gaussian_noise)
+        if apply_gaussian_noise:
             setup_gaussian_noise_params()
 
 def sat_options():
     with st.popover("SAT Options"):
-        st.session_state.use_sat = st.toggle(
-            "Use Summed-Area Tables (SAT)", value=st.session_state.use_sat,
+        use_sat = st.toggle(
+            "Use Summed-Area Tables (SAT)", 
+            value=get_value('use_sat', False),
             help="Enable Summed-Area Tables for faster Speckle Contrast calculation"
         )
+        set_value('use_sat', use_sat)
 
 def setup_gaussian_noise_params():
-    st.session_state.noise_mean = st.sidebar.number_input(
+    noise_mean = st.sidebar.number_input(
         "Noise Mean", min_value=0.0, max_value=1.0,
-        value=st.session_state.noise_mean, step=0.01, format="%.2f",
+        value=get_value('gaussian_noise', {}).get("mean", 0.1),
+        step=0.01, format="%.2f",
+        help="Mean value for Gaussian noise"
     )
-    st.session_state.noise_std_dev = st.sidebar.number_input(
+    update_nested_session_state(['gaussian_noise', 'mean'], noise_mean)
+
+    noise_std_dev = st.sidebar.number_input(
         "Noise Standard Deviation", min_value=0.0, max_value=1.0,
-        value=st.session_state.noise_std_dev, step=0.01, format="%.2f",
+        value=get_value('gaussian_noise', {}).get("std_dev", 0.1),
+        step=0.01, format="%.2f",
+        help="Standard deviation for Gaussian noise"
     )
+    update_nested_session_state(['gaussian_noise', 'std_dev'], noise_std_dev)
 
 def process_image():
-    image_np = st.session_state.image_array.astype(np.float32) / 255.0
-    if st.session_state.gaussian_noise["enabled"]:
-        image_np = apply_gaussian_noise(image_np)
-    if st.session_state.normalization["option"] == "Percentile":
-        image_np = apply_percentile_normalization(image_np)
-    st.session_state.processed_image_np = image_np
+    image_array = get_value('image_array')
+    if image_array is None:
+        st.warning("No image loaded. Please select an image first.")
+        return
     
+    try:
+        image_np = image_array.astype(np.float32) / 255.0
+        if get_value('gaussian_noise', {}).get("enabled", False):
+            image_np = apply_gaussian_noise(image_np)
+        if get_value('normalization', {}).get("option") == "Percentile":
+            image_np = apply_percentile_normalization(image_np)
+        set_value('processed_image_np', image_np)
+        
+        # Add these lines to set the image data for both speckle and nlm techniques
+        set_value('speckle_image', image_np)
+        set_value('nlm_image', image_np)
+    except Exception as e:
+        st.error(f"Error processing image: {str(e)}")
+        st.exception(e)
 
 def apply_gaussian_noise(image_np: np.ndarray) -> np.ndarray:
-    noise = rng.normal(
-        st.session_state.gaussian_noise["mean"],
-        st.session_state.gaussian_noise["std_dev"],
+    gaussian_noise = get_value('gaussian_noise', {})
+    noise = RNG.normal(
+        gaussian_noise.get("mean", 0),
+        gaussian_noise.get("std_dev", 0.1),
         image_np.shape
     )
     return np.clip(image_np + noise, 0, 1)
 
 def apply_percentile_normalization(image_np: np.ndarray) -> np.ndarray:
+    normalization = get_value('normalization', {})
     p_low, p_high = np.percentile(
         image_np,
-        [st.session_state.normalization["percentile_low"],
-         st.session_state.normalization["percentile_high"]]
+        [normalization.get("percentile_low", 2),
+         normalization.get("percentile_high", 98)]
     )
     image_np = np.clip(image_np, p_low, p_high)
     return (image_np - p_low) / (p_high - p_low)
@@ -236,37 +285,33 @@ def nlm_options():
     with st.sidebar.expander("🔍 NLM Options", expanded=False):
         setup_search_window()
         setup_filter_strength()
-        setup_nlm_filter_selection()  # Add this line
-
-def setup_nlm_filter_selection():
-    st.multiselect(
-        "NLM Filter Selection",
-        options=["Original Image", "Non-Local Means"],
-        default=st.session_state.filters["nlm"],
-        key="nlm_filter_selection"
-    )
 
 def setup_search_window():
-    image_shape = st.session_state.image.size
+    image_shape = get_value('image').size
     max_search_window = min(101, *image_shape)
     default_search_window = min(21, max_search_window)
-    st.session_state.nlm_options["use_whole_image"] = st.checkbox(
+    use_whole_image = st.checkbox(
         "Use whole image as search window", 
-        value=st.session_state.nlm_options["use_whole_image"]  # Use the value from Session State
+        value=get_value('nlm_options', {}).get("use_whole_image", False),
+        help="Use the entire image as the search window for NLM"
     )
-    st.session_state.search_window_size = get_search_window_size(
-        st.session_state.nlm_options["use_whole_image"],  # Use the value from Session State
+    update_nested_session_state(['nlm_options', 'use_whole_image'], use_whole_image)
+    
+    search_window_size = get_search_window_size(
+        use_whole_image,
         max_search_window, 
         default_search_window, 
         image_shape
     )
+    update_nested_session_state(['search_window_size'], search_window_size)
 
 def setup_filter_strength():
-    st.session_state.filter_strength = st.slider(
+    filter_strength = st.slider(
         "Filter Strength", min_value=0.1, max_value=100.0,
-        value=st.session_state.nlm_options["filter_strength"], step=0.1, format="%.1f",
-        help="Filter strength for NLM (higher values mean more smoothing)",
-    )
+        value=get_value('nlm_options', {}).get("filter_strength", 10.0),
+        step=0.1, format="%.1f",
+        help="Filter strength for NLM (higher values mean more smoothing)",)
+    update_nested_session_state(['nlm_options', 'filter_strength'], filter_strength)
 
 def get_search_window_size(use_whole_image: bool, max_search_window: int, default_search_window: int, image_shape: tuple) -> int:
     if use_whole_image:
