@@ -19,7 +19,7 @@ def add_overlays(subplot: plt.Axes, image: np.ndarray, config: Dict[str, Any]) -
     """Add various overlays (kernels, search windows, pixel values) to the subplot based on the config."""
     config = _set_default_config_values(config)
 
-    if config.get("show_per_pixel_processing"):
+    if config.get("show_per_pixel_processing") and config.get("title") == "Original Image":
         add_kernel_rectangle(subplot, config)
         add_kernel_grid_lines(subplot, config)
         highlight_center_pixel(subplot, config)
@@ -30,10 +30,10 @@ def add_overlays(subplot: plt.Axes, image: np.ndarray, config: Dict[str, Any]) -
         if config.get("zoom"):
             add_pixel_value_overlay(subplot, image, config)
 
-    elif config.get("show_kernel") and config.get("title") == "Original Image":
-        add_kernel_rectangle(subplot, config)
-        add_kernel_grid_lines(subplot, config)
+    elif config.get("show_per_pixel_processing"):
         highlight_center_pixel(subplot, config)
+        if config.get("zoom"):
+            add_pixel_value_overlay(subplot, image, config)
 
 
 def _set_default_config_values(config: Dict[str, Any]) -> Dict[str, Any]:
@@ -162,7 +162,7 @@ def get_search_window_dims(config: Dict[str, Any]) -> Tuple[float, float, float,
     window_left = max(total_area["left"], last_x - half_window_size) - 0.5
     window_top = max(total_area["top"], last_y - half_window_size) - 0.5
     window_right = min(total_area["right"], last_x + half_window_size) - 0.5
-    window_bottom = min(total_area["bottom"], last_y + half_window_size) - 0.5
+    window_bottom = min(total_area["bottom"], last_y + half_window_size) 
 
     return window_left, window_top, window_right - window_left, window_bottom - window_top
 

@@ -9,7 +9,8 @@ from concurrent.futures import ProcessPoolExecutor
 from multiprocessing import cpu_count
 import time
 
-## Image Processing ##
+
+## Utility Functions ##
 
 
 def extract_window(y_coord, x_coord, kernel_size, image):
@@ -53,6 +54,18 @@ def calculate_weights(patch_xy, patch_ij, filter_strength):
     return weight
 
 
+def process_pixel_wrapper(args):
+    """Wrapper to process a pixel with error handling."""
+    try:
+        return args[0](*args[1:])
+    except Exception as e:
+        print(f"Error processing pixel: {str(e)}")
+        return None
+
+
+## Shared Configuration ##
+
+
 def create_shared_config(technique, params):
     """Create a shared configuration for both processing and overlays."""
     nlm_options = session_state.get_nlm_options()
@@ -73,38 +86,32 @@ def create_shared_config(technique, params):
             "show_per_pixel", False
         ),
         "image_shape": (height, width),
+        "total_pixels": image_array.size,
+        "pixels_to_process": session_state.get_session_state(
+            "pixels_to_process", image_array.size
+        ),
+        "pixel_percentage": (session_state.get_session_state(
+            "pixels_to_process", image_array.size
+        ) / image_array.size) * 100,
+        "processable_area": {
+            "top": half_kernel,
+            "bottom": height - half_kernel,
+            "left": half_kernel,
+            "right": width - half_kernel,
+        },
+        # Define the total area
+        "total_area": {
+            "top": 0,
+            "bottom": height,
+            "left": 0,
+            "right": width,
+        }
     }
 
-    config["total_pixels"] = image_array.size
-    config["pixels_to_process"] = session_state.get_session_state(
-        "pixels_to_process", config["total_pixels"]
-    )
-    config["pixel_percentage"] = (
-        config["pixels_to_process"] / config["total_pixels"]
-    ) * 100
-
-    config["processable_area"] = {
-        "top": half_kernel,
-        "bottom": height - half_kernel,
-        "left": half_kernel,
-        "right": width - half_kernel,
-    }
-    # Define the total area
-    config["total_area"] = {
-        "top": 0,
-        "bottom": height,
-        "left": 0,
-        "right": width,
-    }
-    
     return config
 
 
-def debug_write(message):
-    """Write debug messages to the session state."""
-    if "debug_messages" not in st.session_state:
-        st.session_state.debug_messages = []
-    st.session_state.debug_messages.append(message)
+## Image Processing ##
 
 
 class ImageProcessor:
@@ -120,11 +127,6 @@ class ImageProcessor:
         self.pixels = self.get_pixels_for_processing()
         self.current_pixel = None
         self.last_processed_pixel = None
-        
-
-        debug_write(
-            f"DEBUG: {technique.upper()} - Total pixels: {self.height * self.width}, Selected: {len(self.pixels)}"
-        )
 
     def initialize_result_images(self):
         """Initialize result images based on the technique."""
@@ -134,6 +136,7 @@ class ImageProcessor:
         ]
 
     def get_pixels_for_processing(self):
+        """Retrieve the list of pixels to process."""
         processable_area = self.shared_config["processable_area"]
         all_pixels = [
             (y_coord, x_coord)
@@ -169,9 +172,6 @@ class ImageProcessor:
         window = extract_window(y_coord, x_coord, kernel_size, self.image)
         mean, std = compute_statistics(window)
         std_ratio = std / mean if mean != 0 else 0
-        st.write(
-            f"LSCI pixel ({y_coord}, {x_coord}): mean={mean:.2f}, std={std:.2f}, ratio={std_ratio:.2f}"
-        )
         return y_coord, x_coord, mean, std, std_ratio
 
     def process_nlm_pixel(self, y_coord, x_coord):
@@ -181,10 +181,7 @@ class ImageProcessor:
         filter_strength = self.params["filter_strength"]
         use_full_image = self.shared_config["use_full_image"]
 
-        if use_full_image:
-            search_radius = max(self.height, self.width)
-        else:
-            search_radius = search_window_size // 2
+        search_radius = max(self.height, self.width) if use_full_image else search_window_size // 2
 
         y_start = max(0, y_coord - search_radius)
         y_end = min(self.height, y_coord + search_radius + 1)
@@ -194,6 +191,7 @@ class ImageProcessor:
         patch_xy = extract_window(y_coord, x_coord, kernel_size, self.image)
 
         weights = []
+        neighbors = []
         for y_neighbor in range(y_start, y_end):
             for x_neighbor in range(x_start, x_end):
                 if (y_neighbor, x_neighbor) == (y_coord, x_coord):
@@ -201,35 +199,23 @@ class ImageProcessor:
                 patch_neighbor = extract_window(y_neighbor, x_neighbor, kernel_size, self.image)
                 weight = calculate_weights(patch_xy, patch_neighbor, filter_strength)
                 weights.append(weight)
+                neighbors.append((y_neighbor, x_neighbor))
 
         if not weights:
-            debug_write(f"WARNING: NLM pixel ({y_coord}, {x_coord}): No weights calculated")
             return y_coord, x_coord, self.image[y_coord, x_coord], 0, 0, 0, 0
 
         weights_sum = sum(weights)
         pixel_sum = sum(
-            w * self.image[y_neighbor, x_neighbor]
-            for w, (y_neighbor, x_neighbor) in zip(
-                weights,
-                (
-                    (y_neighbor, x_neighbor)
-                    for y_neighbor in range(y_start, y_end)
-                    for x_neighbor in range(x_start, x_end)
-                    if (y_neighbor, x_neighbor) != (y_coord, x_coord)
-                ),
-            )
+            w * self.image[y, x]
+            for w, (y, x) in zip(weights, neighbors)
         )
 
         nlm_value = pixel_sum / weights_sum
-        weight_avg = weights_sum / ((y_end - y_start) * (x_end - x_start) - 1)
-        weight_std = (
-            sum(w**2 for w in weights) / ((y_end - y_start) * (x_end - x_start) - 1)
-            - weight_avg**2
-        ) ** 0.5
-
-        st.write(
-            f"NLM pixel ({y_coord}, {x_coord}): value={nlm_value:.2f}, weight_avg={weight_avg:.2f}, weight_std={weight_std:.2f}"
+        weight_avg = weights_sum / len(weights)
+        weight_std = np.sqrt(
+            sum(w**2 for w in weights) / len(weights) - weight_avg**2
         )
+
         return y_coord, x_coord, nlm_value, weight_avg, weight_std, max(weights), min(weights)
 
     def run_parallel_processing(self):
@@ -239,56 +225,43 @@ class ImageProcessor:
         num_processes = min(cpu_count(), st.session_state.get("max_workers", 4))
         start_time = time.time()
 
-        debug_write(f"DEBUG: {self.technique.upper()} - Starting processing")
-
         with st.spinner(f"Processing {self.technique.upper()}..."), ProcessPoolExecutor(
             max_workers=num_processes
         ) as executor:
             self._process_pixels(executor, args_list, progress_bar, status, start_time)
 
         processing_end = self.current_pixel or (0, 0)
-        debug_write(
-            f"DEBUG: {self.technique.upper()} - Processing completed. Last pixel: {processing_end}"
-        )
-
         return self.format_result(processing_end)
 
     def _process_pixels(self, executor, args_list, progress_bar, status, start_time):
+        total_pixels = len(self.pixels)
         for i, result in enumerate(executor.map(process_pixel_wrapper, args_list)):
             if result is not None:
-                self._handle_pixel_result(result, i)
-            self._update_progress(i, len(self.pixels), start_time, progress_bar, status)
+                self._handle_pixel_result(result)
+            self._update_progress(i + 1, total_pixels, start_time, progress_bar, status)
 
-    def _handle_pixel_result(self, result, index):
+    def _handle_pixel_result(self, result):
         y_coord, x_coord, *values = result
         for j, value in enumerate(values):
             if self._is_valid_pixel(y_coord, x_coord):
                 self.result_images[j][y_coord, x_coord] = value
-                self.last_processed_pixel = (y_coord, x_coord)  # Update last processed pixel
-            else:
-                self._log_out_of_bounds(y_coord, x_coord)
-        if index == 0:
-            debug_write(
-                f"DEBUG: {self.technique.upper()} - First pixel processed: ({y_coord}, {x_coord})"
-            )
+                self.last_processed_pixel = (y_coord, x_coord)
 
     def _is_valid_pixel(self, y_coord, x_coord):
-        return y_coord < self.height and x_coord < self.width
-
-    def _log_out_of_bounds(self, y_coord, x_coord):
-        debug_write(
-            f"WARNING: Pixel coordinates ({y_coord}, {x_coord}) out of bounds for image shape {self.image.shape}"
-        )
+        return 0 <= y_coord < self.height and 0 <= x_coord < self.width
 
     def _update_progress(self, current, total, start_time, progress_bar, status):
         progress = current / total
         progress_bar.progress(progress)
-        elapsed_time = time.time() - start_time
-        estimated_total_time = elapsed_time / progress if progress > 0 else 0
-        remaining_time = estimated_total_time - elapsed_time
-        status.text(
-            f"Processed {current}/{total} pixels. Estimated time remaining: {remaining_time:.2f} seconds"
-        )
+        if progress > 0:
+            elapsed_time = time.time() - start_time
+            estimated_total_time = elapsed_time / progress
+            remaining_time = estimated_total_time - elapsed_time
+            status.text(
+                f"Processed {current}/{total} pixels. Estimated time remaining: {remaining_time:.2f} seconds"
+            )
+        else:
+            status.text("Initializing processing...")
 
     def format_result(self, processing_end):
         """Format the processing results."""
@@ -298,16 +271,15 @@ class ImageProcessor:
             "pixels_processed": len(self.pixels),
             "image_dimensions": (self.height, self.width),
             "processable_area": self.shared_config["processable_area"],
-            "last_processed_pixel": self.last_processed_pixel,  # Add this line
+            "last_processed_pixel": self.last_processed_pixel,
         }
-
 
         if self.technique == "nlm":
             (
                 nlm_image,
                 normalization_factors,
                 nl_std_image,
-                nl_lsci_image,  # Changed from nl_speckle_image
+                nl_lsci_image,
                 last_similarity_map,
             ) = self.result_images
             return {
@@ -315,7 +287,7 @@ class ImageProcessor:
                 "NL_means": nlm_image,
                 "normalization_factors": normalization_factors,
                 "NL_std": nl_std_image,
-                "NL_lsci": nl_lsci_image,  # Changed from NL_speckle
+                "NL_lsci": nl_lsci_image,
                 "search_window_size": self.shared_config["search_window_size"],
                 "filter_strength": self.params["filter_strength"],
                 "last_similarity_map": last_similarity_map,
@@ -324,23 +296,11 @@ class ImageProcessor:
                     "Normalization Factors": normalization_factors,
                     "Last Similarity Map": last_similarity_map,
                     "NL Standard Deviation": nl_std_image,
-                    "NL LSCI": nl_lsci_image,  # Changed from NL Speckle
+                    "NL LSCI": nl_lsci_image,
                 },
             }
         else:  # LSCI
             mean_filter, std_dev_filter, lsci_filter = self.result_images
-
-            # Add dimension checks
-            for name, filter_image in [
-                ("Mean Filter", mean_filter),
-                ("Std Dev Filter", std_dev_filter),
-                ("LSCI Filter", lsci_filter),
-            ]:
-                if filter_image.shape != self.image.shape:
-                    debug_write(
-                        f"WARNING: {name} shape {filter_image.shape} does not match original image shape {self.image.shape}"
-                    )
-
             return {
                 **base_result,
                 "mean_filter": mean_filter,
@@ -352,27 +312,6 @@ class ImageProcessor:
                     "LSCI": lsci_filter,
                 },
             }
-
-
-def process_pixel_wrapper(args):
-    """Wrapper to process a pixel with error handling."""
-    try:
-        return args[0](*args[1:])
-    except Exception as e:
-        print(f"Error processing pixel: {str(e)}")
-        return None
-
-
-def update_progress(current, total, start_time, progress_bar, status):
-    """Update the progress bar and status text."""
-    progress = current / total
-    progress_bar.progress(progress)
-    elapsed_time = time.time() - start_time
-    estimated_total_time = elapsed_time / progress if progress > 0 else 0
-    remaining_time = estimated_total_time - elapsed_time
-    status.text(
-        f"Processed {current}/{total} pixels. Estimated time remaining: {remaining_time:.2f} seconds"
-    )
 
 
 ## Image Rendering ##
@@ -418,9 +357,10 @@ def create_technique_config(technique, tab):
         },
         "zoom": False,
         "processable_area": shared_config["processable_area"],
-        "last_processed_pixel": result_image.get("last_processed_pixel", (0, 0)),  # Add this line
+        "last_processed_pixel": result_image.get("last_processed_pixel", (0, 0)),
     }
     return config
+
 
 def display_filters(config):
     """Prepare filters data based on the provided configuration."""
@@ -432,9 +372,8 @@ def display_filters(config):
     display_data = []
     for filter_name in config["selected_filters"]:
         if filter_name in filter_options:
-            plot_config = create_plot_config(
-                config, filter_name, prepare_filter_data(filter_options[filter_name])
-            )
+            filter_data = prepare_filter_data(filter_options[filter_name])
+            plot_config = create_plot_config(config, filter_name, filter_data)
             display_data.append(
                 (
                     plot_config,
@@ -512,21 +451,11 @@ def get_zoomed_image_section(image, center_x_coord, center_y_coord, zoom_size):
 
 
 def apply_processing(image, technique, params):
+    """Apply the specified processing technique to the image."""
     pixels_to_process = session_state.get_session_state("pixels_to_process", image.size)
     params["pixels_to_process"] = pixels_to_process
 
-    debug_write(
-        f"DEBUG: Processing {technique.upper()} - Pixels to process: {pixels_to_process}"
-    )
-
     processor = ImageProcessor(image, technique, params)
     result = processor.run_parallel_processing()
-
-    # Check result dimensions
-    for key, value in result.get("filter_data", {}).items():
-        if isinstance(value, np.ndarray) and value.shape != image.shape:
-            debug_write(
-                f"WARNING: {key} shape {value.shape} does not match original image shape {image.shape}"
-            )
 
     return result
