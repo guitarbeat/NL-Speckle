@@ -1,12 +1,19 @@
-## Image Rendering ##
+
 from typing import Dict, Any, List, Tuple
 import src.session_state as session_state
 import streamlit as st
 import numpy as np
 from src.images import create_shared_config
 
+# Constants to define style and other repeated values
+DEFAULT_KERNEL_OUTLINE_COLOR = "red"
+DEFAULT_KERNEL_CENTER_PIXEL_COLOR = "green"
+DEFAULT_SEARCH_WINDOW_COLOR = "blue"
+DEFAULT_PIXEL_TEXT_COLOR = "white"
+DEFAULT_PIXEL_FONT_SIZE = 8
+
 def create_technique_config(
-    technique: str, tab: st.delta_generator.DeltaGenerator
+    technique: str, tab: Any
 ) -> Dict[str, Any]:
     """Create a configuration dictionary for the specified denoising technique."""
     result_image = session_state.get_technique_result(technique)
@@ -21,35 +28,49 @@ def create_technique_config(
         f"{technique}_filters", session_state.get_filter_selection(technique)
     )
 
-    config = {
+    return {
         **shared_config,
         "results": result_image,
         "ui_placeholders": create_ui_placeholders(tab, selected_filters),
         "selected_filters": selected_filters,
-        "kernel": {
-            "size": shared_config["kernel_size"],
-            "outline_color": "red",
-            "outline_width": 1,
-            "grid_line_color": "red",
-            "grid_line_style": ":",
-            "grid_line_width": 1,
-            "center_pixel_color": "green",
-            "center_pixel_opacity": 0.5,
-        },
-        "search_window": {
-            "outline_color": "blue",
-            "outline_width": 2,
-            "size": shared_config["search_window_size"],
-        },
-        "pixel_value": {
-            "text_color": "white",
-            "font_size": 8,
-        },
+        "kernel": create_kernel_config(shared_config),
+        "search_window": create_search_window_config(shared_config),
+        "pixel_value": create_pixel_value_config(),
         "zoom": False,
-        "processable_area": shared_config["processable_area"],
+        "processable_area": shared_config.get("processable_area"),
         "last_processed_pixel": result_image.get("last_processed_pixel", (0, 0)),
     }
-    return config
+
+
+def create_kernel_config(shared_config: Dict[str, Any]) -> Dict[str, Any]:
+    """Create the kernel configuration."""
+    return {
+        "size": shared_config.get("kernel_size"),
+        "outline_color": DEFAULT_KERNEL_OUTLINE_COLOR,
+        "outline_width": 1,
+        "grid_line_color": DEFAULT_KERNEL_OUTLINE_COLOR,
+        "grid_line_style": ":",
+        "grid_line_width": 1,
+        "center_pixel_color": DEFAULT_KERNEL_CENTER_PIXEL_COLOR,
+        "center_pixel_opacity": 0.5,
+    }
+
+
+def create_search_window_config(shared_config: Dict[str, Any]) -> Dict[str, Any]:
+    """Create the search window configuration."""
+    return {
+        "outline_color": DEFAULT_SEARCH_WINDOW_COLOR,
+        "outline_width": 2,
+        "size": shared_config.get("search_window_size"),
+    }
+
+
+def create_pixel_value_config() -> Dict[str, Any]:
+    """Create the pixel value configuration."""
+    return {
+        "text_color": DEFAULT_PIXEL_TEXT_COLOR,
+        "font_size": DEFAULT_PIXEL_FONT_SIZE,
+    }
 
 
 def display_filters(config: Dict[str, Any]) -> List[Tuple[Dict[str, Any], Any, bool]]:
@@ -76,21 +97,20 @@ def create_display_data(
 ) -> List[Tuple[Dict[str, Any], Any, bool]]:
     """Create display data for a single filter."""
     filter_key = filter_name.lower().replace(" ", "_")
-    data = [(plot_config, config["ui_placeholders"][filter_key], False)]
+    placeholders = config["ui_placeholders"]
 
-    if config["show_per_pixel_processing"]:
-        data.append((plot_config, config["ui_placeholders"], True))
+    data = [(plot_config, placeholders[filter_key], False)]
+
+    if config.get("show_per_pixel_processing", False):
+        data.append((plot_config, placeholders, True))
 
     return data
 
 
 def prepare_filter_data(filter_data: np.ndarray) -> np.ndarray:
     """Ensure filter data is 2D."""
-    return (
-        filter_data.reshape(session_state.get_image_array().shape)
-        if filter_data.ndim == 1
-        else filter_data
-    )
+    image_shape = session_state.get_image_array().shape
+    return filter_data.reshape(image_shape) if filter_data.ndim == 1 else filter_data
 
 
 def create_plot_config(
@@ -107,16 +127,18 @@ def create_plot_config(
 
 
 def create_ui_placeholders(
-    tab: st.delta_generator.DeltaGenerator, selected_filters: List[str]
+    tab: Any, selected_filters: List[str]
 ) -> Dict[str, Any]:
-    """Create UI placeholders for filters and formula."""
+    """Create UI placeholders for filters and formula display."""
     with tab:
         placeholders = {"formula": st.empty()}
-        columns = st.columns(max(1, len(selected_filters)))
+        columns = st.columns(len(selected_filters) or 1)
 
         for i, filter_name in enumerate(selected_filters):
             filter_key = filter_name.lower().replace(" ", "_")
             placeholders[filter_key] = columns[i].empty()
+            
+            # If "show_per_pixel" is enabled, add a zoomed-in placeholder
             if session_state.get_session_state("show_per_pixel", False):
                 placeholders[f"zoomed_{filter_key}"] = (
                     columns[i]
@@ -132,13 +154,14 @@ def get_zoomed_image_section(
 ) -> Tuple[np.ndarray, Tuple[int, int]]:
     """Get a zoomed-in section of the image centered at the specified pixel."""
     half_zoom = zoom_size // 2
-    top, bottom = (
-        max(0, center_y_coord - half_zoom),
-        min(image.shape[0], center_y_coord + half_zoom + 1),
-    )
-    left, right = (
-        max(0, center_x_coord - half_zoom),
-        min(image.shape[1], center_x_coord + half_zoom + 1),
-    )
+    
+    # Ensure that the zoomed section stays within the image boundaries
+    top = max(0, center_y_coord - half_zoom)
+    bottom = min(image.shape[0], center_y_coord + half_zoom + 1)
+    left = max(0, center_x_coord - half_zoom)
+    right = min(image.shape[1], center_x_coord + half_zoom + 1)
 
-    return image[top:bottom, left:right], (center_x_coord - left, center_y_coord - top)
+    zoomed_section = image[top:bottom, left:right]
+    center_coords_in_zoom = (center_x_coord - left, center_y_coord - top)
+
+    return zoomed_section, center_coords_in_zoom

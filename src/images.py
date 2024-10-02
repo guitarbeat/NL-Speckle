@@ -104,11 +104,6 @@ def create_shared_config(technique: str, params: Dict[str, Any]) -> Dict[str, An
         "pixels_to_process": session_state.get_session_state(
             "pixels_to_process", image_array.size
         ),
-        "pixel_percentage": (
-            session_state.get_session_state("pixels_to_process", image_array.size)
-            / image_array.size
-        )
-        * 100,
         "processable_area": {
             "top": half_kernel,
             "bottom": height - half_kernel,
@@ -404,7 +399,6 @@ class ImageProcessor:
         return {**base_result, **technique_specific_result}
 
 
-@st.cache_data(show_spinner=False)
 def apply_processing(
     image: np.ndarray,
     technique: str,

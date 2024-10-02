@@ -151,8 +151,8 @@ def kernel_size_and_per_pixel_toggle(technique: str):
             "Maximum Pixels to Process",
             min_value=1,
             max_value=total_processable_pixels,
-            value=min(10000, total_processable_pixels),
-            step=1000,
+            value=min(1, total_processable_pixels),
+            step=1,
             key=f"max_pixels_{technique}",
             help="Set the maximum number of pixels to process for per-pixel visualization",
         )

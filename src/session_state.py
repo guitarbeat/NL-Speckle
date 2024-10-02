@@ -50,7 +50,7 @@ DEFAULT_VALUES: Dict[str, Any] = {
         "lsci": DEFAULT_SPECKLE_VIEW,
     },
     "techniques": ["lsci", "nlm"],
-    "pixels_to_process": 10000,
+    "pixels_to_process": 1,
     "desired_exact_count": 0,
     "processed_image_np": None,
     "image_file": None,
@@ -120,7 +120,6 @@ def get_filter_selection(technique: str) -> List[str]:
 # used in main and images
 def get_technique_result(technique: str) -> Optional[Dict[str, Any]]:
     result = get_session_state(f"{technique}_result")
-    print(f"Retrieved {technique} result: {result}")  # Debug output
     return result
 
 # used in main and images
@@ -177,7 +176,7 @@ def update_nlm_params(filter_strength, search_window_size, use_whole_image):
         "search_window_size": search_window_size,
         "use_whole_image": use_whole_image,
     }
-
+# used in main
 def needs_processing(technique: str) -> bool:
     """Check if the technique needs processing based on current state."""
     result = get_session_state(f"{technique}_result")
@@ -185,12 +184,9 @@ def needs_processing(technique: str) -> bool:
     last_processed = get_session_state(f"{technique}_last_processed", 0)
     return result is None or last_processed != pixels_to_process
 
+# used in main
 def set_last_processed(technique: str, value: int) -> None:
     """Set the last processed pixel count for a technique."""
     set_session_state(f"{technique}_last_processed", value)
 
-@st.cache_data
-def get_last_pixel_intensity(technique):
-    result = get_technique_result(technique)
-    return result.get("last_pixel_intensity") if result else None
 
