@@ -146,8 +146,12 @@ class ImageProcessor:
 
     def initialize_result_images(self) -> List[np.ndarray]:
         """Initialize result images based on the technique."""
-        num_images = 5 if self.technique == "nlm" else 3
-        return [np.zeros_like(self.image, dtype=np.float32) for _ in range(num_images)]
+        if self.technique == "nlm":
+            # NLM, Normalization Factors, Last Similarity Map, Weighted Std Dev
+            return [np.zeros_like(self.image, dtype=np.float32) for _ in range(4)]
+        else:
+            # Existing for LSCI
+            return [np.zeros_like(self.image, dtype=np.float32) for _ in range(3)]
 
     def get_pixels_for_processing(self) -> List[Tuple[int, int]]:
         """Retrieve the list of pixels to process."""
@@ -176,68 +180,167 @@ class ImageProcessor:
         processor = getattr(self, f"process_{self.technique}_pixel")
         return processor(y_coord, x_coord)
 
+    ########################
+    #    LSCI Processing   #
+    ########################
+
     def process_lsci_pixel(
-        self, y_coord: int, x_coord: int
+        self, y_center: int, x_center: int
     ) -> Tuple[int, int, float, float, float]:
         """Process a single pixel using LSCI filtering."""
-        window = extract_window(
-            y_coord, x_coord, self.shared_config["kernel_size"], self.image
+        # Extract the window (patch) centered at (y_center, x_center)
+        # This corresponds to the Border Handling formula:
+        # P_{x,y}(i,j) = I_{x+i,y+j} if (x+i,y+j) ∈ valid region, 0 otherwise
+        patch_center = extract_window(
+            y_center, x_center, self.shared_config["kernel_size"], self.image
         )
-        mean, std = compute_statistics(window)
-        std_ratio = std / mean if mean != 0 else 0
-        return y_coord, x_coord, float(mean), float(std), float(std_ratio)
+
+        # Compute mean and standard deviation
+        # This implements the Mean Filter and Standard Deviation Calculation formulas:
+        # μ_{x,y} = (1/N) ∑_{i,j ∈ K_{x,y}} I_{i,j}
+        # σ_{x,y} = sqrt((1/N) ∑_{i,j ∈ K_{x,y}} (I_{i,j} - μ_{x,y})^2)
+        mean_intensity, std_intensity = compute_statistics(patch_center)
+
+        # Calculate the Speckle Contrast
+        # This implements the Speckle Contrast Calculation formula:
+        # SC_{x,y} = σ_{x,y} / μ_{x,y}
+        speckle_contrast = std_intensity / mean_intensity if mean_intensity != 0 else 0
+
+        # Return the results: coordinates, mean, standard deviation, and speckle contrast
+        return y_center, x_center, float(mean_intensity), float(std_intensity), float(speckle_contrast)
+
+    def format_lsci_result(self) -> Dict[str, Any]:
+        """Format LSCI-specific results."""
+        mean_filter, std_dev_filter, lsci_filter = self.result_images
+        return self._create_filter_data(
+            "LSCI", mean_filter, std_dev_filter, lsci_filter
+        )
+
+    ########################
+    #    NLM Processing    #
+    ########################
 
     def process_nlm_pixel(
-        self, y_coord: int, x_coord: int
+        self, y_center: int, x_center: int
     ) -> Tuple[int, int, float, float, float, float]:
-        """Process a single pixel using NL Means (NLM) filtering."""
+        """Process a single pixel using Non-Local Means (NLM) filtering and compute Non-Local Standard Deviation."""
         kernel_size = self.shared_config["kernel_size"]
         search_window_size = self.shared_config["search_window_size"]
-        filter_strength = self.params["filter_strength"]
+        h = self.params["filter_strength"]
         use_full_image = self.shared_config["use_full_image"]
 
+        # Define the search window Ω(x,y)
+        # This corresponds to the Search Window formula:
+        # Ω(x,y) = I if search_size = 'full', [(x-s,y-s), (x+s,y+s)] ∩ valid region otherwise
         search_radius = (
             max(self.height, self.width) if use_full_image else search_window_size // 2
         )
 
-        y_start = max(0, y_coord - search_radius)
-        y_end = min(self.height, y_coord + search_radius + 1)
-        x_start = max(0, x_coord - search_radius)
-        x_end = min(self.width, x_coord + search_radius + 1)
+        y_start = max(0, y_center - search_radius)
+        y_end = min(self.height, y_center + search_radius + 1)
+        x_start = max(0, x_center - search_radius)
+        x_end = min(self.width, x_center + search_radius + 1)
 
-        patch_xy = extract_window(y_coord, x_coord, kernel_size, self.image)
+        # Extract the patch centered at (y_center, x_center)
+        # This corresponds to the Patch Analysis step:
+        # P_{x,y} centered at (x,y)
+        patch_center = extract_window(y_center, x_center, kernel_size, self.image)
 
         weights = []
-        neighbors = []
+        neighbor_coords = []
         for y_neighbor in range(y_start, y_end):
             for x_neighbor in range(x_start, x_end):
+                # Extract neighboring patch
                 patch_neighbor = extract_window(
                     y_neighbor, x_neighbor, kernel_size, self.image
                 )
-                weight = calculate_weights(patch_xy, patch_neighbor, filter_strength)
+                # Calculate weight
+                # This implements the Weight Calculation formula:
+                # w_{x,y}(i,j) = exp(-|P_{x,y} - P_{i,j}|^2 / h^2)
+                weight = calculate_weights(patch_center, patch_neighbor, h)
                 weights.append(weight)
-                neighbors.append((y_neighbor, x_neighbor))
+                neighbor_coords.append((y_neighbor, x_neighbor))
 
         if not weights:
-            st.error(f"No weights calculated for pixel ({y_coord}, {x_coord})")
-            return y_coord, x_coord, self.image[y_coord, x_coord], 0, 0, 0
+            st.error(f"No weights calculated for pixel ({y_center}, {x_center})")
+            return y_center, x_center, self.image[y_center, x_center], 0, 0, 0
 
-        weights_sum = sum(weights)
-        pixel_sum = sum(w * self.image[y, x] for w, (y, x) in zip(weights, neighbors))
+        # Calculate the normalization factor C_{x,y}
+        # This corresponds to the Normalization Factor formula:
+        # C_{x,y} = ∑_{i,j ∈ Ω(x,y)} w_{x,y}(i,j)
+        normalization_factor = sum(weights)
+
+        # Calculate the NLM value
+        # This implements the main NLM Calculation formula:
+        # NLM_{x,y} = (1 / C_{x,y}) * ∑_{i,j ∈ Ω_{x,y}} I_{i,j} * w_{x,y}(i,j)
+        weighted_sum = sum(w * self.image[y, x] for w, (y, x) in zip(weights, neighbor_coords))
 
         nlm_value = (
-            pixel_sum / weights_sum if weights_sum > 0 else self.image[y_coord, x_coord]
+            weighted_sum / normalization_factor if normalization_factor > 0 else self.image[y_center, x_center]
         )
-        weight_avg = weights_sum / len(weights) if weights else 0
+        
+        # Calculate the weighted mean (same as NLM value)
+        weighted_mean = nlm_value  # Since nlm_value is the weighted mean
 
-        return (
-            y_coord,
-            x_coord,
-            nlm_value,
-            weight_avg,
-            0,
-            max(weights) if weights else 0,
+        # Calculate the weighted variance
+        weighted_variance = sum(
+            w * ((self.image[y, x] - weighted_mean) ** 2) for w, (y, x) in zip(weights, neighbor_coords)
+        ) / normalization_factor if normalization_factor > 0 else 0
+
+        # Calculate the weighted standard deviation
+        weighted_std_dev = weighted_variance ** 0.5
+
+        # Additional metrics
+        average_weight = normalization_factor / len(weights) if weights else 0
+        max_similarity = max(weights) if weights else 0
+
+        return y_center, x_center, nlm_value, average_weight, max_similarity, weighted_std_dev
+
+    def format_nlm_result(self) -> Dict[str, Any]:
+        """Format NLM-specific results."""
+        expected_images = 4
+        if len(self.result_images) < expected_images:
+            st.error(
+                f"Expected at least {expected_images} result images for NLM, but got {len(self.result_images)}"
+            )
+            return {}
+
+        nlm_image, normalization_factors, last_similarity_map, weighted_std_dev_map = self.result_images[:4]
+        return self._create_filter_data(
+            "NLM", nlm_image, normalization_factors, last_similarity_map, weighted_std_dev_map
         )
+
+    ########################
+    #    Shared Methods    #
+    ########################
+
+    def _create_filter_data(
+        self, technique: str, *filter_images: np.ndarray
+    ) -> Dict[str, Any]:
+        """Create a dictionary of filter data for the given technique."""
+        filter_names = {
+            "NLM": ["NL Means", "Normalization Factors", "Last Similarity Map", "Weighted Std Dev"],
+            "LSCI": ["Mean Filter", "Std Dev Filter", "LSCI"],
+        }
+
+        filter_data = {
+            name: image for name, image in zip(filter_names[technique], filter_images)
+        }
+
+        result = {
+            key.lower().replace(" ", "_"): value for key, value in filter_data.items()
+        }
+        result["filter_data"] = filter_data
+
+        if technique == "NLM":
+            result.update(
+                {
+                    "search_window_size": self.shared_config["search_window_size"],
+                    "filter_strength": self.params["filter_strength"],
+                }
+            )
+
+        return result
 
     def run_parallel_processing(self) -> Dict[str, Any]:
         """Run the image processing function in parallel."""
@@ -273,12 +376,16 @@ class ImageProcessor:
                 self._handle_pixel_result(result)
             self._update_progress(i + 1, total_pixels, start_time, progress_bar, status)
 
-    def _handle_pixel_result(self, result: Tuple[int, int, float, float, float]):
-        y_coord, x_coord, *values = result
-        for j, value in enumerate(values):
-            if self._is_valid_pixel(y_coord, x_coord):
-                self.result_images[j][y_coord, x_coord] = float(value)
-                self.last_processed_pixel = (y_coord, x_coord)
+    def _handle_pixel_result(self, result: Tuple[int, int, float, float, float, float]):
+        y_coord, x_coord, nlm_val, avg_weight, max_sim, weighted_std_dev = result
+        if self._is_valid_pixel(y_coord, x_coord):
+            self.result_images[0][y_coord, x_coord] = float(nlm_val)            # NLM Image
+            self.result_images[1][y_coord, x_coord] = float(avg_weight)        # Normalization Factors
+            self.result_images[2][y_coord, x_coord] = float(max_sim)           # Last Similarity Map
+            if self.technique == "nlm":
+                # Assuming result_images[3] is reserved for weighted_std_dev
+                self.result_images[3][y_coord, x_coord] = float(weighted_std_dev)
+            self.last_processed_pixel = (y_coord, x_coord)
 
     def _is_valid_pixel(self, y_coord: int, x_coord: int) -> bool:
         return 0 <= y_coord < self.height and 0 <= x_coord < self.width
@@ -317,54 +424,6 @@ class ImageProcessor:
 
         technique_specific_result = getattr(self, f"format_{self.technique}_result")()
         return {**base_result, **technique_specific_result}
-
-    def format_nlm_result(self) -> Dict[str, Any]:
-        """Format NLM-specific results."""
-        if len(self.result_images) < 3:
-            st.error(
-                f"Expected at least 3 result images for NLM, but got {len(self.result_images)}"
-            )
-            return {}
-
-        nlm_image, normalization_factors, last_similarity_map = self.result_images[:3]
-        return self._create_filter_data(
-            "NLM", nlm_image, normalization_factors, last_similarity_map
-        )
-
-    def format_lsci_result(self) -> Dict[str, Any]:
-        """Format LSCI-specific results."""
-        mean_filter, std_dev_filter, lsci_filter = self.result_images
-        return self._create_filter_data(
-            "LSCI", mean_filter, std_dev_filter, lsci_filter
-        )
-
-    def _create_filter_data(
-        self, technique: str, *filter_images: np.ndarray
-    ) -> Dict[str, Any]:
-        """Create a dictionary of filter data for the given technique."""
-        filter_names = {
-            "NLM": ["NL Means", "Normalization Factors", "Last Similarity Map"],
-            "LSCI": ["Mean Filter", "Std Dev Filter", "LSCI"],
-        }
-
-        filter_data = {
-            name: image for name, image in zip(filter_names[technique], filter_images)
-        }
-
-        result = {
-            key.lower().replace(" ", "_"): value for key, value in filter_data.items()
-        }
-        result["filter_data"] = filter_data
-
-        if technique == "NLM":
-            result.update(
-                {
-                    "search_window_size": self.shared_config["search_window_size"],
-                    "filter_strength": self.params["filter_strength"],
-                }
-            )
-
-        return result
 
 
 @st.cache_data(show_spinner=False)

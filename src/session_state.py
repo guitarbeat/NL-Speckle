@@ -2,7 +2,6 @@
 This module manages all session state operations for the Streamlit application.
 """
 
-import logging
 from typing import Any, Dict, List, Optional, TypeVar
 
 import numpy as np
@@ -73,11 +72,7 @@ def initialize_session_state() -> None:
             error_message = (
                 f"Error initializing session state for key '{key}': {str(e)}"
             )
-            logging.error(error_message)
             st.error(error_message)
-
-    # Log successful initialization
-    logging.info("Session state initialized successfully")
 
 # used in main, images, sidebar, and formula
 def get_session_state(key: str, default: Optional[T] = None) -> T:
