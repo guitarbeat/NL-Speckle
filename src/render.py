@@ -1,4 +1,3 @@
-
 ## Image Rendering ##
 from typing import Dict, Any, List, Tuple
 import src.session_state as session_state

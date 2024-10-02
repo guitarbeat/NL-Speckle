@@ -9,12 +9,6 @@ from concurrent.futures import ProcessPoolExecutor
 from multiprocessing import cpu_count
 import time
 from typing import Dict, Any, List, Tuple
-import logging
-from functools import partial
-
-# Set up logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 
 ## Utility Functions ##
@@ -153,7 +147,7 @@ class ImageProcessor:
     def initialize_result_images(self) -> List[np.ndarray]:
         """Initialize result images based on the technique."""
         num_images = 5 if self.technique == "nlm" else 3
-        return [np.full_like(self.image, np.nan, dtype=np.float32) for _ in range(num_images)]
+        return [np.zeros_like(self.image, dtype=np.float32) for _ in range(num_images)]
 
     def get_pixels_for_processing(self) -> List[Tuple[int, int]]:
         """Retrieve the list of pixels to process."""
@@ -202,31 +196,48 @@ class ImageProcessor:
         filter_strength = self.params["filter_strength"]
         use_full_image = self.shared_config["use_full_image"]
 
-        search_radius = max(self.height, self.width) if use_full_image else search_window_size // 2
+        search_radius = (
+            max(self.height, self.width) if use_full_image else search_window_size // 2
+        )
 
-        y_start, y_end = max(0, y_coord - search_radius), min(self.height, y_coord + search_radius + 1)
-        x_start, x_end = max(0, x_coord - search_radius), min(self.width, x_coord + search_radius + 1)
+        y_start = max(0, y_coord - search_radius)
+        y_end = min(self.height, y_coord + search_radius + 1)
+        x_start = max(0, x_coord - search_radius)
+        x_end = min(self.width, x_coord + search_radius + 1)
 
         patch_xy = extract_window(y_coord, x_coord, kernel_size, self.image)
 
-        weights_and_neighbors = [
-            (calculate_weights(patch_xy, extract_window(y, x, kernel_size, self.image), filter_strength), (y, x))
-            for y in range(y_start, y_end)
-            for x in range(x_start, x_end)
-        ]
+        weights = []
+        neighbors = []
+        for y_neighbor in range(y_start, y_end):
+            for x_neighbor in range(x_start, x_end):
+                patch_neighbor = extract_window(
+                    y_neighbor, x_neighbor, kernel_size, self.image
+                )
+                weight = calculate_weights(patch_xy, patch_neighbor, filter_strength)
+                weights.append(weight)
+                neighbors.append((y_neighbor, x_neighbor))
 
-        if not weights_and_neighbors:
+        if not weights:
             st.error(f"No weights calculated for pixel ({y_coord}, {x_coord})")
             return y_coord, x_coord, self.image[y_coord, x_coord], 0, 0, 0
 
-        weights, neighbors = zip(*weights_and_neighbors)
         weights_sum = sum(weights)
-        pixel_sum = sum(w * self.image[y, x] for w, (y, x) in weights_and_neighbors)
+        pixel_sum = sum(w * self.image[y, x] for w, (y, x) in zip(weights, neighbors))
 
-        nlm_value = pixel_sum / weights_sum if weights_sum > 0 else self.image[y_coord, x_coord]
-        weight_avg = weights_sum / len(weights)
+        nlm_value = (
+            pixel_sum / weights_sum if weights_sum > 0 else self.image[y_coord, x_coord]
+        )
+        weight_avg = weights_sum / len(weights) if weights else 0
 
-        return y_coord, x_coord, nlm_value, weight_avg, 0, max(weights)
+        return (
+            y_coord,
+            x_coord,
+            nlm_value,
+            weight_avg,
+            0,
+            max(weights) if weights else 0,
+        )
 
     def run_parallel_processing(self) -> Dict[str, Any]:
         """Run the image processing function in parallel."""
@@ -236,12 +247,13 @@ class ImageProcessor:
         start_time = time.time()
 
         try:
-            with st.spinner(f"Processing {self.technique.upper()}..."):
-                with ProcessPoolExecutor(max_workers=num_processes) as executor:
-                    process_func = partial(self._process_pixels, executor, args_list, progress_bar, status, start_time)
-                    executor.submit(process_func).result()
+            with st.spinner(
+                f"Processing {self.technique.upper()}..."
+            ), ProcessPoolExecutor(max_workers=num_processes) as executor:
+                self._process_pixels(
+                    executor, args_list, progress_bar, status, start_time
+                )
         except Exception as e:
-            logger.error(f"Error during parallel processing: {e}")
             st.error(f"An error occurred during processing: {e}")
 
         processing_end = self.current_pixel or (0, 0)
@@ -326,9 +338,8 @@ class ImageProcessor:
             "LSCI", mean_filter, std_dev_filter, lsci_filter
         )
 
-    @staticmethod
     def _create_filter_data(
-        technique: str, *filter_images: np.ndarray
+        self, technique: str, *filter_images: np.ndarray
     ) -> Dict[str, Any]:
         """Create a dictionary of filter data for the given technique."""
         filter_names = {
@@ -336,10 +347,22 @@ class ImageProcessor:
             "LSCI": ["Mean Filter", "Std Dev Filter", "LSCI"],
         }
 
-        filter_data = dict(zip(filter_names[technique], filter_images))
+        filter_data = {
+            name: image for name, image in zip(filter_names[technique], filter_images)
+        }
 
-        result = {key.lower().replace(" ", "_"): value for key, value in filter_data.items()}
+        result = {
+            key.lower().replace(" ", "_"): value for key, value in filter_data.items()
+        }
         result["filter_data"] = filter_data
+
+        if technique == "NLM":
+            result.update(
+                {
+                    "search_window_size": self.shared_config["search_window_size"],
+                    "filter_strength": self.params["filter_strength"],
+                }
+            )
 
         return result
 
@@ -361,6 +384,5 @@ def apply_processing(
         result = processor.run_parallel_processing()
         return result
     except Exception as e:
-        logger.error(f"Error during image processing: {e}")
         st.error(f"An error occurred during image processing: {e}")
         return {}

@@ -91,7 +91,12 @@ def add_kernel_grid_lines(subplot: plt.Axes, config: Dict[str, Any]) -> None:
 
 def highlight_center_pixel(subplot: plt.Axes, config: Dict[str, Any]) -> None:
     """Highlight the center pixel of the kernel."""
-    last_y, last_x = config["last_processed_pixel"]
+    last_processed_pixel = config.get("last_processed_pixel")
+    if last_processed_pixel is None or len(last_processed_pixel) != 2:
+        # Handle the case where last_processed_pixel is not available or invalid
+        return
+
+    last_y, last_x = last_processed_pixel
     center_pixel_coords = (last_x - 0.5, last_y - 0.5)
     subplot.add_patch(
         plt.Rectangle(
