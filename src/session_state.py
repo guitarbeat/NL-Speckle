@@ -9,6 +9,26 @@ import streamlit as st
 
 # Type variables for better type hinting
 T = TypeVar("T")
+# Color Maps
+AVAILABLE_COLOR_MAPS = [
+    "viridis_r",
+    "viridis",
+    "gray",
+    "plasma",
+    "inferno",
+    "magma",
+    "pink",
+    "hot",
+    "cool",
+    "YlOrRd",
+]
+
+# Preloaded Images
+PRELOADED_IMAGE_PATHS = {
+    "image50.png": "media/image50.png",
+    "spatial.tif": "media/spatial.tif",
+    "logo.jpg": "media/logo.jpg",
+}
 
 # Constants
 ORIGINAL_IMAGE = "Original Image"

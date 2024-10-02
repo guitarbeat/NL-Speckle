@@ -5,29 +5,10 @@ from typing import Optional
 import uuid
 
 import src.session_state as session_state
+from src.session_state import PRELOADED_IMAGE_PATHS, AVAILABLE_COLOR_MAPS
 
 RNG = np.random.default_rng(seed=42)
 
-# Color Maps
-AVAILABLE_COLOR_MAPS = [
-    "viridis_r",
-    "viridis",
-    "gray",
-    "plasma",
-    "inferno",
-    "magma",
-    "pink",
-    "hot",
-    "cool",
-    "YlOrRd",
-]
-
-# Preloaded Images
-PRELOADED_IMAGE_PATHS = {
-    "image50.png": "media/image50.png",
-    "spatial.tif": "media/spatial.tif",
-    "logo.jpg": "media/logo.jpg",
-}
 def setup_ui() -> Optional[bool]:
     apply_custom_css()
     try:
