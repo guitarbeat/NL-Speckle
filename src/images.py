@@ -146,12 +146,8 @@ class ImageProcessor:
 
     def initialize_result_images(self) -> List[np.ndarray]:
         """Initialize result images based on the technique."""
-        if self.technique == "nlm":
-            # NLM, Normalization Factors, Last Similarity Map, Weighted Std Dev
-            return [np.zeros_like(self.image, dtype=np.float32) for _ in range(4)]
-        else:
-            # Existing for LSCI
-            return [np.zeros_like(self.image, dtype=np.float32) for _ in range(3)]
+        num_images = 5 if self.technique == "nlm" else 3
+        return [np.zeros_like(self.image, dtype=np.float32) for _ in range(num_images)]
 
     def get_pixels_for_processing(self) -> List[Tuple[int, int]]:
         """Retrieve the list of pixels to process."""
@@ -222,8 +218,8 @@ class ImageProcessor:
 
     def process_nlm_pixel(
         self, y_center: int, x_center: int
-    ) -> Tuple[int, int, float, float, float, float]:
-        """Process a single pixel using Non-Local Means (NLM) filtering and compute Non-Local Standard Deviation."""
+    ) -> Tuple[int, int, float, float, float]:
+        """Process a single pixel using NL Means (NLM) filtering."""
         kernel_size = self.shared_config["kernel_size"]
         search_window_size = self.shared_config["search_window_size"]
         h = self.params["filter_strength"]
@@ -263,7 +259,7 @@ class ImageProcessor:
 
         if not weights:
             st.error(f"No weights calculated for pixel ({y_center}, {x_center})")
-            return y_center, x_center, self.image[y_center, x_center], 0, 0, 0
+            return y_center, x_center, self.image[y_center, x_center], 0, 0
 
         # Calculate the normalization factor C_{x,y}
         # This corresponds to the Normalization Factor formula:
@@ -278,36 +274,22 @@ class ImageProcessor:
         nlm_value = (
             weighted_sum / normalization_factor if normalization_factor > 0 else self.image[y_center, x_center]
         )
-        
-        # Calculate the weighted mean (same as NLM value)
-        weighted_mean = nlm_value  # Since nlm_value is the weighted mean
-
-        # Calculate the weighted variance
-        weighted_variance = sum(
-            w * ((self.image[y, x] - weighted_mean) ** 2) for w, (y, x) in zip(weights, neighbor_coords)
-        ) / normalization_factor if normalization_factor > 0 else 0
-
-        # Calculate the weighted standard deviation
-        weighted_std_dev = weighted_variance ** 0.5
-
-        # Additional metrics
         average_weight = normalization_factor / len(weights) if weights else 0
         max_similarity = max(weights) if weights else 0
 
-        return y_center, x_center, nlm_value, average_weight, max_similarity, weighted_std_dev
+        return y_center, x_center, nlm_value, average_weight, max_similarity
 
     def format_nlm_result(self) -> Dict[str, Any]:
         """Format NLM-specific results."""
-        expected_images = 4
-        if len(self.result_images) < expected_images:
+        if len(self.result_images) < 3:
             st.error(
-                f"Expected at least {expected_images} result images for NLM, but got {len(self.result_images)}"
+                f"Expected at least 3 result images for NLM, but got {len(self.result_images)}"
             )
             return {}
 
-        nlm_image, normalization_factors, last_similarity_map, weighted_std_dev_map = self.result_images[:4]
+        nlm_image, normalization_factors, last_similarity_map = self.result_images[:3]
         return self._create_filter_data(
-            "NLM", nlm_image, normalization_factors, last_similarity_map, weighted_std_dev_map
+            "NLM", nlm_image, normalization_factors, last_similarity_map
         )
 
     ########################
@@ -319,7 +301,7 @@ class ImageProcessor:
     ) -> Dict[str, Any]:
         """Create a dictionary of filter data for the given technique."""
         filter_names = {
-            "NLM": ["NL Means", "Normalization Factors", "Last Similarity Map", "Weighted Std Dev"],
+            "NLM": ["NL Means", "Normalization Factors", "Last Similarity Map"],
             "LSCI": ["Mean Filter", "Std Dev Filter", "LSCI"],
         }
 
@@ -376,16 +358,12 @@ class ImageProcessor:
                 self._handle_pixel_result(result)
             self._update_progress(i + 1, total_pixels, start_time, progress_bar, status)
 
-    def _handle_pixel_result(self, result: Tuple[int, int, float, float, float, float]):
-        y_coord, x_coord, nlm_val, avg_weight, max_sim, weighted_std_dev = result
-        if self._is_valid_pixel(y_coord, x_coord):
-            self.result_images[0][y_coord, x_coord] = float(nlm_val)            # NLM Image
-            self.result_images[1][y_coord, x_coord] = float(avg_weight)        # Normalization Factors
-            self.result_images[2][y_coord, x_coord] = float(max_sim)           # Last Similarity Map
-            if self.technique == "nlm":
-                # Assuming result_images[3] is reserved for weighted_std_dev
-                self.result_images[3][y_coord, x_coord] = float(weighted_std_dev)
-            self.last_processed_pixel = (y_coord, x_coord)
+    def _handle_pixel_result(self, result: Tuple[int, int, float, float, float]):
+        y_coord, x_coord, *values = result
+        for j, value in enumerate(values):
+            if self._is_valid_pixel(y_coord, x_coord):
+                self.result_images[j][y_coord, x_coord] = float(value)
+                self.last_processed_pixel = (y_coord, x_coord)
 
     def _is_valid_pixel(self, y_coord: int, x_coord: int) -> bool:
         return 0 <= y_coord < self.height and 0 <= x_coord < self.width
