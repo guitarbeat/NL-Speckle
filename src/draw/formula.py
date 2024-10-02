@@ -160,7 +160,8 @@ def get_formula_config(technique: str) -> Dict[str, Any]:
 
 def create_specific_params(last_x: int, last_y: int) -> Dict[str, Any]:
     """Create specific parameters for formula display."""
-    height, width = session_state.get_image_dimensions()
+    image_array = session_state.get_image_array()
+    height, width = image_array.shape if image_array is not None else (0, 0)
     kernel_size = session_state.kernel_size()
     half_kernel = kernel_size // 2
 
@@ -187,7 +188,8 @@ def create_specific_params(last_x: int, last_y: int) -> Dict[str, Any]:
     }
 
     if params["analysis_type"] == "nlm":
-        params["search_window_size"] = session_state.get_session_state('search_window_size', session_state.DEFAULT_SEARCH_WINDOW_SIZE)
+        nlm_options = session_state.get_nlm_options()
+        params["search_window_size"] = nlm_options["search_window_size"]
 
     return params
 
@@ -206,9 +208,10 @@ def prepare_variables(variables: Dict[str, Any]) -> Dict[str, Any]:
         prepared["kernel_matrix_latex"] = "Kernel matrix not available"
 
     if prepared["analysis_type"] == "nlm":
+        nlm_options = session_state.get_nlm_options()
         prepared["search_window_description"] = (
             "We search the entire image for similar pixels."
-            if prepared["search_window_size"] == "full" or session_state.get_use_whole_image()
+            if nlm_options["use_whole_image"]
             else f"A search window of size {prepared['search_window_size']}x{prepared['search_window_size']} centered around the target pixel."
         )
     
