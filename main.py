@@ -6,7 +6,8 @@ import streamlit as st
 import json
 from src.sidebar import setup_ui
 import numpy as np
-from src.images import apply_processing, create_technique_config, display_filters, get_zoomed_image_section
+from src.images import apply_processing
+from src.render import create_technique_config, display_filters, get_zoomed_image_section
 from src.draw.formula import display_formula_details
 import src.session_state as session_state
 import matplotlib.pyplot as plt
@@ -56,11 +57,20 @@ def process_technique(technique):
         )
         return None
 
-    result = apply_processing(image.astype(np.float32), technique, params)
+    pixels_to_process = session_state.get_session_state("pixels_to_process", image.size)
+    kernel_size = params.get("kernel_size", 3)  # Default to 3 if not specified
+
+    result = apply_processing(
+        image.astype(np.float32), 
+        technique, 
+        params, 
+        pixels_to_process, 
+        kernel_size
+    )
 
     if result is not None:
         session_state.set_session_state(f"{technique}_result", result)
-        session_state.set_last_processed(technique, session_state.get_session_state("pixels_to_process"))
+        session_state.set_last_processed(technique, pixels_to_process)
 
     return result
 
@@ -129,15 +139,16 @@ def display_image(plot_config, placeholder, zoomed=False):
         placeholder: Streamlit placeholder to render the image.
         zoomed (bool): Whether to display a zoomed-in section of the image.
     """
-    zoom_data, _ = (
-        (plot_config["filter_data"], "")
-        if not zoomed
-        else get_zoomed_image_section(
+    if zoomed:
+        zoom_data, center = get_zoomed_image_section(
             plot_config["filter_data"],
-            *session_state.get_session_state("last_processed_pixel", (0, 0)),
-            session_state.kernel_size(),
+            plot_config["last_processed_pixel"][1],  # x-coordinate
+            plot_config["last_processed_pixel"][0],  # y-coordinate
+            plot_config["kernel"]["size"]
         )
-    )
+    else:
+        zoom_data = plot_config["filter_data"]
+        center = None
 
     fig, ax = plt.subplots(1, 1, figsize=(4 if zoomed else 8, 4 if zoomed else 8))
     ax.set_title(f"{'Zoomed ' if zoomed else ''}{plot_config['title']}")
@@ -148,14 +159,21 @@ def display_image(plot_config, placeholder, zoomed=False):
         cmap=session_state.get_color_map(),
     )
     ax.axis("off")
+
+    if zoomed:
+        plot_config["zoom"] = True
+        plot_config["last_processed_pixel"] = center
+
     add_overlays(ax, zoom_data, plot_config)
     fig.tight_layout(pad=2)
 
-    (
-        placeholder
-        if not zoomed
-        else placeholder.get(f"zoomed_{plot_config['title'].lower().replace(' ', '_')}")
-    ).pyplot(fig)
+    if zoomed:
+        placeholder_key = f"zoomed_{plot_config['title'].lower().replace(' ', '_')}"
+        if placeholder_key in placeholder:
+            placeholder[placeholder_key].pyplot(fig)
+    else:
+        placeholder.pyplot(fig)
+
     plt.close(fig)
 
 def main():

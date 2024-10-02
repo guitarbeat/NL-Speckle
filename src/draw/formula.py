@@ -8,7 +8,8 @@ import numpy as np
 from typing import Dict, Any
 import streamlit as st
 from collections import defaultdict
-import src.session_state as session_state
+from src import session_state
+import string
 
 # Constants
 NLM_FORMULA_CONFIG: Dict[str, Any] = {
@@ -30,7 +31,8 @@ NLM_FORMULA_CONFIG: Dict[str, Any] = {
     3. Compute the NLM value $NLM_{{{x},{y}}}$ as a weighted average of intensities $I_{{i,j}}$
        using these weights, normalized by $C_{{{x},{y}}}$.
 
-    This process replaces the original intensity $I_{{{x},{y}}}$ with the NLM value $NLM_{{{x},{y}}}$.
+    This process replaces the original intensity $I_{{{x},{y}}} = {original_value:d}$ with the NLM value $NLM_{{{x},{y}}} = {nlm_value:d}$.
+    The normalization factor $C_{{{x},{y}}}$ ensures the final weighted average preserves overall image brightness.
     """,
     "additional_formulas": [
         {
@@ -98,7 +100,7 @@ Similar patches yield higher weights, while dissimilar patches are assigned lowe
 
 SPECKLE_FORMULA_CONFIG: Dict[str, Any] = {
     "title": "Speckle Contrast Calculation",
-    "main_formula": r"I_{{{x},{y}}} = {original_value:d} \quad \rightarrow \quad SC_{{{x},{y}}} = \frac{{\sigma_{{{x},{y}}}}}{{\mu_{{{x},{y}}}}} = \frac{{{std:d}}}{{{mean:d}}} = {sc:.3f}",
+    "main_formula": r"I_{{{x},{y}}} = {original_value:.2f} \quad \rightarrow \quad SC_{{{x},{y}}} = \frac{{\sigma_{{{x},{y}}}}}{{\mu_{{{x},{y}}}}} = \frac{{{std:.2f}}}{{{mean:.2f}}} = {sc:.3f}",
     "explanation": r"This formula shows the transition from the original pixel intensity $I_{{{x},{y}}}$ to the Speckle Contrast (SC) for the same pixel position.",
     "additional_formulas": [
 
@@ -147,16 +149,11 @@ The patch is constructed by considering pixels within the range $[-{half_kernel}
     ],
 }
 
-"""
-Streamlit app for displaying Non-Local Means (NLM) denoising and Speckle
-Contrast formulas. Provides interactive explanations and visualizations of the
-mathematical concepts.
-"""
-
 
 def get_formula_config(technique: str) -> Dict[str, Any]:
     """Get the formula configuration based on the selected technique."""
     return NLM_FORMULA_CONFIG if technique == "nlm" else SPECKLE_FORMULA_CONFIG
+
 
 def create_specific_params(last_x: int, last_y: int) -> Dict[str, Any]:
     """Create specific parameters for formula display."""
@@ -164,34 +161,53 @@ def create_specific_params(last_x: int, last_y: int) -> Dict[str, Any]:
     height, width = image_array.shape if image_array is not None else (0, 0)
     kernel_size = session_state.kernel_size()
     half_kernel = kernel_size // 2
+    nlm_options = session_state.get_nlm_options()
+    technique = session_state.get_session_state('analysis_type', '')
+    technique_result = session_state.get_technique_result(technique)
+
+    kernel_matrix = extract_kernel_matrix(image_array, last_y, last_x, kernel_size) if image_array is not None else np.zeros((kernel_size, kernel_size))
+    mean_value = round(np.mean(kernel_matrix))
+    std_value = round(np.std(kernel_matrix))
+    
+    sc_value = (std_value / mean_value) if mean_value != 0 else 0
+    
+    nlm_value = (technique_result['NL_means'][last_y, last_x]) if technique_result and 'NL_means' in technique_result else 0
 
     params = {
         "kernel_size": kernel_size,
-        "pixels_processed": session_state.get_session_state('pixels_processed', 0),
+        "pixels_processed": technique_result.get('pixels_processed', 0) if technique_result else 0,
         "x": last_x,
         "y": last_y,
         "image_height": height,
         "image_width": width,
         "half_kernel": half_kernel,
-        "original_value": int(session_state.get_session_state('original_pixel_value', 0)),
-        "analysis_type": session_state.get_session_state('analysis_type', ''),
+        "original_value": round(float(image_array[last_y, last_x])) if image_array is not None else 0,
+        "analysis_type": technique,
         "total_pixels": kernel_size ** 2,
         "valid_height": max(0, height - kernel_size + 1),
         "valid_width": max(0, width - kernel_size + 1),
-        "search_window_size": session_state.get_session_state('search_window_size', "N/A"),
-        "kernel_matrix": session_state.get_session_state('kernel_matrix', np.zeros((kernel_size, kernel_size))),
-        "filter_strength": session_state.get_session_state('filter_strength', session_state.DEFAULT_FILTER_STRENGTH),
-        "nlm_value": int(session_state.get_session_state('nlm_value', 0)),
-        "mean": int(session_state.get_session_state('mean', 0)),
-        "std": int(session_state.get_session_state('std', 0)),
-        "sc": session_state.get_session_state('sc', 0.0),
+        "search_window_size": nlm_options["search_window_size"],
+        "kernel_matrix": kernel_matrix,
+        "filter_strength": nlm_options["filter_strength"],
+        "nlm_value": nlm_value,
+        "mean": mean_value,
+        "std": std_value,
+        "sc": sc_value,
     }
 
-    if params["analysis_type"] == "nlm":
-        nlm_options = session_state.get_nlm_options()
-        params["search_window_size"] = nlm_options["search_window_size"]
-
     return params
+
+
+def extract_kernel_matrix(image_array: np.ndarray, y: int, x: int, kernel_size: int) -> np.ndarray:
+    """Extract the kernel matrix centered at (y, x) from the image array."""
+    half_kernel = kernel_size // 2
+    height, width = image_array.shape
+    top = max(0, y - half_kernel)
+    bottom = min(height, y + half_kernel + 1)
+    left = max(0, x - half_kernel)
+    right = min(width, x + half_kernel + 1)
+    return image_array[top:bottom, left:right]
+
 
 def prepare_variables(variables: Dict[str, Any]) -> Dict[str, Any]:
     """Prepare variables for formula display."""
@@ -224,6 +240,7 @@ def prepare_variables(variables: Dict[str, Any]) -> Dict[str, Any]:
 
     return prepared
 
+
 def display_formula(config: Dict[str, Any], variables: Dict[str, Any], placeholder: st.delta_generator.DeltaGenerator) -> None:
     """Display the formula and its details in a Streamlit container."""
     with placeholder.container():
@@ -231,15 +248,37 @@ def display_formula(config: Dict[str, Any], variables: Dict[str, Any], placehold
             display_formula_section(config, variables, "main")
             display_additional_formulas(config, variables)
             
+
 def display_formula_section(config: Dict[str, Any], variables: Dict[str, Any], section_key: str) -> None:
     """Display a specific section of the formula (main or additional)."""
     formula_key = "formula" if section_key == "formula" else f"{section_key}_formula"
     formula_str = str(config[formula_key])
+    
+    class SafeFormatter(string.Formatter):
+        def format_field(self, value, format_spec):
+            if format_spec in ('d', 'f') and not isinstance(value, (int, float)):
+                try:
+                    value = float(value)
+                    if format_spec == 'd':
+                        value = int(value)
+                except ValueError:
+                    return str(value)  # If conversion fails, return the original string
+            return super().format_field(value, format_spec)
+
+    safe_formatter = SafeFormatter()
     variables_with_defaults = defaultdict(lambda: "N/A", variables)
-    formatted_formula = formula_str.format_map(variables_with_defaults)
-    st.latex(formatted_formula)
-    st.markdown(config["explanation"].format_map(variables_with_defaults))
-      
+    
+    try:
+        formatted_formula = safe_formatter.format(formula_str, **variables_with_defaults)
+        st.latex(formatted_formula)
+        
+        explanation = safe_formatter.format(config["explanation"], **variables_with_defaults)
+        st.markdown(explanation)
+    except Exception as e:
+        st.error(f"Error formatting formula: {str(e)}")
+        st.error(f"Formula string: {formula_str}")
+        st.error(f"Variables: {variables_with_defaults}")
+
 def display_additional_formulas(config: Dict[str, Any], variables: Dict[str, Any]) -> None:  
     """Display additional formulas in tabs."""
     st.write("Additional Formulas:")
@@ -248,6 +287,7 @@ def display_additional_formulas(config: Dict[str, Any], variables: Dict[str, Any
         with tab:
             display_formula_section(additional_formula, variables, "formula")
             
+
 def generate_kernel_matrix(kernel_matrix: np.ndarray, kernel_size: int) -> str:
     """Generate a LaTeX representation of the kernel matrix."""
     center = kernel_size // 2
@@ -267,15 +307,22 @@ def generate_kernel_matrix(kernel_matrix: np.ndarray, kernel_size: int) -> str:
         r"\end{array}"
     )
     
+        
 def display_formula_details(viz_params: Dict[str, Any]) -> None:
     """Main function to display formula details based on visualization parameters."""
-    last_processed_pixel = viz_params.get('last_processed_pixel', (0, 0))
+    technique = viz_params['technique']
+    technique_result = session_state.get_technique_result(technique)
+
+    if not technique_result:
+        st.error(f"No results available for {technique}.")
+        return
+
+    last_processed_pixel = technique_result.get('last_processed_pixel', (0, 0))
     last_x, last_y = last_processed_pixel
 
     specific_params = create_specific_params(last_x, last_y)
     specific_params = prepare_variables(specific_params)
-
-    formula_config = get_formula_config(viz_params['technique'])
+    formula_config = get_formula_config(technique)
 
     formula_placeholder = viz_params['ui_placeholders'].get("formula")
     if formula_placeholder:

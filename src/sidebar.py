@@ -117,15 +117,27 @@ def display_options(technique: str):
     kernel_size_and_per_pixel_toggle(technique)
 
 def kernel_size_and_per_pixel_toggle(technique: str):
+    image_array = session_state.get_image_array()
+    if image_array is None:
+        st.warning("Please load an image first.")
+        return
+
+    height, width = image_array.shape
+    
     new_kernel_size = st.slider(
         "Kernel Size",
-        min_value=3, max_value=21, value=session_state.kernel_size(), step=2,
+        min_value=3, max_value=min(height, width), value=session_state.kernel_size(), step=2,
         key=f"kernel_size_slider_{technique}",
         help="Size of the kernel used for processing",
     )
     if new_kernel_size != session_state.kernel_size():
         session_state.kernel_size(new_kernel_size)
-    
+
+    half_kernel = new_kernel_size // 2
+    processable_height = height - 2 * half_kernel
+    processable_width = width - 2 * half_kernel
+    total_processable_pixels = processable_height * processable_width
+
     show_per_pixel = st.checkbox(
         "Show Per-Pixel Processing",
         value=session_state.get_session_state("show_per_pixel", False),
@@ -135,19 +147,30 @@ def kernel_size_and_per_pixel_toggle(technique: str):
     session_state.set_show_per_pixel_processing(show_per_pixel)
 
     if show_per_pixel:
-        total_pixels = session_state.get_image_array().size
-        max_pixels = st.slider(
+        max_pixels = st.number_input(
             "Maximum Pixels to Process",
             min_value=1,
-            max_value=total_pixels,
-            value=min(10000, total_pixels),
+            max_value=total_processable_pixels,
+            value=min(10000, total_processable_pixels),
             step=1000,
             key=f"max_pixels_{technique}",
             help="Set the maximum number of pixels to process for per-pixel visualization",
         )
-        session_state.set_session_state("pixels_to_process", max_pixels)
- 
-        st.info(f"Processing {max_pixels:,} out of {total_pixels:,} pixels ({max_pixels/total_pixels:.2%})")
+        st.info(f"Processing {max_pixels:,} out of {total_processable_pixels:,} processable pixels ({max_pixels/total_processable_pixels:.2%})")
+    else:
+        max_pixels = total_processable_pixels
+        st.info(f"Processing all {total_processable_pixels:,} processable pixels")
+
+    session_state.set_session_state("pixels_to_process", max_pixels)
+    
+    # Update the processable area in the session state
+    processable_area = {
+        "top": half_kernel,
+        "bottom": height - half_kernel,
+        "left": half_kernel,
+        "right": width - half_kernel,
+    }
+    session_state.set_session_state("processable_area", processable_area)
 
 def advanced_options():
     normalization_and_noise_options()

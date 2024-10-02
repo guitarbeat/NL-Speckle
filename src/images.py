@@ -1,5 +1,5 @@
 """
-This module handles image visualization for the Streamlit application.
+This module handles image processing and visualization for the Streamlit application.
 """
 
 import numpy as np
@@ -8,13 +8,25 @@ import src.session_state as session_state
 from concurrent.futures import ProcessPoolExecutor
 from multiprocessing import cpu_count
 import time
+from typing import Dict, Any, List, Tuple
+import logging
+from functools import partial
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 ## Utility Functions ##
 
 
-def extract_window(y_coord, x_coord, kernel_size, image):
-    """Extract a window from the image centered at (y_coord, x_coord) with the given kernel size, padding with edge values if necessary."""
+def extract_window(
+    y_coord: int, x_coord: int, kernel_size: int, image: np.ndarray
+) -> np.ndarray:
+    """
+    Extract a window from the image centered at (y_coord, x_coord) with the given kernel size.
+    Pads with edge values if necessary.
+    """
     half_kernel = kernel_size // 2
     height, width = image.shape
 
@@ -30,8 +42,14 @@ def extract_window(y_coord, x_coord, kernel_size, image):
         padded_window = np.pad(
             window,
             (
-                (max(0, half_kernel - y_coord), max(0, y_coord + half_kernel + 1 - height)),
-                (max(0, half_kernel - x_coord), max(0, x_coord + half_kernel + 1 - width)),
+                (
+                    max(0, half_kernel - y_coord),
+                    max(0, y_coord + half_kernel + 1 - height),
+                ),
+                (
+                    max(0, half_kernel - x_coord),
+                    max(0, x_coord + half_kernel + 1 - width),
+                ),
             ),
             mode="edge",
         )
@@ -40,33 +58,35 @@ def extract_window(y_coord, x_coord, kernel_size, image):
     return window
 
 
-def compute_statistics(window):
+def compute_statistics(window: np.ndarray) -> Tuple[float, float]:
     """Compute mean and standard deviation of the given window."""
     mean = np.nanmean(window)
     std = np.nanstd(window)
     return mean, std
 
 
-def calculate_weights(patch_xy, patch_ij, filter_strength):
+def calculate_weights(
+    patch_xy: np.ndarray, patch_ij: np.ndarray, filter_strength: float
+) -> float:
     """Calculate the weight between two patches."""
-    squared_diff = (patch_xy - patch_ij) ** 2
-    weight = np.exp(-np.sum(squared_diff) / (filter_strength**2))
+    squared_diff = np.sum((patch_xy - patch_ij) ** 2)
+    weight = np.exp(-squared_diff / (filter_strength**2))
     return weight
 
 
-def process_pixel_wrapper(args):
+def process_pixel_wrapper(args: Tuple[Any, ...]) -> Any:
     """Wrapper to process a pixel with error handling."""
     try:
         return args[0](*args[1:])
     except Exception as e:
-        print(f"Error processing pixel: {str(e)}")
+        st.error(f"Error processing pixel: {e}")
         return None
 
 
 ## Shared Configuration ##
 
 
-def create_shared_config(technique, params):
+def create_shared_config(technique: str, params: Dict[str, Any]) -> Dict[str, Any]:
     """Create a shared configuration for both processing and overlays."""
     nlm_options = session_state.get_nlm_options()
     image_array = session_state.get_image_array()
@@ -90,9 +110,11 @@ def create_shared_config(technique, params):
         "pixels_to_process": session_state.get_session_state(
             "pixels_to_process", image_array.size
         ),
-        "pixel_percentage": (session_state.get_session_state(
-            "pixels_to_process", image_array.size
-        ) / image_array.size) * 100,
+        "pixel_percentage": (
+            session_state.get_session_state("pixels_to_process", image_array.size)
+            / image_array.size
+        )
+        * 100,
         "processable_area": {
             "top": half_kernel,
             "bottom": height - half_kernel,
@@ -105,7 +127,7 @@ def create_shared_config(technique, params):
             "bottom": height,
             "left": 0,
             "right": width,
-        }
+        },
     }
 
     return config
@@ -117,7 +139,7 @@ def create_shared_config(technique, params):
 class ImageProcessor:
     """A class to handle different image processing techniques."""
 
-    def __init__(self, image, technique, params):
+    def __init__(self, image: np.ndarray, technique: str, params: Dict[str, Any]):
         self.image = image
         self.technique = technique
         self.params = params
@@ -128,14 +150,12 @@ class ImageProcessor:
         self.current_pixel = None
         self.last_processed_pixel = None
 
-    def initialize_result_images(self):
+    def initialize_result_images(self) -> List[np.ndarray]:
         """Initialize result images based on the technique."""
-        return [
-            np.zeros_like(self.image, dtype=np.float32)
-            for _ in range(5 if self.technique == "nlm" else 3)
-        ]
+        num_images = 5 if self.technique == "nlm" else 3
+        return [np.full_like(self.image, np.nan, dtype=np.float32) for _ in range(num_images)]
 
-    def get_pixels_for_processing(self):
+    def get_pixels_for_processing(self) -> List[Tuple[int, int]]:
         """Retrieve the list of pixels to process."""
         processable_area = self.shared_config["processable_area"]
         all_pixels = [
@@ -145,7 +165,7 @@ class ImageProcessor:
         ]
         return all_pixels[: self.shared_config["pixels_to_process"]]
 
-    def create_args_list(self):
+    def create_args_list(self) -> List[Tuple[Any, ...]]:
         """Create a list of arguments for processing pixels."""
         return [
             (
@@ -156,25 +176,26 @@ class ImageProcessor:
             for y_coord, x_coord in self.pixels
         ]
 
-    def process_pixel(self, y_coord, x_coord):
+    def process_pixel(self, y_coord: int, x_coord: int):
         """Process a single pixel based on the technique."""
         self.current_pixel = (y_coord, x_coord)
-        if self.technique == "nlm":
-            return self.process_nlm_pixel(y_coord, x_coord)
-        elif self.technique == "lsci":
-            return self.process_lsci_pixel(y_coord, x_coord)
-        else:
-            raise ValueError(f"Unknown technique: {self.technique}")
+        processor = getattr(self, f"process_{self.technique}_pixel")
+        return processor(y_coord, x_coord)
 
-    def process_lsci_pixel(self, y_coord, x_coord):
+    def process_lsci_pixel(
+        self, y_coord: int, x_coord: int
+    ) -> Tuple[int, int, float, float, float]:
         """Process a single pixel using LSCI filtering."""
-        kernel_size = self.shared_config["kernel_size"]
-        window = extract_window(y_coord, x_coord, kernel_size, self.image)
+        window = extract_window(
+            y_coord, x_coord, self.shared_config["kernel_size"], self.image
+        )
         mean, std = compute_statistics(window)
         std_ratio = std / mean if mean != 0 else 0
-        return y_coord, x_coord, mean, std, std_ratio
+        return y_coord, x_coord, float(mean), float(std), float(std_ratio)
 
-    def process_nlm_pixel(self, y_coord, x_coord):
+    def process_nlm_pixel(
+        self, y_coord: int, x_coord: int
+    ) -> Tuple[int, int, float, float, float, float]:
         """Process a single pixel using NL Means (NLM) filtering."""
         kernel_size = self.shared_config["kernel_size"]
         search_window_size = self.shared_config["search_window_size"]
@@ -183,74 +204,81 @@ class ImageProcessor:
 
         search_radius = max(self.height, self.width) if use_full_image else search_window_size // 2
 
-        y_start = max(0, y_coord - search_radius)
-        y_end = min(self.height, y_coord + search_radius + 1)
-        x_start = max(0, x_coord - search_radius)
-        x_end = min(self.width, x_coord + search_radius + 1)
+        y_start, y_end = max(0, y_coord - search_radius), min(self.height, y_coord + search_radius + 1)
+        x_start, x_end = max(0, x_coord - search_radius), min(self.width, x_coord + search_radius + 1)
 
         patch_xy = extract_window(y_coord, x_coord, kernel_size, self.image)
 
-        weights = []
-        neighbors = []
-        for y_neighbor in range(y_start, y_end):
-            for x_neighbor in range(x_start, x_end):
-                if (y_neighbor, x_neighbor) == (y_coord, x_coord):
-                    continue
-                patch_neighbor = extract_window(y_neighbor, x_neighbor, kernel_size, self.image)
-                weight = calculate_weights(patch_xy, patch_neighbor, filter_strength)
-                weights.append(weight)
-                neighbors.append((y_neighbor, x_neighbor))
+        weights_and_neighbors = [
+            (calculate_weights(patch_xy, extract_window(y, x, kernel_size, self.image), filter_strength), (y, x))
+            for y in range(y_start, y_end)
+            for x in range(x_start, x_end)
+        ]
 
-        if not weights:
-            return y_coord, x_coord, self.image[y_coord, x_coord], 0, 0, 0, 0
+        if not weights_and_neighbors:
+            st.error(f"No weights calculated for pixel ({y_coord}, {x_coord})")
+            return y_coord, x_coord, self.image[y_coord, x_coord], 0, 0, 0
 
+        weights, neighbors = zip(*weights_and_neighbors)
         weights_sum = sum(weights)
-        pixel_sum = sum(
-            w * self.image[y, x]
-            for w, (y, x) in zip(weights, neighbors)
-        )
+        pixel_sum = sum(w * self.image[y, x] for w, (y, x) in weights_and_neighbors)
 
-        nlm_value = pixel_sum / weights_sum
+        nlm_value = pixel_sum / weights_sum if weights_sum > 0 else self.image[y_coord, x_coord]
         weight_avg = weights_sum / len(weights)
-        weight_std = np.sqrt(
-            sum(w**2 for w in weights) / len(weights) - weight_avg**2
-        )
 
-        return y_coord, x_coord, nlm_value, weight_avg, weight_std, max(weights), min(weights)
+        return y_coord, x_coord, nlm_value, weight_avg, 0, max(weights)
 
-    def run_parallel_processing(self):
+    def run_parallel_processing(self) -> Dict[str, Any]:
         """Run the image processing function in parallel."""
         args_list = self.create_args_list()
         progress_bar, status = st.progress(0), st.empty()
         num_processes = min(cpu_count(), st.session_state.get("max_workers", 4))
         start_time = time.time()
 
-        with st.spinner(f"Processing {self.technique.upper()}..."), ProcessPoolExecutor(
-            max_workers=num_processes
-        ) as executor:
-            self._process_pixels(executor, args_list, progress_bar, status, start_time)
+        try:
+            with st.spinner(f"Processing {self.technique.upper()}..."):
+                with ProcessPoolExecutor(max_workers=num_processes) as executor:
+                    process_func = partial(self._process_pixels, executor, args_list, progress_bar, status, start_time)
+                    executor.submit(process_func).result()
+        except Exception as e:
+            logger.error(f"Error during parallel processing: {e}")
+            st.error(f"An error occurred during processing: {e}")
 
         processing_end = self.current_pixel or (0, 0)
         return self.format_result(processing_end)
 
-    def _process_pixels(self, executor, args_list, progress_bar, status, start_time):
+    def _process_pixels(
+        self,
+        executor: ProcessPoolExecutor,
+        args_list: List[Tuple[Any, ...]],
+        progress_bar: Any,
+        status: st.delta_generator.DeltaGenerator,
+        start_time: float,
+    ):
         total_pixels = len(self.pixels)
         for i, result in enumerate(executor.map(process_pixel_wrapper, args_list)):
             if result is not None:
                 self._handle_pixel_result(result)
             self._update_progress(i + 1, total_pixels, start_time, progress_bar, status)
 
-    def _handle_pixel_result(self, result):
+    def _handle_pixel_result(self, result: Tuple[int, int, float, float, float]):
         y_coord, x_coord, *values = result
         for j, value in enumerate(values):
             if self._is_valid_pixel(y_coord, x_coord):
-                self.result_images[j][y_coord, x_coord] = value
+                self.result_images[j][y_coord, x_coord] = float(value)
                 self.last_processed_pixel = (y_coord, x_coord)
 
-    def _is_valid_pixel(self, y_coord, x_coord):
+    def _is_valid_pixel(self, y_coord: int, x_coord: int) -> bool:
         return 0 <= y_coord < self.height and 0 <= x_coord < self.width
 
-    def _update_progress(self, current, total, start_time, progress_bar, status):
+    def _update_progress(
+        self,
+        current: int,
+        total: int,
+        start_time: float,
+        progress_bar: Any,
+        status: st.delta_generator.DeltaGenerator,
+    ):
         progress = current / total
         progress_bar.progress(progress)
         if progress > 0:
@@ -263,7 +291,7 @@ class ImageProcessor:
         else:
             status.text("Initializing processing...")
 
-    def format_result(self, processing_end):
+    def format_result(self, processing_end: Tuple[int, int]) -> Dict[str, Any]:
         """Format the processing results."""
         base_result = {
             "processing_end_coord": processing_end,
@@ -272,190 +300,67 @@ class ImageProcessor:
             "image_dimensions": (self.height, self.width),
             "processable_area": self.shared_config["processable_area"],
             "last_processed_pixel": self.last_processed_pixel,
+            "last_pixel_intensity": self.image[self.last_processed_pixel],
         }
 
-        if self.technique == "nlm":
-            (
-                nlm_image,
-                normalization_factors,
-                nl_std_image,
-                nl_lsci_image,
-                last_similarity_map,
-            ) = self.result_images
-            return {
-                **base_result,
-                "NL_means": nlm_image,
-                "normalization_factors": normalization_factors,
-                "NL_std": nl_std_image,
-                "NL_lsci": nl_lsci_image,
-                "search_window_size": self.shared_config["search_window_size"],
-                "filter_strength": self.params["filter_strength"],
-                "last_similarity_map": last_similarity_map,
-                "filter_data": {
-                    "NL Means": nlm_image,
-                    "Normalization Factors": normalization_factors,
-                    "Last Similarity Map": last_similarity_map,
-                    "NL Standard Deviation": nl_std_image,
-                    "NL LSCI": nl_lsci_image,
-                },
-            }
-        else:  # LSCI
-            mean_filter, std_dev_filter, lsci_filter = self.result_images
-            return {
-                **base_result,
-                "mean_filter": mean_filter,
-                "std_dev_filter": std_dev_filter,
-                "lsci_filter": lsci_filter,
-                "filter_data": {
-                    "Mean Filter": mean_filter,
-                    "Std Dev Filter": std_dev_filter,
-                    "LSCI": lsci_filter,
-                },
-            }
+        technique_specific_result = getattr(self, f"format_{self.technique}_result")()
+        return {**base_result, **technique_specific_result}
 
-
-## Image Rendering ##
-
-
-def create_technique_config(technique, tab):
-    """Create a configuration dictionary for the specified denoising technique."""
-    result_image = session_state.get_technique_result(technique)
-    if result_image is None:
-        st.error(f"No results available for {technique}.")
-        return None
-
-    params = session_state.get_technique_params(technique)
-    shared_config = create_shared_config(technique, params)
-
-    selected_filters = session_state.get_session_state(
-        f"{technique}_filters", session_state.get_filter_selection(technique)
-    )
-
-    config = {
-        **shared_config,
-        "results": result_image,
-        "ui_placeholders": create_ui_placeholders(tab, selected_filters),
-        "selected_filters": selected_filters,
-        "kernel": {
-            "size": shared_config["kernel_size"],
-            "outline_color": "red",
-            "outline_width": 1,
-            "grid_line_color": "red",
-            "grid_line_style": ":",
-            "grid_line_width": 1,
-            "center_pixel_color": "green",
-            "center_pixel_opacity": 0.5,
-        },
-        "search_window": {
-            "outline_color": "blue",
-            "outline_width": 2,
-            "size": shared_config["search_window_size"],
-        },
-        "pixel_value": {
-            "text_color": "white",
-            "font_size": 8,
-        },
-        "zoom": False,
-        "processable_area": shared_config["processable_area"],
-        "last_processed_pixel": result_image.get("last_processed_pixel", (0, 0)),
-    }
-    return config
-
-
-def display_filters(config):
-    """Prepare filters data based on the provided configuration."""
-    filter_options = {
-        **config["results"].get("filter_data", {}),
-        "Original Image": session_state.get_image_array(),
-    }
-
-    display_data = []
-    for filter_name in config["selected_filters"]:
-        if filter_name in filter_options:
-            filter_data = prepare_filter_data(filter_options[filter_name])
-            plot_config = create_plot_config(config, filter_name, filter_data)
-            display_data.append(
-                (
-                    plot_config,
-                    config["ui_placeholders"][filter_name.lower().replace(" ", "_")],
-                    False,
-                )
+    def format_nlm_result(self) -> Dict[str, Any]:
+        """Format NLM-specific results."""
+        if len(self.result_images) < 3:
+            st.error(
+                f"Expected at least 3 result images for NLM, but got {len(self.result_images)}"
             )
+            return {}
 
-            if config["show_per_pixel_processing"]:
-                display_data.append(
-                    (
-                        plot_config,
-                        config["ui_placeholders"],
-                        True,
-                    )
-                )
-        else:
-            st.warning(f"Data for {filter_name} is not available.")
+        nlm_image, normalization_factors, last_similarity_map = self.result_images[:3]
+        return self._create_filter_data(
+            "NLM", nlm_image, normalization_factors, last_similarity_map
+        )
 
-    return display_data
+    def format_lsci_result(self) -> Dict[str, Any]:
+        """Format LSCI-specific results."""
+        mean_filter, std_dev_filter, lsci_filter = self.result_images
+        return self._create_filter_data(
+            "LSCI", mean_filter, std_dev_filter, lsci_filter
+        )
 
+    @staticmethod
+    def _create_filter_data(
+        technique: str, *filter_images: np.ndarray
+    ) -> Dict[str, Any]:
+        """Create a dictionary of filter data for the given technique."""
+        filter_names = {
+            "NLM": ["NL Means", "Normalization Factors", "Last Similarity Map"],
+            "LSCI": ["Mean Filter", "Std Dev Filter", "LSCI"],
+        }
 
-def prepare_filter_data(filter_data):
-    """Ensure filter data is 2D."""
-    return (
-        filter_data.reshape(session_state.get_image_array().shape)
-        if filter_data.ndim == 1
-        else filter_data
-    )
+        filter_data = dict(zip(filter_names[technique], filter_images))
 
+        result = {key.lower().replace(" ", "_"): value for key, value in filter_data.items()}
+        result["filter_data"] = filter_data
 
-def create_plot_config(config, filter_name, filter_data):
-    """Create a plot configuration dictionary."""
-    return {
-        **config,
-        "filter_data": filter_data,
-        "vmin": np.min(filter_data),
-        "vmax": np.max(filter_data),
-        "title": filter_name,
-    }
+        return result
 
 
-def create_ui_placeholders(tab, selected_filters):
-    """Create UI placeholders for filters and formula."""
-    with tab:
-        placeholders = {"formula": st.empty()}
-        columns = st.columns(max(1, len(selected_filters)))
-
-        for i, filter_name in enumerate(selected_filters):
-            filter_key = filter_name.lower().replace(" ", "_")
-            placeholders[filter_key] = columns[i].empty()
-            if session_state.get_session_state("show_per_pixel", False):
-                placeholders[f"zoomed_{filter_key}"] = (
-                    columns[i]
-                    .expander(f"Zoomed-in {filter_name}", expanded=False)
-                    .empty()
-                )
-
-    return placeholders
-
-
-def get_zoomed_image_section(image, center_x_coord, center_y_coord, zoom_size):
-    """Get a zoomed-in section of the image centered at the specified pixel."""
-    half_zoom = zoom_size // 2
-    top, bottom = (
-        max(0, center_y_coord - half_zoom),
-        min(image.shape[0], center_y_coord + half_zoom + 1),
-    )
-    left, right = (
-        max(0, center_x_coord - half_zoom),
-        min(image.shape[1], center_x_coord + half_zoom + 1),
-    )
-
-    return image[top:bottom, left:right], (center_x_coord - left, center_y_coord - top)
-
-
-def apply_processing(image, technique, params):
+@st.cache_data(show_spinner=False)
+def apply_processing(
+    image: np.ndarray,
+    technique: str,
+    params: Dict[str, Any],
+    pixels_to_process: int,
+    kernel_size: int,
+) -> Dict[str, Any]:
     """Apply the specified processing technique to the image."""
-    pixels_to_process = session_state.get_session_state("pixels_to_process", image.size)
     params["pixels_to_process"] = pixels_to_process
+    params["kernel_size"] = kernel_size
 
-    processor = ImageProcessor(image, technique, params)
-    result = processor.run_parallel_processing()
-
-    return result
+    try:
+        processor = ImageProcessor(image, technique, params)
+        result = processor.run_parallel_processing()
+        return result
+    except Exception as e:
+        logger.error(f"Error during image processing: {e}")
+        st.error(f"An error occurred during image processing: {e}")
+        return {}

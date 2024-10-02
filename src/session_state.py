@@ -112,8 +112,6 @@ def get_filter_options(technique: str) -> List[str]:
             "NL Means",
             "Normalization Factors",
             "Last Similarity Map",
-            "NL Standard Deviation",
-            "NL Speckle",
         ],
     }
     return options.get(technique, [ORIGINAL_IMAGE])
@@ -125,13 +123,10 @@ def get_filter_selection(technique: str) -> List[str]:
     return get_session_state(f"filter_selections.{technique}", default)
 
 # used in main and images
-def get_technique_result(technique: str) -> Any:
-    """Get the result for a specific technique."""
-    try:
-        return get_session_state(f"{technique}_result")
-    except Exception as e:
-        st.error(f"Error getting technique result for {technique}: {str(e)}")
-        return None
+def get_technique_result(technique: str) -> Optional[Dict[str, Any]]:
+    result = get_session_state(f"{technique}_result")
+    print(f"Retrieved {technique} result: {result}")  # Debug output
+    return result
 
 # used in main and images
 def get_technique_params(technique: str) -> Dict[str, Any]:
@@ -198,4 +193,9 @@ def needs_processing(technique: str) -> bool:
 def set_last_processed(technique: str, value: int) -> None:
     """Set the last processed pixel count for a technique."""
     set_session_state(f"{technique}_last_processed", value)
+
+@st.cache_data
+def get_last_pixel_intensity(technique):
+    result = get_technique_result(technique)
+    return result.get("last_pixel_intensity") if result else None
 

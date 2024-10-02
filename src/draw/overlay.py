@@ -162,7 +162,7 @@ def get_search_window_dims(config: Dict[str, Any]) -> Tuple[float, float, float,
     window_left = max(total_area["left"], last_x - half_window_size) - 0.5
     window_top = max(total_area["top"], last_y - half_window_size) - 0.5
     window_right = min(total_area["right"], last_x + half_window_size) - 0.5
-    window_bottom = min(total_area["bottom"], last_y + half_window_size) 
+    window_bottom = min(total_area["bottom"], last_y + half_window_size) - 0.5
 
     return window_left, window_top, window_right - window_left, window_bottom - window_top
 
