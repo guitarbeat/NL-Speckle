@@ -155,4 +155,13 @@ class NLMProcessor:
         normalization_factor = sum(weights)
         weighted_sum = sum(w * self.image[y, x] for w, (y, x) in zip(weights, neighbor_coords))
         
-        nlm_va
+        nlm_value = weighted_sum / normalization_factor if normalization_factor > 0 else self.image[y_center, x_center]
+        average_weight = normalization_factor / len(weights) if weights else 0.0
+        
+        return float(nlm_value), float(average_weight)
+
+    def process_image_parallel(self):
+        coords = [(y, x) for y in range(self.height) for x in range(self.width)]
+        with Pool(processes=cpu_count()) as pool:
+            results = pool.map(self.process_pixel, coords)
+        return results
