@@ -38,12 +38,20 @@ DEFAULT_KERNEL_SIZE: int = 3
 DEFAULT_FILTER_STRENGTH: float = 10.0
 DEFAULT_SEARCH_WINDOW_SIZE: int = 50
 
+# Constants to define style and other repeated values
+DEFAULT_KERNEL_OUTLINE_COLOR = "red"
+DEFAULT_KERNEL_CENTER_PIXEL_COLOR = "green"
+DEFAULT_SEARCH_WINDOW_COLOR = "blue"
+DEFAULT_PIXEL_TEXT_COLOR = "white"
+DEFAULT_PIXEL_FONT_SIZE = 8
+
+
 # Default values
 DEFAULT_VALUES: Dict[str, Any] = {
     "image": None,
     "image_array": None,
     "kernel_size": DEFAULT_KERNEL_SIZE,
-    "show_per_pixel": True,
+    "show_per_pixel": False,
     "color_map": "gray",
     "normalization": {
         "option": "None",
@@ -189,13 +197,31 @@ def get_nlm_options() -> Dict[str, Any]:
     """Get the current NLM options."""
     return get_session_state("nlm_options", DEFAULT_VALUES["nlm_options"])
 
-# used in sidebar
-def update_nlm_params(filter_strength, search_window_size, use_whole_image):
-    st.session_state["nlm_options"] = {
-        "filter_strength": filter_strength,
-        "search_window_size": search_window_size,
-        "use_whole_image": use_whole_image,
-    }
+def update_nlm_params(filter_strength=None, search_window_size=None, use_whole_image=None):
+    """
+    Update NLM parameters. If called without arguments, it uses values from session state.
+    Otherwise, it updates with the provided values.
+    """
+    if all(param is None for param in [filter_strength, search_window_size, use_whole_image]):
+        # Use values from session state
+        st.session_state['nlm_options'] = {
+            'use_whole_image': st.session_state.get('use_whole_image_checkbox', False),
+            'search_window_size': st.session_state.get('search_window_size_slider', DEFAULT_SEARCH_WINDOW_SIZE),
+            'filter_strength': st.session_state.get('filter_strength_slider', DEFAULT_FILTER_STRENGTH)
+        }
+    else:
+        # Update with provided values
+        st.session_state['nlm_options'] = {
+            'filter_strength': filter_strength if filter_strength is not None else st.session_state['nlm_options'].get('filter_strength', DEFAULT_FILTER_STRENGTH),
+            'search_window_size': search_window_size if search_window_size is not None else st.session_state['nlm_options'].get('search_window_size', DEFAULT_SEARCH_WINDOW_SIZE),
+            'use_whole_image': use_whole_image if use_whole_image is not None else st.session_state['nlm_options'].get('use_whole_image', False)
+        }
+
+    # Ensure search window size is odd
+    if st.session_state['nlm_options']['search_window_size'] % 2 == 0:
+        st.session_state['nlm_options']['search_window_size'] += 1
+
+
 # used in main
 def needs_processing(technique: str) -> bool:
     """Check if the technique needs processing based on current state."""
@@ -208,5 +234,38 @@ def needs_processing(technique: str) -> bool:
 def set_last_processed(technique: str, value: int) -> None:
     """Set the last processed pixel count for a technique."""
     set_session_state(f"{technique}_last_processed", value)
+
+def update_show_per_pixel():
+    st.session_state['show_per_pixel'] = st.session_state['show_per_pixel_toggle']
+
+def update_pixels_to_process():
+    st.session_state['pixels_to_process'] = st.session_state['max_pixels_slider']
+
+def update_kernel_size():
+    new_kernel_size = st.session_state['kernel_size_input']
+    if new_kernel_size < 1 or new_kernel_size % 2 == 0:
+        st.warning("Kernel size must be an odd integer >= 1. Adjusting to nearest valid value.")
+        new_kernel_size = max(3, new_kernel_size + (new_kernel_size % 2 == 0))
+    st.session_state['kernel_size'] = new_kernel_size
+    # Reprocess the number of pixels
+    st.session_state['pixels_to_process'] = new_kernel_size ** 2
+    
+
+def update_nlm_use_whole_image():
+    st.session_state['nlm_options']['use_whole_image'] = st.session_state['use_whole_image_checkbox']
+    # If using whole image, update search window size to None or max value
+    if st.session_state['nlm_options']['use_whole_image']:
+        st.session_state['nlm_options']['search_window_size'] = None
+
+def update_nlm_search_window_size():
+    new_size = st.session_state['search_window_size_slider']
+    # Ensure the search window size is odd
+    if new_size % 2 == 0:
+        new_size += 1
+    st.session_state['nlm_options']['search_window_size'] = new_size
+
+def update_nlm_filter_strength():
+    st.session_state['nlm_options']['filter_strength'] = st.session_state['filter_strength_slider']
+
 
 

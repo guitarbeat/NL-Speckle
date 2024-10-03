@@ -1,16 +1,15 @@
-
 from typing import Dict, Any, List, Tuple
 import src.session_state as session_state
 import streamlit as st
 import numpy as np
 from src.images import create_shared_config
-
-# Constants to define style and other repeated values
-DEFAULT_KERNEL_OUTLINE_COLOR = "red"
-DEFAULT_KERNEL_CENTER_PIXEL_COLOR = "green"
-DEFAULT_SEARCH_WINDOW_COLOR = "blue"
-DEFAULT_PIXEL_TEXT_COLOR = "white"
-DEFAULT_PIXEL_FONT_SIZE = 8
+from src.session_state import (
+    DEFAULT_KERNEL_OUTLINE_COLOR,
+    DEFAULT_KERNEL_CENTER_PIXEL_COLOR,
+    DEFAULT_SEARCH_WINDOW_COLOR,
+    DEFAULT_PIXEL_TEXT_COLOR,
+    DEFAULT_PIXEL_FONT_SIZE,
+)
 
 def create_technique_config(
     technique: str, tab: Any
@@ -28,6 +27,17 @@ def create_technique_config(
         f"{technique}_filters", session_state.get_filter_selection(technique)
     )
 
+    # Get the last processed pixel, or use a default value if it's not available
+    last_processed_pixel = result_image.get("last_processed_pixel")
+    if last_processed_pixel is None:
+        # Use the center of the image as a default
+        image_array = session_state.get_image_array()
+        if image_array is not None:
+            height, width = image_array.shape[:2]
+            last_processed_pixel = (height // 2, width // 2)
+        else:
+            last_processed_pixel = (0, 0)  # Fallback default
+
     return {
         **shared_config,
         "results": result_image,
@@ -38,7 +48,7 @@ def create_technique_config(
         "pixel_value": create_pixel_value_config(),
         "zoom": False,
         "processable_area": shared_config.get("processable_area"),
-        "last_processed_pixel": result_image.get("last_processed_pixel", (0, 0)),
+        "last_processed_pixel": last_processed_pixel,
     }
 
 

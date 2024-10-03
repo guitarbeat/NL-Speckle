@@ -10,7 +10,7 @@ Note: This module is not meant to be run directly.
 """
 
 import itertools
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Optional
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.collections import LineCollection
@@ -64,13 +64,21 @@ def _set_default_config_values(config: Dict[str, Any]) -> Dict[str, Any]:
 def add_kernel_rectangle(subplot: plt.Axes, config: Dict[str, Any]) -> None:
     """Draw a rectangle representing the kernel on the subplot."""
     kernel_top_left = get_kernel_top_left(config)
+    if kernel_top_left is None:
+        # Handle the case where kernel_top_left couldn't be calculated
+        return
+
+    kernel_size = config.get("kernel", {}).get("size")
+    if kernel_size is None:
+        return
+
     subplot.add_patch(
         plt.Rectangle(
             kernel_top_left,
-            config["kernel"]["size"],
-            config["kernel"]["size"],
-            edgecolor=config["kernel"]["outline_color"],
-            linewidth=config["kernel"]["outline_width"],
+            kernel_size,
+            kernel_size,
+            edgecolor=config.get("kernel", {}).get("outline_color", "red"),
+            linewidth=config.get("kernel", {}).get("outline_width", 1),
             facecolor="none"
         )
     )
@@ -79,12 +87,15 @@ def add_kernel_rectangle(subplot: plt.Axes, config: Dict[str, Any]) -> None:
 def add_kernel_grid_lines(subplot: plt.Axes, config: Dict[str, Any]) -> None:
     """Add grid lines within the kernel rectangle."""
     grid_lines = generate_kernel_grid_lines(config)
+    if not grid_lines:
+        return  # Don't add any lines if the list is empty
+
     subplot.add_collection(
         LineCollection(
             grid_lines,
-            colors=config["kernel"]["grid_line_color"],
-            linestyles=config["kernel"]["grid_line_style"],
-            linewidths=config["kernel"]["grid_line_width"]
+            colors=config.get("kernel", {}).get("grid_line_color", "red"),
+            linestyles=config.get("kernel", {}).get("grid_line_style", ":"),
+            linewidths=config.get("kernel", {}).get("grid_line_width", 1)
         )
     )
 
@@ -110,10 +121,18 @@ def highlight_center_pixel(subplot: plt.Axes, config: Dict[str, Any]) -> None:
     )
 
 
-def get_kernel_top_left(config: Dict[str, Any]) -> Tuple[float, float]:
+def get_kernel_top_left(config: Dict[str, Any]) -> Optional[Tuple[float, float]]:
     """Calculate the top-left corner coordinates of the kernel."""
-    last_y, last_x = config["last_processed_pixel"]
-    half_kernel = config["half_kernel"]
+    last_processed_pixel = config.get("last_processed_pixel")
+    if last_processed_pixel is None or not isinstance(last_processed_pixel, (list, tuple)) or len(last_processed_pixel) != 2:
+        # Handle the case where last_processed_pixel is not available or invalid
+        return None
+
+    last_y, last_x = last_processed_pixel
+    half_kernel = config.get("half_kernel")
+    if half_kernel is None:
+        return None
+
     return last_x - half_kernel - 0.5, last_y - half_kernel - 0.5
 
 
@@ -121,7 +140,13 @@ def get_kernel_top_left(config: Dict[str, Any]) -> Tuple[float, float]:
 def generate_kernel_grid_lines(config: Dict[str, Any]) -> List[List[Tuple[float, float]]]:
     """Generate the vertical and horizontal grid lines for the kernel."""
     kernel_top_left = get_kernel_top_left(config)
-    kernel_size = config["kernel"]["size"]
+    if kernel_top_left is None:
+        return []  # Return an empty list if kernel_top_left is None
+
+    kernel_size = config.get("kernel", {}).get("size")
+    if kernel_size is None:
+        return []  # Return an empty list if kernel_size is not available
+
     kernel_bottom_right = (
         kernel_top_left[0] + kernel_size,
         kernel_top_left[1] + kernel_size

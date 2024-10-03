@@ -166,8 +166,14 @@ def create_specific_params(last_x: int, last_y: int) -> Dict[str, Any]:
     technique_result = session_state.get_technique_result(technique)
 
     kernel_matrix = extract_kernel_matrix(image_array, last_y, last_x, kernel_size) if image_array is not None else np.zeros((kernel_size, kernel_size))
-    mean_value = round(np.mean(kernel_matrix))
-    std_value = round(np.std(kernel_matrix))
+    
+    # Handle potential NaN values
+    mean_value = np.nanmean(kernel_matrix)
+    std_value = np.nanstd(kernel_matrix)
+    
+    # Use np.nan_to_num to replace NaN with 0 and round the result
+    mean_value = round(np.nan_to_num(mean_value))
+    std_value = round(np.nan_to_num(std_value))
     
     sc_value = (std_value / mean_value) if mean_value != 0 else 0
     
@@ -181,7 +187,7 @@ def create_specific_params(last_x: int, last_y: int) -> Dict[str, Any]:
         "image_height": height,
         "image_width": width,
         "half_kernel": half_kernel,
-        "original_value": round(float(image_array[last_y, last_x])) if image_array is not None else 0,
+        "original_value": round(float(np.nan_to_num(image_array[last_y, last_x]))) if image_array is not None else 0,
         "analysis_type": technique,
         "total_pixels": kernel_size ** 2,
         "valid_height": max(0, height - kernel_size + 1),
@@ -223,13 +229,13 @@ def prepare_variables(variables: Dict[str, Any]) -> Dict[str, Any]:
     else:
         prepared["kernel_matrix_latex"] = "Kernel matrix not available"
 
-    if prepared["analysis_type"] == "nlm":
-        nlm_options = session_state.get_nlm_options()
-        prepared["search_window_description"] = (
-            "We search the entire image for similar pixels."
-            if nlm_options["use_whole_image"]
-            else f"A search window of size {prepared['search_window_size']}x{prepared['search_window_size']} centered around the target pixel."
-        )
+    # Always set search_window_description, even if analysis_type is not 'nlm'
+    nlm_options = session_state.get_nlm_options()
+    prepared["search_window_description"] = (
+        "We search the entire image for similar pixels."
+        if nlm_options.get("use_whole_image", False)
+        else f"A search window of size {prepared.get('search_window_size', 'N/A')}x{prepared.get('search_window_size', 'N/A')} centered around the target pixel."
+    )
     
     required_keys = [
         "original_value", "total_pixels", "valid_height", "valid_width", 
@@ -252,9 +258,15 @@ def display_formula(config: Dict[str, Any], variables: Dict[str, Any], placehold
 def display_formula_section(config: Dict[str, Any], variables: Dict[str, Any], section_key: str) -> None:
     """Display a specific section of the formula (main or additional)."""
     formula_key = "formula" if section_key == "formula" else f"{section_key}_formula"
-    formula_str = str(config[formula_key])
+    formula_str = str(config.get(formula_key, "Formula not available"))
     
     class SafeFormatter(string.Formatter):
+        def get_value(self, key, args, kwargs):
+            if isinstance(key, str):
+                return kwargs.get(key, f"{{{{missing_key:{key}}}}}")
+            else:
+                return super().get_value(key, args, kwargs)
+
         def format_field(self, value, format_spec):
             if format_spec in ('d', 'f') and not isinstance(value, (int, float)):
                 try:
@@ -272,12 +284,12 @@ def display_formula_section(config: Dict[str, Any], variables: Dict[str, Any], s
         formatted_formula = safe_formatter.format(formula_str, **variables_with_defaults)
         st.latex(formatted_formula)
         
-        explanation = safe_formatter.format(config["explanation"], **variables_with_defaults)
+        explanation = safe_formatter.format(config.get("explanation", "Explanation not available"), **variables_with_defaults)
         st.markdown(explanation)
     except Exception as e:
         st.error(f"Error formatting formula: {str(e)}")
         st.error(f"Formula string: {formula_str}")
-        st.error(f"Variables: {variables_with_defaults}")
+        st.error(f"Variables: {dict(variables_with_defaults)}")
 
 def display_additional_formulas(config: Dict[str, Any], variables: Dict[str, Any]) -> None:  
     """Display additional formulas in tabs."""
@@ -317,8 +329,12 @@ def display_formula_details(viz_params: Dict[str, Any]) -> None:
         st.error(f"No results available for {technique}.")
         return
 
-    last_processed_pixel = technique_result.get('last_processed_pixel', (0, 0))
-    last_x, last_y = last_processed_pixel
+    last_processed_pixel = technique_result.get('last_processed_pixel')
+    if last_processed_pixel is None or not isinstance(last_processed_pixel, (tuple, list)) or len(last_processed_pixel) != 2:
+        st.warning("No pixel has been processed yet or last processed pixel information is invalid.")
+        return
+
+    last_y, last_x = last_processed_pixel
 
     specific_params = create_specific_params(last_x, last_y)
     specific_params = prepare_variables(specific_params)
